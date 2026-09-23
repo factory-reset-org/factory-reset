@@ -1,0 +1,16 @@
+{
+    "name": "ToyFactory.AI.Agents",
+    "rootNamespace": "ToyFactory.AI.Agents",
+    "references": [
+        "ToyFactory.AI.Core"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

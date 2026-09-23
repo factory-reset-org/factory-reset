@@ -1,0 +1,19 @@
+{
+    "name": "ToyFactory.Runtime",
+    "rootNamespace": "ToyFactory.Runtime",
+    "references": [
+        "ToyFactory.AI.Core",
+        "ToyFactory.AI.Agents",
+        "ToyFactory.Interfaces",
+        "Unity.AI.Navigation"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
