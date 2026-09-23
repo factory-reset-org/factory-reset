@@ -15,19 +15,19 @@ Add Unity Smart Merge to **this repo's** `.git/config` (fix the path to your Uni
 ```ini
 [merge "unityyamlmerge"]
     name = Unity Smart Merge
-    driver = 'C:/Program Files/Unity/Hub/Editor/2022.3.XXf1/Editor/Data/Tools/UnityYAMLMerge.exe' merge -h -p --force --fallback none %O %B %A %A
+    driver = 'C:/Program Files/Unity/Hub/Editor/6000.6.2f1/Editor/Data/Tools/UnityYAMLMerge.exe' merge -h -p --force --fallback none %O %B %A %A
 ```
 
 ## Branches
 
 ```text
-main   stable, demo-ready, tagged releases only
-dev    integration, merged into daily
+main      stable, demo-ready, tagged releases only
+develop   integration, merged into daily
   s<N>/<type>/<topic>   e.g. s1/feat/gbfs-search, s3/art/tracker-toy-uv
 ```
 
-- Short-lived task branches off `dev`, merged back within 1-3 days.
-- Pull requests only. No direct pushes to `main` or `dev`. At least one reviewer.
+- Short-lived task branches off `develop`, merged back within 1-3 days.
+- Pull requests only. No direct pushes to `main` or `develop`. At least one reviewer.
 - **Merge commits** (`--no-ff`), never squash. Squashing erases individual authorship.
 - Put `Closes #<issue>` in the PR description so the project board updates.
 
