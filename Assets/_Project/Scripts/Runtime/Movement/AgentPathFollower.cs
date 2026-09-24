@@ -15,12 +15,16 @@ namespace ToyFactory.Runtime.Movement
         [Tooltip("How close (metres, on the ground plane) the agent must get to a waypoint before moving on to the next.")]
         [SerializeField, Min(0.01f)] float arrivalRadius = 0.3f;
 
+        [Tooltip("Small downward speed (m/s) applied while grounded so the agent stays pressed onto slopes and steps instead of hovering off them.")]
+        [SerializeField] float groundedStickSpeed = -2f;
+
         // Reused for every route so setting a new path does not allocate.
         readonly List<Vector3> _path = new List<Vector3>();
 
         CharacterController _controller;
         int _targetIndex;
         float _speed;
+        float _verticalVelocity;
 
         /// <summary>True while there are waypoints left to walk to.</summary>
         public bool HasPath => _targetIndex < _path.Count;
@@ -79,10 +83,24 @@ namespace ToyFactory.Runtime.Movement
                 }
             }
 
-            _controller.Move(horizontalVelocity * Time.deltaTime);
+            ApplyGravity();
+
+            Vector3 velocity = horizontalVelocity;
+            velocity.y = _verticalVelocity;
+            _controller.Move(velocity * Time.deltaTime);
             CurrentSpeed = horizontalVelocity.magnitude;
 
             SkipReachedWaypoints();
+        }
+
+        // CharacterController has no gravity of its own, so it is applied by hand.
+        // isGrounded reflects the previous Move call.
+        void ApplyGravity()
+        {
+            if (_controller.isGrounded && _verticalVelocity < 0f)
+                _verticalVelocity = groundedStickSpeed;
+
+            _verticalVelocity += Physics.gravity.y * Time.deltaTime;
         }
 
         void SkipReachedWaypoints()
