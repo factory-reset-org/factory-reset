@@ -18,6 +18,9 @@ namespace ToyFactory.Runtime.Movement
         [Tooltip("Small downward speed (m/s) applied while grounded so the agent stays pressed onto slopes and steps instead of hovering off them.")]
         [SerializeField] float groundedStickSpeed = -2f;
 
+        [Tooltip("Maximum turn speed in degrees per second. 360 turns the agent fully around in half a second.")]
+        [SerializeField, Min(1f)] float turnSpeed = 360f;
+
         // Reused for every route so setting a new path does not allocate.
         readonly List<Vector3> _path = new List<Vector3>();
 
@@ -31,6 +34,12 @@ namespace ToyFactory.Runtime.Movement
 
         /// <summary>Horizontal speed this frame in metres per second, for animation.</summary>
         public float CurrentSpeed { get; private set; }
+
+        /// <summary>
+        /// Signed turn speed this frame in degrees per second (positive = turning right),
+        /// for animation.
+        /// </summary>
+        public float TurnRate { get; private set; }
 
         void Awake()
         {
@@ -83,6 +92,7 @@ namespace ToyFactory.Runtime.Movement
                 }
             }
 
+            TurnTowards(horizontalVelocity);
             ApplyGravity();
 
             Vector3 velocity = horizontalVelocity;
@@ -91,6 +101,22 @@ namespace ToyFactory.Runtime.Movement
             CurrentSpeed = horizontalVelocity.magnitude;
 
             SkipReachedWaypoints();
+        }
+
+        // Turns to face the direction of travel, on the ground plane only, at most
+        // turnSpeed degrees per second so the agent never snaps round instantly.
+        void TurnTowards(Vector3 horizontalVelocity)
+        {
+            float previousYaw = transform.eulerAngles.y;
+
+            if (horizontalVelocity.sqrMagnitude > 0.0001f)
+            {
+                Quaternion target = Quaternion.LookRotation(horizontalVelocity, Vector3.up);
+                transform.rotation = Quaternion.RotateTowards(
+                    transform.rotation, target, turnSpeed * Time.deltaTime);
+            }
+
+            TurnRate = Mathf.DeltaAngle(previousYaw, transform.eulerAngles.y) / Time.deltaTime;
         }
 
         // CharacterController has no gravity of its own, so it is applied by hand.
