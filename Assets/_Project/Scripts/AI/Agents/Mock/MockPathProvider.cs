@@ -16,11 +16,21 @@ namespace ToyFactory.AI.Agents.Mock
         /// <summary>Default movement speed in metres per second.</summary>
         public const float DefaultSpeed = 3f;
 
+        /// <summary>
+        /// How close (in metres, measured on the ground plane) the agent must be to the
+        /// last waypoint to count as having finished the route.
+        /// </summary>
+        public const float ArrivalRadius = 0.3f;
+
         const string StateName = "MockPatrol";
 
         readonly List<Vector3> _waypoints;
         readonly float _speed;
         bool _pathSent;
+
+        // True once the agent has moved away from the last waypoint since the route was
+        // last sent, so standing on the end point does not resend the route every tick.
+        bool _leftEndPoint;
 
         /// <param name="waypoints">World positions to walk through, in order. Must contain at least one point.</param>
         /// <param name="speed">Desired movement speed in metres per second.</param>
@@ -36,17 +46,23 @@ namespace ToyFactory.AI.Agents.Mock
         }
 
         /// <summary>
-        /// Returns the full waypoint list on the first tick, then a null path
-        /// ("keep following the current path") on every tick after that.
+        /// Returns the full waypoint list on the first tick and again each time the agent
+        /// reaches the last waypoint, so it patrols the route in a loop. On every other
+        /// tick returns a null path ("keep following the current path").
         /// </summary>
         public AgentIntent Tick(in AgentContext ctx)
         {
+            bool atEndPoint = IsAtEndPoint(ctx.Position);
+            if (!atEndPoint)
+                _leftEndPoint = true;
+
             List<Vector3> path = null;
-            if (!_pathSent)
+            if (!_pathSent || (atEndPoint && _leftEndPoint))
             {
                 // Hand out a copy so the body can never modify the brain's own list.
                 path = new List<Vector3>(_waypoints);
                 _pathSent = true;
+                _leftEndPoint = false;
             }
 
             return new AgentIntent
@@ -56,6 +72,16 @@ namespace ToyFactory.AI.Agents.Mock
                 Action = AgentAction.None,
                 DebugState = StateName
             };
+        }
+
+        bool IsAtEndPoint(Vector3 position)
+        {
+            // Compare on the ground plane only: the agent's pivot height and the
+            // waypoint height may differ, which should not stop it counting as arrived.
+            Vector3 end = _waypoints[_waypoints.Count - 1];
+            float dx = position.x - end.x;
+            float dz = position.z - end.z;
+            return dx * dx + dz * dz <= ArrivalRadius * ArrivalRadius;
         }
 
         /// <summary>Ignored: the mock always follows its fixed waypoints.</summary>
