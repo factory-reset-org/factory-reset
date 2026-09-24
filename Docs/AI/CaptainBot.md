@@ -79,7 +79,64 @@ Higher priority wins when several conditions are true on the same tick.
 | --- | --- |
 
 ## Maths to defend
-<!-- Heuristics, weights, curves, formulas, with the reasoning for each value -->
+
+### Goal inference
+
+For each candidate goal `g`, a Dijkstra field gives `C(x → g)`: the shortest path cost from any cell `x` to `g`, looked up in O(1). Costs are in grid units (1 per orthogonal step, √2 per diagonal) and converted to metres by multiplying by the 0.5 m cell size.
+
+Every 0.5 s (2 Hz) the Captain scores each goal:
+
+```text
+D(g)  = C(s → x) + C(x → g) − C(s → g)          detour cost, in metres
+w(g)  = P(g) · exp(−β · D(g))                    unnormalised likelihood
+P(g | observed) = w(g) / Σ w(g')                 normalise so the goals sum to 1
+```
+
+- `s` is the player's cell 5 s ago and `x` is the player's current cell.
+- `D(g)` measures how far the player's actual movement strays from the shortest route to `g`. It is **0 when the player is on an optimal route to `g`** and grows as they move away from it.
+- `D(g) ≥ 0` always, because the field costs are true shortest paths: going via `x` can never be cheaper than the direct route (triangle inequality).
+- **Confidence** is the largest posterior, `P(g*)`, where `g*` is the most likely goal.
+
+### Why β = 0.5 per metre
+
+β sets how strongly a detour counts against a goal. A detour of `D` metres multiplies that goal's likelihood by `e^(−0.5·D)`:
+
+| Detour D | Likelihood multiplier |
+| --- | --- |
+| 1 m (stepping around a crate) | 0.61 |
+| 2 m | 0.37 |
+| 4 m | 0.14 |
+| 6 m | 0.05 |
+
+- **Too high** (e.g. β = 2): a 1 m sidestep around an obstacle would cut a goal's likelihood to 0.14, so the Captain would flip its prediction on every small dodge.
+- **Too low** (e.g. β = 0.1): even a 6 m detour only cuts a goal's likelihood to 0.55, so the Captain would almost never become confident.
+- **β = 0.5** ignores small corrections but responds decisively to real route choices. With two goals and equal priors, `P(A) > 0.8` needs `e^(−β·ΔD) < 0.25`, i.e. the player has to stray about **2.8 m** further from B's shortest route than from A's (`ln 4 / 0.5 ≈ 2.77`).
+
+**Worked example:** three active switches with equal priors. The player is on the shortest route to A (`D = 0`), 4 m off the route to B, and 6 m off the route to C.
+
+```text
+w(A) = 1.000   w(B) = e^−2 = 0.135   w(C) = e^−3 = 0.050
+P(A) = 1.000 / 1.185 = 0.84   P(B) = 0.11   P(C) = 0.04
+```
+
+Confidence is 0.84 ≥ 0.5, so the Captain moves from Observe to Intercept.
+
+### Why a 5 s window
+
+- **Shorter:** a single dodge or a moment of strafing would dominate the prediction.
+- **Longer:** the Captain would be slow to notice a genuine change of plan, and an old part of the route would drag the prediction towards a goal the player has abandoned.
+- **Standing still:** if `s = x`, every `D(g) = 0`, so the posterior equals the prior. The prediction does not change and the Captain does not replan.
+
+### Priors
+
+- Active switches share the prior equally. Restored switches are removed from the candidate set.
+- The Control Room door's prior rises as switches are restored, because the player can only win by reaching it after the switches.
+- Batteries join the candidate set only while the player's ammo is below 30%.
+- A goal with no reachable path (infinite field cost) is left out of the candidate set.
+
+### Numerical safety
+
+Before taking the exponent, subtract the smallest `D(g)` from every goal's detour. This does not change the normalised result, but it keeps `exp` away from underflow when every goal has a large detour.
 
 ## Edge cases
 
