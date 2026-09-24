@@ -138,6 +138,46 @@ Confidence is 0.84 ≥ 0.5, so the Captain moves from Observe to Intercept.
 
 Before taking the exponent, subtract the smallest `D(g)` from every goal's detour. This does not change the normalised result, but it keeps `exp` away from underflow when every goal has a large detour.
 
+### Intercept point selection
+
+Once confidence ≥ 0.5, the Captain picks where to wait.
+
+1. **Predict the player's route.** Starting at the player's cell `x`, repeatedly step to the neighbour with the lowest `C(· → g*)`. Because the field holds true shortest-path costs, this walks the player's optimal route to `g*`. Call the cells on it `r_1, r_2, …, g*`.
+2. **Player arrival time** at each route cell:
+   ```text
+   t_player(i) = [C(x → g*) − C(r_i → g*)] / v_player
+   ```
+   The bracket is the distance the player still has to walk to reach `r_i`. It comes from two O(1) field lookups, so no extra search is needed.
+3. **Captain arrival time** at each route cell, from a Dijkstra field rooted at the Captain:
+   ```text
+   t_captain(i) = C(captain → r_i) / v_captain
+   ```
+4. **Choose the first chokepoint that satisfies**
+   ```text
+   t_captain(i) + 1.0 s ≤ t_player(i)
+   ```
+   A chokepoint is a doorway cell or a cell with at most 4 walkable neighbours (precomputed on the grid), so the player cannot simply walk around the Captain. If no chokepoint qualifies, take the first route cell that does. If no cell qualifies at all, the player is too close to `g*`: the Captain heads to `g*` and defends it.
+5. **Walk there** with A* through the path scheduler.
+
+**Why the first qualifying chokepoint:** it is the earliest point where the Captain can be waiting, so it meets the player furthest from their goal and gives the player the least time to notice and reroute.
+
+**Why a 1.0 s margin:** the Captain needs time to stop, turn to face the approach and settle before the player arrives. The margin also absorbs small prediction errors in the player's speed. Without it, the Captain would often arrive at the same moment as the player, which looks like chasing rather than ambushing.
+
+**Why `v_player` is the player's sprint speed:** it is the worst case. If the Captain can beat a sprinting player to a cell, it can also beat a walking one, so the inequality never over-promises.
+
+### Why Dijkstra fields and A* together
+
+| Question the Captain asks | Search needed | Tool |
+| --- | --- | --- |
+| How far is every cell from each goal? (goal inference, predicted route) | One-to-all | Dijkstra field per goal |
+| How soon can I reach every cell on the predicted route? | One-to-all | Dijkstra field from the Captain |
+| What path do I actually walk to the chosen cell? | One-to-one | A* |
+
+- **Dijkstra (uniform-cost search)** expands cells in order of cost from its source and gives the exact cost to every reachable cell. One run answers the arrival-time question for the whole route at once. Running A* separately for every route cell would repeat most of the same work.
+- **A*** is the efficient choice when there is a single destination. The octile heuristic is admissible and consistent on the 8-connected grid, so A* returns an optimal path while expanding far fewer cells than Dijkstra. It also goes through the same `IPathfinder` and path scheduler as the other agents, so the Captain's movement follows the shared frame budget and replanning rules.
+
+**Cost:** each field is a bounded Dijkstra run, O(V log V) with the binary heap. Fields are only recomputed when `OnGraphChanged` reports a changed cell inside them, not every tick. Choosing the intercept cell is then O(L) for a route of L cells, because every step is a field lookup.
+
 ## Edge cases
 
 | Case | Handling | Test |
