@@ -1,5 +1,3 @@
-Closes #
-
 <!-- Title: Conventional Commit style, e.g. "feat(tracker): GBFS closed set". Base branch: develop. -->
 
 ## What changed
