@@ -29,7 +29,6 @@ develop   integration, merged into daily
 - Short-lived task branches off `develop`, merged back within 1-3 days.
 - Pull requests only. No direct pushes to `main` or `develop`. At least one reviewer.
 - **Merge commits** (`--no-ff`), never squash. Squashing erases individual authorship.
-- Put `Closes #<issue>` in the PR description so the project board updates.
 
 ## Commits
 
