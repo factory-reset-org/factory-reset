@@ -12,7 +12,8 @@ namespace ToyFactory.AI.Core
     {
         /// <summary>
         /// Grid cells from the agent's current cell to its target, in world-position order.
-        /// Null means "keep following the current path" rather than "stop".
+        /// Null means "keep following the current path" rather than "stop";
+        /// an empty list means "stop where you are".
         /// </summary>
         public List<Vector3> Path;
 
