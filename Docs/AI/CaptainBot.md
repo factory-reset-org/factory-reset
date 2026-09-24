@@ -75,8 +75,25 @@ Higher priority wins when several conditions are true on the same tick.
 
 ## Why this architecture over the alternatives
 
-| Alternative | Why not |
-| --- | --- |
+The gameplay need is a boss that feels smart without cheating: it must anticipate the player, and the player must be able to beat it by playing unpredictably. Each alternative below fails one of those two requirements.
+
+| Alternative | What it would do | Why not |
+| --- | --- | --- |
+| **Direct chase** (A* to the player's current cell) | Follows the player | Reacts to where the player *is*, not where they are going. It is the predictable chaser the creative hook exists to replace, and the player beats it by outrunning or looping around cover. |
+| **Velocity extrapolation** (lead the target) | Aims at `position + velocity · t` | Assumes straight-line movement. In a level of corridors and doors, the player's straight-line projection often goes through walls. The Captain's prediction follows real paths because it uses shortest-path costs through the grid. |
+| **"Nearest goal" rule** | Assumes the player goes to the closest active switch | Ignores what the player is actually doing. A player walking away from the nearest switch would still be "predicted" to go there. Goal inference uses the observed route, so it changes its mind when the player does. |
+| **Behaviour tree** | Hand-authored priority tree of checks and actions | Organises behaviour well, but does not decide *where* to ambush. The prediction and intercept maths would still be needed inside it. The Captain has few states with clear confidence-based transitions, which a data-driven FSM expresses more simply and can be printed as a table. |
+| **Utility AI** | Scores every possible action on one scale | Suited to many competing actions (as the Saboteur has). The Captain has one main question, "where will the player be?", which is a probability over goals rather than a trade-off between actions. |
+| **GOAP / classical planning** | Plans a sequence of actions to reach a goal state | Plans the Captain's own action sequence, but the Captain's difficulty is modelling the *player*, not ordering its own actions. It adds planning cost without improving the prediction. |
+| **Minimax / MCTS** | Searches the player's possible moves as an adversarial game tree | The real-time 3D level has a huge, continuous move space, so tree search would be too slow for a 2 ms frame budget. Goal inference summarises the player's options as a handful of goals instead. |
+| **Learned model** (reinforcement learning, neural net) | Learns to predict or intercept from training data | Needs large amounts of gameplay data and training time the project does not have. The result would be a black box: weights could not be justified in the viva, and the player could not learn a clear counter-play. |
+
+**What the chosen design gives instead:**
+
+- **Anticipation:** the prediction uses the level's real shortest paths, so it respects walls, doors and boxes.
+- **Explainability:** every number (β, the 5 s window, the 1 s margin) has a stated reason, and the goal probabilities can be shown live in the debug overlay.
+- **Fairness:** the prediction only uses the player's observed movement, never hidden information, and a player who takes an unexpected route can beat it.
+- **Cost:** Dijkstra fields are computed once per goal and reused, so each prediction is a few O(1) lookups.
 
 ## Maths to defend
 
