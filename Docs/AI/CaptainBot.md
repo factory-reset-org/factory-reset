@@ -199,9 +199,59 @@ Once confidence ≥ 0.5, the Captain picks where to wait.
 
 | Case | Handling | Test |
 | --- | --- | --- |
+| Two goals nearly equally likely (top two within 0.1) | Look for a chokepoint shared by both predicted routes and ambush there. If none exists, stay in Observe. | `Intercept_TwoCloseGoals_PicksSharedChokepoint` |
+| Player standing still | Every detour is 0, so the posterior equals the prior. The Captain keeps its current plan and does not replan. | `Inference_StationaryPlayer_ReturnsPrior` |
+| Player too close to `g*` (no cell passes the 1 s margin) | Go straight to `g*` and defend it. | `Intercept_NoQualifyingCell_DefendsGoal` |
+| Player reaches `g*` | Remove `g*` from the candidate set and re-predict (Reassess). | `Inference_GoalReached_RemovedFromCandidates` |
+| Route blocked by a pushed box or closed door | Recompute only the fields containing a changed cell, then re-run the prediction. If the intercept cell is blocked, Reassess. | `Field_AfterBlock_MatchesFreshCompute` |
+| Goal unreachable (walled off) | Its field cost is infinite, so it is left out of the candidate set. | `Inference_UnreachableGoal_Excluded` |
+| All goals unreachable, or no active goals | No prediction: stay in Observe and keep distance from the player. | `Inference_NoCandidates_ConfidenceZero` |
+| Player's cell 5 s ago not available yet (game start, respawn) | Use the oldest recorded cell. With fewer than 2 samples, stay in Observe. | `Inference_ShortHistory_StaysObserve` |
+| Player off the grid (jumping, standing on a box) | Snap to the nearest traversable cell before looking up field costs. | `Inference_OffGridPlayer_SnapsToNearestCell` |
+| Chosen ambush cell reserved by another agent | Take the next qualifying chokepoint on the route. | `Intercept_ReservedCell_SkipsToNext` |
+| Captain stunned mid-intercept | Release the reserved cell. On recovery, go to Reassess, because the old prediction is stale. | PlayMode check in `Test_FourAgentsStress` |
+| Player missing or dead | No inference; the brain returns an empty intent and waits. | `Brain_NoPlayer_ReturnsIdleIntent` |
 
 ## Tests
-<!-- EditMode tests and what each proves -->
+
+EditMode tests run without a scene, which also proves the brain is decoupled from Unity objects. Each one uses a small hand-made grid.
+
+**DijkstraField**
+
+| Test | What it proves |
+| --- | --- |
+| Costs on an open grid match the octile distance | Orthogonal steps cost 1 and diagonal steps cost √2 |
+| Field cost equals A* path cost for random start/goal pairs | The field holds true shortest paths |
+| Blocked cells get infinite cost; no corner cutting | Obstacles and the grid rule are respected |
+| Bounded field stops at the max cost | The bound limits work as intended |
+| Recomputing after a blocking change matches a fresh field | Incremental updates are correct |
+
+**Goal inference**
+
+| Test | What it proves |
+| --- | --- |
+| Straight line towards goal A gives `P(A) > 0.8` within 3 s | The prediction becomes confident on a clear route |
+| Detour cost is 0 on an optimal route | The bracket term is computed correctly |
+| Worked example gives `P(A) ≈ 0.84, P(B) ≈ 0.11, P(C) ≈ 0.04` | The code matches the maths in this document |
+| Posteriors always sum to 1 | Normalisation is correct |
+| Very large detours do not produce NaN or zeros everywhere | The underflow guard works |
+
+**Intercept planner**
+
+| Test | What it proves |
+| --- | --- |
+| Chosen cell satisfies `t_captain + 1 s ≤ t_player` | The arrival-time inequality holds |
+| First qualifying chokepoint is chosen over later ones | The "earliest ambush" rule is implemented |
+| Predicted route descends the goal field to `g*` | Route prediction follows shortest paths |
+
+**Brain and states**
+
+| Test | What it proves |
+| --- | --- |
+| Transition table picks the highest-priority valid transition | The FSM is data-driven, not if/else |
+| Confidence crossing 0.5 moves Observe → Intercept and back via Reassess | State changes follow the table |
+
+Edge-case tests are listed in the table above.
 
 ## Measured results
 <!-- Numbers from AIPerformanceLog.md -->
