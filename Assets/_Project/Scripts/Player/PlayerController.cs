@@ -62,12 +62,33 @@ namespace ToyFactory.Player
             _lookAction = map.FindAction("Look");
             _sprintAction = map.FindAction("Sprint");
             map.Enable();
+
+            SetCursorLocked(true);
         }
 
         void Update()
         {
+            HandleCursorLock();
             Look();
             Move();
+        }
+
+        // Locks and hides the cursor so mouse movement only ever reports a look
+        // delta, not an on-screen pointer. Escape frees it (to click other Unity
+        // panels without stopping Play); clicking back into the view relocks it.
+        void HandleCursorLock()
+        {
+            if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+                SetCursorLocked(false);
+            else if (Cursor.lockState != CursorLockMode.Locked
+                     && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+                SetCursorLocked(true);
+        }
+
+        static void SetCursorLocked(bool locked)
+        {
+            Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
+            Cursor.visible = !locked;
         }
 
         void Look()
