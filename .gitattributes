@@ -14,10 +14,12 @@
 *.otf filter=lfs diff=lfs merge=lfs -text
 
 # Smart Merge for Unity YAML
-*.unity merge=unityyamlmerge
-*.prefab merge=unityyamlmerge
-*.mat merge=unityyamlmerge
-*.asset merge=unityyamlmerge
+# eol=lf pins these to one line ending so the Editor resaving a file on Windows
+# (core.autocrlf=true writes CRLF on disk) does not show as a spurious change.
+*.unity merge=unityyamlmerge text eol=lf
+*.prefab merge=unityyamlmerge text eol=lf
+*.mat merge=unityyamlmerge text eol=lf
+*.asset merge=unityyamlmerge text eol=lf
 
 # Binary bake output: MUST come after *.asset (later lines win)
 LightingData.asset filter=lfs diff=lfs merge=lfs -text
