@@ -17,7 +17,7 @@ Joint project for SE3032 Graphics & Visualization and SE3062 Intelligent Systems
 
 - Unity **6000.6.2f1** (exact version in `ProjectSettings/ProjectVersion.txt`; everyone installs the same build)
 - Git + Git LFS (`git lfs install` once per machine)
-- Blender 4.x (only for editing sources in `Blender/`)
+- Blender **5.2.0 LTS** (only for editing sources in `Blender/`)
 
 ## Getting started
 
