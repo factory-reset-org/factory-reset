@@ -17,14 +17,16 @@ namespace ToyFactory.AI.Core.Search
     /// <remarks>
     /// All per-cell arrays are allocated once per grid size and reused. Instead of clearing
     /// them before every search, each search bumps a stamp and a cell only counts as
-    /// visited or closed if its stored stamp matches the current one.
+    /// visited or closed if its stored stamp matches the current one. Neighbours are read
+    /// through <see cref="GridGraph.GetNeighboursNonAlloc"/> into a fixed 8-slot buffer, so a
+    /// search allocates nothing on the heap.
     /// </remarks>
     public sealed class AStarSearch : IPathfinder
     {
         static readonly ProfilerMarker Marker = new ProfilerMarker("AI.AStarSearch.FindPath");
 
-        readonly IGridGraph _grid;
-        readonly List<Vector2Int> _neighbours = new List<Vector2Int>(8);
+        readonly GridGraph _grid;
+        readonly Vector2Int[] _neighbourBuffer = new Vector2Int[8];
         readonly Stopwatch _stopwatch = new Stopwatch();
 
         BinaryHeap _open;
@@ -33,9 +35,9 @@ namespace ToyFactory.AI.Core.Search
         int[] _seenStamp;
         int[] _closedStamp;
         int _stamp;
-        int _width;
+        int _cellCount;
 
-        public AStarSearch(IGridGraph grid)
+        public AStarSearch(GridGraph grid)
         {
             _grid = grid ?? throw new ArgumentNullException(nameof(grid));
             AllocateForGridSize();
@@ -49,7 +51,7 @@ namespace ToyFactory.AI.Core.Search
             using (Marker.Auto())
             {
                 _stopwatch.Restart();
-                if (_grid.Width * _grid.Height != _costSoFar.Length || _grid.Width != _width)
+                if (_grid.CellCount != _cellCount)
                     AllocateForGridSize();
 
                 int version = _grid.Version;
@@ -59,8 +61,8 @@ namespace ToyFactory.AI.Core.Search
                 NextStamp();
                 _open.Clear();
 
-                int startIndex = Index(start);
-                int goalIndex = Index(goal);
+                int startIndex = _grid.ToIndex(start);
+                int goalIndex = _grid.ToIndex(goal);
                 _costSoFar[startIndex] = 0f;
                 _parent[startIndex] = -1;
                 _seenStamp[startIndex] = _stamp;
@@ -76,13 +78,13 @@ namespace ToyFactory.AI.Core.Search
                     if (current == goalIndex)
                         return new PathResult(BuildPath(goalIndex), true, expanded, ElapsedMs(), version);
 
-                    Vector2Int currentCell = Cell(current);
-                    _grid.GetNeighbours(currentCell, _neighbours);
+                    Vector2Int currentCell = _grid.FromIndex(current);
+                    int neighbourCount = _grid.GetNeighboursNonAlloc(currentCell, _neighbourBuffer);
 
-                    for (int i = 0; i < _neighbours.Count; i++)
+                    for (int i = 0; i < neighbourCount; i++)
                     {
-                        Vector2Int next = _neighbours[i];
-                        int nextIndex = Index(next);
+                        Vector2Int next = _neighbourBuffer[i];
+                        int nextIndex = _grid.ToIndex(next);
 
                         // The heuristic is consistent, so a closed cell can never be improved.
                         if (_closedStamp[nextIndex] == _stamp)
@@ -127,20 +129,19 @@ namespace ToyFactory.AI.Core.Search
         {
             var path = new List<Vector2Int>();
             for (int index = goalIndex; index != -1; index = _parent[index])
-                path.Add(Cell(index));
+                path.Add(_grid.FromIndex(index));
             path.Reverse();
             return path;
         }
 
         void AllocateForGridSize()
         {
-            _width = _grid.Width;
-            int cellCount = _grid.Width * _grid.Height;
-            _open = new BinaryHeap(cellCount);
-            _costSoFar = new float[cellCount];
-            _parent = new int[cellCount];
-            _seenStamp = new int[cellCount];
-            _closedStamp = new int[cellCount];
+            _cellCount = _grid.CellCount;
+            _open = new BinaryHeap(_cellCount);
+            _costSoFar = new float[_cellCount];
+            _parent = new int[_cellCount];
+            _seenStamp = new int[_cellCount];
+            _closedStamp = new int[_cellCount];
             _stamp = 0;
         }
 
@@ -154,10 +155,6 @@ namespace ToyFactory.AI.Core.Search
             }
             _stamp++;
         }
-
-        int Index(Vector2Int cell) => cell.y * _width + cell.x;
-
-        Vector2Int Cell(int index) => new Vector2Int(index % _width, index / _width);
 
         float ElapsedMs() => (float)_stopwatch.Elapsed.TotalMilliseconds;
     }

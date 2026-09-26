@@ -10,8 +10,31 @@ namespace ToyFactory.Tests.EditMode
     {
         const float Tolerance = 1e-3f;
         static readonly float Diagonal = BaseCostModel.DiagonalCost;
+        static readonly Vector2Int[] Buffer = new Vector2Int[8];
 
-        static PathResult Search(IGridGraph grid, Vector2Int start, Vector2Int goal) =>
+        // Builds a real GridGraph from text rows, '.' walkable and '#' blocked, so tests run
+        // against the same grid implementation the game actually uses, not a parallel fake.
+        static GridGraph GridFromRows(params string[] rows)
+        {
+            var grid = new GridGraph(rows[0].Length, rows.Length, Vector3.zero);
+            for (int y = 0; y < rows.Length; y++)
+                for (int x = 0; x < rows[y].Length; x++)
+                    if (rows[y][x] == '#')
+                        grid.SetWalkable(new Vector2Int(x, y), false);
+            return grid;
+        }
+
+        static GridGraph RandomGrid(int width, int height, float blockedChance, System.Random rng)
+        {
+            var grid = new GridGraph(width, height, Vector3.zero);
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                    if (rng.NextDouble() < blockedChance)
+                        grid.SetWalkable(new Vector2Int(x, y), false);
+            return grid;
+        }
+
+        static PathResult Search(GridGraph grid, Vector2Int start, Vector2Int goal) =>
             new AStarSearch(grid).FindPath(start, goal, BaseCostModel.Instance);
 
         static float PathCost(List<Vector2Int> cells)
@@ -25,7 +48,7 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void StraightLineOnOpenGridIsOptimal()
         {
-            var grid = TestGrid.FromRows(".....");
+            GridGraph grid = GridFromRows(".....");
 
             PathResult result = Search(grid, new Vector2Int(0, 0), new Vector2Int(4, 0));
 
@@ -37,7 +60,7 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void DiagonalOnOpenGridIsOptimal()
         {
-            var grid = TestGrid.FromRows("....", "....", "....", "....");
+            GridGraph grid = GridFromRows("....", "....", "....", "....");
 
             PathResult result = Search(grid, new Vector2Int(0, 0), new Vector2Int(3, 3));
 
@@ -49,7 +72,7 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void RoutesAroundAWallWithoutCuttingCorners()
         {
-            var grid = TestGrid.FromRows(
+            GridGraph grid = GridFromRows(
                 ".....",
                 ".###.",
                 ".....");
@@ -65,7 +88,7 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void DiagonalBetweenTwoBlockedCellsIsNotAllowed()
         {
-            var grid = TestGrid.FromRows(
+            GridGraph grid = GridFromRows(
                 ".#",
                 "#.");
 
@@ -78,7 +101,7 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void WalledOffGoalIsNotFound()
         {
-            var grid = TestGrid.FromRows(
+            GridGraph grid = GridFromRows(
                 ".....",
                 ".###.",
                 ".#.#.",
@@ -94,7 +117,7 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void StartEqualToGoalReturnsSingleCellPath()
         {
-            var grid = TestGrid.FromRows("...", "...", "...");
+            GridGraph grid = GridFromRows("...", "...", "...");
             var cell = new Vector2Int(1, 1);
 
             PathResult result = Search(grid, cell, cell);
@@ -106,7 +129,7 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void BlockedStartOrGoalIsNotFound()
         {
-            var grid = TestGrid.FromRows("#.#");
+            GridGraph grid = GridFromRows("#.#");
 
             Assert.IsFalse(Search(grid, new Vector2Int(0, 0), new Vector2Int(1, 0)).Found);
             Assert.IsFalse(Search(grid, new Vector2Int(1, 0), new Vector2Int(2, 0)).Found);
@@ -115,19 +138,32 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void ResultReportsTheGraphVersion()
         {
-            var grid = TestGrid.FromRows("....");
-            grid.SetWalkable(new Vector2Int(3, 0), false);
-            grid.SetWalkable(new Vector2Int(3, 0), true);
+            GridGraph grid = GridFromRows("....");
+            var cell = new Vector2Int(3, 0);
+            grid.SetWalkable(cell, false);
+            grid.SetWalkable(cell, true);
 
-            PathResult result = Search(grid, new Vector2Int(0, 0), new Vector2Int(3, 0));
+            PathResult result = Search(grid, new Vector2Int(0, 0), cell);
 
             Assert.AreEqual(2, result.GraphVersion);
         }
 
         [Test]
+        public void ClosedDoorBlocksMovementEvenThoughSoundStillPasses()
+        {
+            GridGraph grid = GridFromRows(".....");
+            var door = new Vector2Int(2, 0);
+            grid.SetDoor(door, doorId: 1, isClosed: true);
+
+            PathResult result = Search(grid, new Vector2Int(0, 0), new Vector2Int(4, 0));
+
+            Assert.IsFalse(result.Found);
+        }
+
+        [Test]
         public void ReusedSearchReplansAroundANewlyBlockedCell()
         {
-            var grid = TestGrid.FromRows(".....", ".....", ".....");
+            GridGraph grid = GridFromRows(".....", ".....", ".....");
             var search = new AStarSearch(grid);
             var start = new Vector2Int(0, 1);
             var goal = new Vector2Int(4, 1);
@@ -146,11 +182,10 @@ namespace ToyFactory.Tests.EditMode
         public void CostMatchesReferenceDijkstraOnFiftyRandomGrids()
         {
             var rng = new System.Random(12345);
-            var neighbours = new List<Vector2Int>();
 
             for (int run = 0; run < 50; run++)
             {
-                TestGrid grid = TestGrid.Random(20, 20, 0.25f, rng);
+                GridGraph grid = RandomGrid(20, 20, 0.25f, rng);
                 Vector2Int start = RandomWalkableCell(grid, rng);
                 Vector2Int goal = RandomWalkableCell(grid, rng);
 
@@ -166,13 +201,16 @@ namespace ToyFactory.Tests.EditMode
                 Assert.AreEqual(goal, result.Cells[result.Cells.Count - 1], $"Run {run}: path does not end at the goal.");
                 for (int i = 1; i < result.Cells.Count; i++)
                 {
-                    grid.GetNeighbours(result.Cells[i - 1], neighbours);
-                    CollectionAssert.Contains(neighbours, result.Cells[i], $"Run {run}: step {i} is not a legal move.");
+                    int count = grid.GetNeighboursNonAlloc(result.Cells[i - 1], Buffer);
+                    bool isNeighbour = false;
+                    for (int n = 0; n < count; n++)
+                        isNeighbour |= Buffer[n] == result.Cells[i];
+                    Assert.IsTrue(isNeighbour, $"Run {run}: step {i} is not a legal move.");
                 }
             }
         }
 
-        static Vector2Int RandomWalkableCell(TestGrid grid, System.Random rng)
+        static Vector2Int RandomWalkableCell(GridGraph grid, System.Random rng)
         {
             while (true)
             {
@@ -184,11 +222,11 @@ namespace ToyFactory.Tests.EditMode
 
         // Deliberately simple uniform-cost search (no heuristic, no heap) used only as a
         // known-correct answer to check A* against.
-        static float ReferenceDijkstraCost(IGridGraph grid, Vector2Int start, Vector2Int goal)
+        static float ReferenceDijkstraCost(GridGraph grid, Vector2Int start, Vector2Int goal)
         {
             var dist = new Dictionary<Vector2Int, float> { [start] = 0f };
             var done = new HashSet<Vector2Int>();
-            var neighbours = new List<Vector2Int>();
+            var buffer = new Vector2Int[8];
 
             while (true)
             {
@@ -211,9 +249,10 @@ namespace ToyFactory.Tests.EditMode
                     return bestDist;
 
                 done.Add(best);
-                grid.GetNeighbours(best, neighbours);
-                foreach (Vector2Int next in neighbours)
+                int count = grid.GetNeighboursNonAlloc(best, buffer);
+                for (int i = 0; i < count; i++)
                 {
+                    Vector2Int next = buffer[i];
                     float nextDist = bestDist + BaseCostModel.Instance.StepCost(best, next);
                     if (!dist.TryGetValue(next, out float current) || nextDist < current)
                         dist[next] = nextDist;
