@@ -120,7 +120,7 @@ namespace ToyFactory.AI.Core.Search
         {
             int dx = Mathf.Abs(a.x - b.x);
             int dy = Mathf.Abs(a.y - b.y);
-            return Mathf.Abs(dx - dy) + Mathf.Min(dx, dy) * OctileCostModel.DiagonalCost;
+            return Mathf.Abs(dx - dy) + Mathf.Min(dx, dy) * BaseCostModel.DiagonalCost;
         }
 
         List<Vector2Int> BuildPath(int goalIndex)

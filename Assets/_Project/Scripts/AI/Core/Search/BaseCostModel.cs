@@ -7,13 +7,13 @@ namespace ToyFactory.AI.Core.Search
     /// diagonal one, in grid units (multiply by the cell size for metres). Agents with no
     /// tactical preferences path with this; tactical cost models only ever add to it.
     /// </summary>
-    public sealed class OctileCostModel : ICostModel
+    public sealed class BaseCostModel : ICostModel
     {
         /// <summary>Cost of one diagonal step.</summary>
         public const float DiagonalCost = 1.41421356f;
 
         /// <summary>Shared instance; the model has no state.</summary>
-        public static readonly OctileCostModel Instance = new OctileCostModel();
+        public static readonly BaseCostModel Instance = new BaseCostModel();
 
         public float StepCost(Vector2Int from, Vector2Int to) =>
             from.x != to.x && from.y != to.y ? DiagonalCost : 1f;

@@ -9,16 +9,16 @@ namespace ToyFactory.Tests.EditMode
     public class AStarSearchTests
     {
         const float Tolerance = 1e-3f;
-        static readonly float Diagonal = OctileCostModel.DiagonalCost;
+        static readonly float Diagonal = BaseCostModel.DiagonalCost;
 
         static PathResult Search(IGridGraph grid, Vector2Int start, Vector2Int goal) =>
-            new AStarSearch(grid).FindPath(start, goal, OctileCostModel.Instance);
+            new AStarSearch(grid).FindPath(start, goal, BaseCostModel.Instance);
 
         static float PathCost(List<Vector2Int> cells)
         {
             float total = 0f;
             for (int i = 1; i < cells.Count; i++)
-                total += OctileCostModel.Instance.StepCost(cells[i - 1], cells[i]);
+                total += BaseCostModel.Instance.StepCost(cells[i - 1], cells[i]);
             return total;
         }
 
@@ -133,9 +133,9 @@ namespace ToyFactory.Tests.EditMode
             var goal = new Vector2Int(4, 1);
             var blocked = new Vector2Int(2, 1);
 
-            PathResult before = search.FindPath(start, goal, OctileCostModel.Instance);
+            PathResult before = search.FindPath(start, goal, BaseCostModel.Instance);
             grid.SetWalkable(blocked, false);
-            PathResult after = search.FindPath(start, goal, OctileCostModel.Instance);
+            PathResult after = search.FindPath(start, goal, BaseCostModel.Instance);
 
             CollectionAssert.Contains(before.Cells, blocked);
             CollectionAssert.DoesNotContain(after.Cells, blocked);
@@ -214,7 +214,7 @@ namespace ToyFactory.Tests.EditMode
                 grid.GetNeighbours(best, neighbours);
                 foreach (Vector2Int next in neighbours)
                 {
-                    float nextDist = bestDist + OctileCostModel.Instance.StepCost(best, next);
+                    float nextDist = bestDist + BaseCostModel.Instance.StepCost(best, next);
                     if (!dist.TryGetValue(next, out float current) || nextDist < current)
                         dist[next] = nextDist;
                 }
