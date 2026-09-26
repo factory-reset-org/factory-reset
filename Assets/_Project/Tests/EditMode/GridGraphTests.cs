@@ -293,6 +293,308 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void IndexHelpersUseRowMajorHeapIdsAndRejectInvalidInputs()
+        {
+            var graph = new GridGraph(4, 3, Vector3.zero);
+            Assert.AreEqual(12, graph.CellCount);
+            for (int i = 0; i < graph.CellCount; i++)
+            {
+                Assert.AreEqual(new Vector2Int(i % 4, i / 4), graph.FromIndex(i));
+                Assert.AreEqual(i, graph.ToIndex(graph.FromIndex(i)));
+            }
+            Assert.Throws<ArgumentOutOfRangeException>(() => graph.FromIndex(-1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => graph.FromIndex(12));
+            Assert.Throws<ArgumentOutOfRangeException>(() => graph.ToIndex(new Vector2Int(4, 0)));
+        }
+
+        [Test]
+        public void ClosedDoorBlocksMovementButPreservesSoundConnectivityAndIdentity()
+        {
+            var graph = new GridGraph(3, 1, Vector3.zero);
+            var door = new Vector2Int(1, 0);
+            var buffer = new Vector2Int[8];
+            graph.SetDoor(door, 42, true);
+            GridNode node = graph.GetNode(door);
+            Assert.AreEqual(42, node.DoorId);
+            Assert.IsTrue(node.IsDoorClosed);
+            Assert.IsTrue(node.IsDoorway);
+            Assert.IsTrue(node.IsChokepoint);
+            Assert.AreEqual(0, node.BlockerCount);
+            Assert.IsFalse(node.IsTraversable);
+            Assert.IsTrue(node.IsSoundTraversable);
+            Assert.AreEqual(0, graph.GetNeighboursNonAlloc(Vector2Int.zero, buffer));
+            Assert.AreEqual(1, graph.GetNeighboursNonAlloc(Vector2Int.zero, buffer, true));
+            Assert.AreEqual(door, buffer[0]);
+            Assert.AreEqual(2, graph.GetNeighboursNonAlloc(door, buffer, true));
+            graph.SetDoor(door, 42, false);
+            Assert.IsTrue(graph.IsTraversable(door));
+            Assert.AreEqual(1, graph.GetNeighboursNonAlloc(Vector2Int.zero, buffer));
+            graph.SetDoor(door, null, false);
+            Assert.IsNull(graph.GetNode(door).DoorId);
+            Assert.IsFalse(graph.GetNode(door).IsDoorClosed);
+            Assert.IsTrue(graph.GetNode(door).IsDoorway);
+            Assert.Throws<ArgumentException>(() => graph.SetDoor(door, null, true));
+            graph.SetDoor(door, 7, true);
+            graph.SetDoorway(door, false);
+            Assert.IsNull(graph.GetNode(door).DoorId);
+            Assert.IsFalse(graph.GetNode(door).IsDoorClosed);
+            Assert.IsTrue(graph.IsTraversable(door));
+        }
+
+        [Test]
+        public void DoorStateDoesNotEraseOrdinaryBlockersOrWalls()
+        {
+            var graph = new GridGraph(3, 1, Vector3.zero);
+            var door = new Vector2Int(1, 0);
+            var buffer = new Vector2Int[8];
+            graph.SetDoor(door, 1, true);
+            graph.AddBlocker(door);
+            graph.SetDoor(door, 1, false);
+            Assert.AreEqual(1, graph.GetNode(door).BlockerCount);
+            Assert.IsFalse(graph.GetNode(door).IsSoundTraversable);
+            Assert.AreEqual(0, graph.GetNeighboursNonAlloc(Vector2Int.zero, buffer, true));
+            graph.RemoveBlocker(door);
+            graph.SetWalkable(door, false);
+            Assert.AreEqual(0, graph.GetNeighboursNonAlloc(Vector2Int.zero, buffer, true));
+        }
+
+        [Test]
+        public void BatchPublishesOneAtomicChangeWithCompleteDistinctSets()
+        {
+            var graph = new GridGraph(4, 3, Vector3.zero);
+            var events = new List<GridChange>();
+            var other = new Vector2Int(2, 1);
+            graph.Changed += change =>
+            {
+                Assert.AreEqual(1, graph.GetNode(Centre).BlockerCount);
+                Assert.AreEqual(2, graph.GetNode(other).BlockerCount);
+                Assert.AreEqual(1, graph.Version);
+                events.Add(change);
+            };
+            using (GridGraph.Batch batch = graph.BeginBatch())
+            {
+                batch.AddBlocker(other);
+                batch.AddBlocker(Centre);
+                batch.AddBlocker(other);
+                Assert.AreEqual(0, graph.GetNode(other).BlockerCount);
+                Assert.AreEqual(0, graph.Version);
+                Assert.IsEmpty(events);
+                batch.Commit();
+            }
+            Assert.AreEqual(1, events.Count);
+            CollectionAssert.AreEqual(new[] { Centre, other }, events[0].ChangedCells);
+            CollectionAssert.AreEqual(Enumerable.Range(0, 12).Select(graph.FromIndex).ToArray(), events[0].AffectedCells);
+        }
+
+        [Test]
+        public void BatchMovesOverlappingFootprintAndOmitsNetUnchangedCells()
+        {
+            var graph = new GridGraph(4, 1, Vector3.zero);
+            var a = new Vector2Int(0, 0);
+            var b = new Vector2Int(1, 0);
+            var c = new Vector2Int(2, 0);
+            using (GridGraph.Batch initial = graph.BeginBatch())
+            {
+                initial.AddBlocker(a); initial.AddBlocker(b); initial.Commit();
+            }
+            GridChange observed = null;
+            graph.Changed += change => observed = change;
+            using (GridGraph.Batch move = graph.BeginBatch())
+            {
+                move.RemoveBlocker(a); move.RemoveBlocker(b);
+                move.AddBlocker(b); move.AddBlocker(c); move.Commit();
+            }
+            Assert.AreEqual(2, graph.Version);
+            CollectionAssert.AreEqual(new[] { a, c }, observed.ChangedCells);
+            Assert.AreEqual(1, graph.GetNode(b).BlockerCount);
+        }
+
+        [Test]
+        public void MultiCellDoorClosesInOneVersionWithoutBecomingOrdinaryBlockers()
+        {
+            var graph = new GridGraph(3, 2, Vector3.zero);
+            int events = 0;
+            graph.Changed += _ => events++;
+            using (GridGraph.Batch batch = graph.BeginBatch())
+            {
+                batch.SetDoor(new Vector2Int(1, 0), 9, true);
+                batch.SetDoor(new Vector2Int(1, 1), 9, true);
+                batch.Commit();
+            }
+            Assert.AreEqual(1, graph.Version);
+            Assert.AreEqual(1, events);
+            for (int y = 0; y < 2; y++)
+            {
+                GridNode door = graph.GetNode(new Vector2Int(1, y));
+                Assert.AreEqual(9, door.DoorId);
+                Assert.IsTrue(door.IsDoorClosed);
+                Assert.IsTrue(door.IsSoundTraversable);
+                Assert.AreEqual(0, door.BlockerCount);
+            }
+        }
+
+        [Test]
+        public void EmptyNoOpCancelledAndAbandonedBatchesEmitNothing()
+        {
+            var graph = new GridGraph(3, 3, Vector3.zero);
+            int events = 0;
+            graph.Changed += _ => events++;
+            using (GridGraph.Batch batch = graph.BeginBatch()) batch.Commit();
+            using (GridGraph.Batch batch = graph.BeginBatch())
+            {
+                batch.SetWalkable(Centre, false); batch.SetWalkable(Centre, true);
+                batch.AddBlocker(Centre); batch.RemoveBlocker(Centre);
+                batch.SetDoor(Centre, 2, true); batch.SetDoorway(Centre, false);
+                batch.Commit();
+            }
+            using (GridGraph.Batch batch = graph.BeginBatch()) batch.AddBlocker(Centre);
+            Assert.AreEqual(0, graph.Version);
+            Assert.AreEqual(0, events);
+            Assert.IsTrue(graph.IsTraversable(Centre));
+        }
+
+        [Test]
+        public void InvalidBatchScopeRollsBackAndStaleBatchesCannotOverwriteChanges()
+        {
+            var graph = new GridGraph(3, 3, Vector3.zero);
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+            {
+                using (GridGraph.Batch batch = graph.BeginBatch())
+                {
+                    batch.AddBlocker(Centre);
+                    batch.AddBlocker(new Vector2Int(-1, 0));
+                    batch.Commit();
+                }
+            });
+            Assert.AreEqual(0, graph.Version);
+            Assert.AreEqual(0, graph.GetNode(Centre).BlockerCount);
+            using (GridGraph.Batch stale = graph.BeginBatch())
+            {
+                stale.AddBlocker(Centre);
+                graph.SetDoorway(Centre, true);
+                Assert.Throws<InvalidOperationException>(() => stale.Commit());
+            }
+            Assert.AreEqual(0, graph.GetNode(Centre).BlockerCount);
+            Assert.IsTrue(graph.GetNode(Centre).IsDoorway);
+            var finished = graph.BeginBatch();
+            finished.Commit();
+            Assert.Throws<ObjectDisposedException>(() => finished.Commit());
+            Assert.Throws<ObjectDisposedException>(() => finished.AddBlocker(Centre));
+        }
+
+        [Test]
+        public void NonAllocNeighboursMatchConvenienceOrderAcrossEveryCell()
+        {
+            var graph = new GridGraph(4, 3, Vector3.zero);
+            graph.SetWalkable(Centre, false);
+            graph.AddBlocker(new Vector2Int(2, 1));
+            graph.SetDoor(new Vector2Int(3, 1), 3, true);
+            var buffer = new Vector2Int[8];
+            for (int i = 0; i < graph.CellCount; i++)
+            {
+                Vector2Int cell = graph.FromIndex(i);
+                int count = graph.GetNeighboursNonAlloc(cell, buffer);
+                CollectionAssert.AreEqual(graph.GetNeighbours(cell).ToArray(), buffer.Take(count).ToArray());
+            }
+            Assert.AreEqual(0, graph.GetNeighboursNonAlloc(new Vector2Int(-1, 0), buffer));
+            Assert.Throws<ArgumentNullException>(() => graph.GetNeighboursNonAlloc(Centre, null));
+            Assert.Throws<ArgumentException>(() => graph.GetNeighboursNonAlloc(Centre, new Vector2Int[7]));
+        }
+
+        [TestCase(1, 1)]
+        [TestCase(1, -1)]
+        [TestCase(-1, 1)]
+        [TestCase(-1, -1)]
+        public void SoundNeighboursRespectWallsAndBlockersOnBothDiagonalSides(int dx, int dy)
+        {
+            var graph = new GridGraph(3, 3, Vector3.zero);
+            var buffer = new Vector2Int[8];
+            var sideX = Centre + new Vector2Int(dx, 0);
+            var sideY = Centre + new Vector2Int(0, dy);
+            var target = Centre + new Vector2Int(dx, dy);
+            graph.SetDoor(sideX, 1, true);
+            int count = graph.GetNeighboursNonAlloc(Centre, buffer, true);
+            Assert.IsTrue(buffer.Take(count).Contains(target));
+            count = graph.GetNeighboursNonAlloc(Centre, buffer);
+            Assert.IsFalse(buffer.Take(count).Contains(target));
+            graph.AddBlocker(sideY);
+            count = graph.GetNeighboursNonAlloc(Centre, buffer, true);
+            Assert.IsFalse(buffer.Take(count).Contains(target));
+            graph.RemoveBlocker(sideY);
+            graph.SetWalkable(sideX, false);
+            count = graph.GetNeighboursNonAlloc(Centre, buffer, true);
+            Assert.IsFalse(buffer.Take(count).Contains(target));
+        }
+
+        [Test]
+        public void ReusedNeighbourBufferAndIndexHelpersAllocateZeroBytes()
+        {
+            var graph = new GridGraph(3, 3, Vector3.zero);
+            var buffer = new Vector2Int[8];
+            graph.SetDoor(new Vector2Int(2, 1), 5, true);
+            int checksum = 0;
+            for (int i = 0; i < 100; i++)
+            {
+                checksum += graph.GetNeighboursNonAlloc(graph.FromIndex(graph.ToIndex(Centre)), buffer);
+                checksum += graph.GetNeighboursNonAlloc(Centre, buffer, true);
+            }
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 1000; i++)
+            {
+                checksum += graph.GetNeighboursNonAlloc(graph.FromIndex(graph.ToIndex(Centre)), buffer);
+                checksum += graph.GetNeighboursNonAlloc(Centre, buffer, true);
+            }
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            Assert.AreEqual(0, allocated);
+            Assert.Greater(checksum, 0);
+        }
+
+        [Test]
+        public void ChokepointsUseStaticLegalWalkableNeighboursAndDoorwayTags()
+        {
+            var graph = new GridGraph(3, 3, Vector3.zero);
+            Assert.IsTrue(graph.GetNode(Vector2Int.zero).IsChokepoint);
+            Assert.IsFalse(graph.GetNode(new Vector2Int(1, 0)).IsChokepoint);
+            Assert.IsFalse(graph.GetNode(Centre).IsChokepoint);
+            graph.AddBlocker(new Vector2Int(1, 0));
+            graph.AddBlocker(new Vector2Int(1, 2));
+            Assert.IsFalse(graph.GetNode(Centre).IsChokepoint);
+            GridNode snapshot = graph.GetNode(Centre);
+            using (GridGraph.Batch batch = graph.BeginBatch())
+            {
+                batch.SetWalkable(new Vector2Int(1, 0), false);
+                batch.SetWalkable(new Vector2Int(1, 2), false);
+                batch.Commit();
+            }
+            Assert.IsTrue(graph.GetNode(Centre).IsChokepoint);
+            Assert.IsFalse(snapshot.IsChokepoint);
+            Assert.IsFalse(graph.GetNode(new Vector2Int(1, 0)).IsChokepoint);
+            graph.SetWalkable(new Vector2Int(1, 0), true);
+            graph.SetWalkable(new Vector2Int(1, 2), true);
+            Assert.IsFalse(graph.GetNode(Centre).IsChokepoint);
+            graph.SetDoor(Centre, 2, true);
+            Assert.IsTrue(graph.GetNode(Centre).IsChokepoint);
+            graph.SetDoor(Centre, 2, false);
+            Assert.IsTrue(graph.GetNode(Centre).IsChokepoint);
+            graph.SetDoorway(Centre, false);
+            Assert.IsFalse(graph.GetNode(Centre).IsChokepoint);
+        }
+
+        [Test]
+        public void DoorIdentityStateAndNoOpsParticipateInVersioning()
+        {
+            var graph = new GridGraph(1, 1, Vector3.zero);
+            int events = 0;
+            graph.Changed += _ => events++;
+            graph.SetDoor(Vector2Int.zero, 0, false);
+            graph.SetDoor(Vector2Int.zero, 0, false);
+            graph.SetDoor(Vector2Int.zero, 0, true);
+            graph.SetDoor(Vector2Int.zero, 1, true);
+            Assert.AreEqual(3, graph.Version);
+            Assert.AreEqual(3, events);
+        }
+
+        [Test]
         public void DoorwayMetadataDoesNotBlockAndNodeSnapshotsRemainStable()
         {
             var graph = new GridGraph(3, 3, Vector3.zero);

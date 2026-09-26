@@ -27,6 +27,7 @@ namespace ToyFactory.AI.Core.Grid
 
         public int Width { get; }
         public int Height { get; }
+        public int CellCount => _nodes.Length;
         public Vector3 Origin { get; }
         public int Version { get; private set; }
 
@@ -54,6 +55,7 @@ namespace ToyFactory.AI.Core.Grid
                 var cell = new Vector2Int(x, y);
                 _nodes[y * width + x] = new GridNode(cell, CellToWorld(cell), true, 0, false);
             }
+            for (int i = 0; i < CellCount; i++) RefreshChokepoint(i);
         }
 
         public bool Contains(Vector2Int cell) =>
@@ -80,70 +82,220 @@ namespace ToyFactory.AI.Core.Grid
 
         public GridNode GetNode(Vector2Int cell)
         {
+            return _nodes[ToIndex(cell)];
+        }
+
+        /// <summary>Row-major heap/search ID: y * Width + x.</summary>
+        public int ToIndex(Vector2Int cell)
+        {
             ValidateCell(cell);
-            return _nodes[cell.y * Width + cell.x];
+            return cell.y * Width + cell.x;
+        }
+
+        public Vector2Int FromIndex(int index)
+        {
+            if (index < 0 || index >= CellCount) throw new ArgumentOutOfRangeException(nameof(index));
+            return new Vector2Int(index % Width, index / Width);
         }
 
         public bool IsTraversable(Vector2Int cell) => Contains(cell) && GetNode(cell).IsTraversable;
 
-        /// <summary>Enumerates legal destinations; invalid or blocked sources have no neighbours.</summary>
+        /// <summary>Allocating convenience API. Search loops should use GetNeighboursNonAlloc.</summary>
         public IEnumerable<Vector2Int> GetNeighbours(Vector2Int cell)
         {
-            if (!IsTraversable(cell)) yield break;
             foreach (Vector2Int offset in Offsets)
             {
-                Vector2Int destination = cell + offset;
-                if (!IsTraversable(destination)) continue;
-                if (offset.x != 0 && offset.y != 0 &&
-                    (!IsTraversable(new Vector2Int(cell.x + offset.x, cell.y)) ||
-                     !IsTraversable(new Vector2Int(cell.x, cell.y + offset.y)))) continue;
-                yield return destination;
+                if (CanStep(cell, offset, false, false)) yield return cell + offset;
             }
         }
 
-        public void SetWalkable(Vector2Int cell, bool walkable)
+        /// <summary>
+        /// Writes up to eight cells into a reusable buffer (length at least eight), returning
+        /// the valid prefix length. No allocations. Order: N,E,S,W,NE,SE,SW,NW.
+        /// allowClosedDoors exposes sound connectivity, not movement: callers inspect DoorId
+        /// and IsDoorClosed to apply their configured acoustic penalty. Ordinary blockers
+        /// still obstruct sound. Both modes enforce diagonal side-cell clearance.
+        /// Do not mutate the graph during a search; compare Version to detect stale results.
+        /// </summary>
+        public int GetNeighboursNonAlloc(Vector2Int cell, Vector2Int[] buffer, bool allowClosedDoors = false)
         {
-            GridNode node = GetNode(cell);
-            if (node.Walkable == walkable) return;
-            Update(node, walkable, node.BlockerCount, node.IsDoorway);
+            if (buffer == null) throw new ArgumentNullException(nameof(buffer));
+            if (buffer.Length < 8) throw new ArgumentException("Buffer must hold eight neighbours.", nameof(buffer));
+            int count = 0;
+            foreach (Vector2Int offset in Offsets)
+                if (CanStep(cell, offset, allowClosedDoors, false)) buffer[count++] = cell + offset;
+            return count;
         }
 
-        /// <summary>Doorway tagging does not itself block movement; closed doors use blockers.</summary>
+        bool CanStep(Vector2Int cell, Vector2Int offset, bool allowClosedDoors, bool staticOnly)
+        {
+            if (!CanOccupy(cell, allowClosedDoors, staticOnly) ||
+                !CanOccupy(cell + offset, allowClosedDoors, staticOnly)) return false;
+            return offset.x == 0 || offset.y == 0 ||
+                (CanOccupy(new Vector2Int(cell.x + offset.x, cell.y), allowClosedDoors, staticOnly) &&
+                 CanOccupy(new Vector2Int(cell.x, cell.y + offset.y), allowClosedDoors, staticOnly));
+        }
+
+        bool CanOccupy(Vector2Int cell, bool allowClosedDoors, bool staticOnly)
+        {
+            if (!Contains(cell)) return false;
+            GridNode node = _nodes[cell.y * Width + cell.x];
+            return staticOnly ? node.Walkable : allowClosedDoors ? node.IsSoundTraversable : node.IsTraversable;
+        }
+
+        /// <summary>
+        /// Stages one logical change. Call Commit explicitly; disposal without Commit rolls back.
+        /// Graph queries see the old state until commit. A stale batch is rejected, not merged.
+        /// </summary>
+        public Batch BeginBatch() => new Batch(this);
+
+        public void SetWalkable(Vector2Int cell, bool walkable)
+        {
+            using (Batch batch = BeginBatch()) { batch.SetWalkable(cell, walkable); batch.Commit(); }
+        }
+
+        /// <summary>Tags an architectural doorway; removing the tag also removes door ID/state.</summary>
         public void SetDoorway(Vector2Int cell, bool isDoorway)
         {
-            GridNode node = GetNode(cell);
-            if (node.IsDoorway == isDoorway) return;
-            Update(node, node.Walkable, node.BlockerCount, isDoorway);
+            using (Batch batch = BeginBatch()) { batch.SetDoorway(cell, isDoorway); batch.Commit(); }
+        }
+
+        /// <summary>
+        /// Associates a door ID/state independently of ordinary blockers. Null removes the
+        /// door but preserves the architectural doorway. Update all cells of a door in one batch.
+        /// </summary>
+        public void SetDoor(Vector2Int cell, int? doorId, bool isClosed)
+        {
+            using (Batch batch = BeginBatch()) { batch.SetDoor(cell, doorId, isClosed); batch.Commit(); }
         }
 
         public void AddBlocker(Vector2Int cell)
         {
-            GridNode node = GetNode(cell);
-            Update(node, node.Walkable, checked(node.BlockerCount + 1), node.IsDoorway);
+            using (Batch batch = BeginBatch()) { batch.AddBlocker(cell); batch.Commit(); }
         }
 
         public void RemoveBlocker(Vector2Int cell)
         {
-            GridNode node = GetNode(cell);
-            if (node.BlockerCount == 0)
-                throw new InvalidOperationException("The cell has no blocker to remove.");
-            Update(node, node.Walkable, node.BlockerCount - 1, node.IsDoorway);
+            using (Batch batch = BeginBatch()) { batch.RemoveBlocker(cell); batch.Commit(); }
         }
 
-        void Update(GridNode node, bool walkable, int blockers, bool doorway)
+        void Commit(Dictionary<int, GridNode> staged)
         {
-            int nextVersion = checked(Version + 1);
-            var affected = new List<Vector2Int> { node.Cell };
-            foreach (Vector2Int offset in Offsets)
+            var changed = new List<int>();
+            foreach (KeyValuePair<int, GridNode> entry in staged)
             {
-                Vector2Int neighbour = node.Cell + offset;
-                if (Contains(neighbour)) affected.Add(neighbour);
+                GridNode before = _nodes[entry.Key];
+                GridNode after = entry.Value;
+                if (before.Walkable != after.Walkable || before.BlockerCount != after.BlockerCount ||
+                    before.IsDoorway != after.IsDoorway || before.DoorId != after.DoorId ||
+                    before.IsDoorClosed != after.IsDoorClosed) changed.Add(entry.Key);
             }
-            var change = new GridChange(nextVersion, node.Cell, affected.ToArray());
-            _nodes[node.Cell.y * Width + node.Cell.x] =
-                new GridNode(node.Cell, node.WorldPosition, walkable, blockers, doorway);
+            if (changed.Count == 0) return;
+            int nextVersion = checked(Version + 1);
+            changed.Sort();
+            var affected = new SortedSet<int>();
+            foreach (int index in changed)
+            {
+                affected.Add(index);
+                Vector2Int cell = FromIndex(index);
+                foreach (Vector2Int offset in Offsets)
+                    if (Contains(cell + offset)) affected.Add(ToIndex(cell + offset));
+            }
+            var changedCells = new Vector2Int[changed.Count];
+            for (int i = 0; i < changed.Count; i++) changedCells[i] = FromIndex(changed[i]);
+            var affectedCells = new Vector2Int[affected.Count];
+            int cursor = 0;
+            foreach (int index in affected) affectedCells[cursor++] = FromIndex(index);
+            var change = new GridChange(nextVersion, changedCells, affectedCells);
+            foreach (int index in changed) _nodes[index] = staged[index];
+            foreach (int index in affected) RefreshChokepoint(index);
             Version = nextVersion;
             Changed?.Invoke(change);
+        }
+
+        void RefreshChokepoint(int index)
+        {
+            GridNode node = _nodes[index];
+            int count = 0;
+            foreach (Vector2Int offset in Offsets)
+                if (CanStep(node.Cell, offset, false, true)) count++;
+            _nodes[index] = new GridNode(node.Cell, node.WorldPosition, node.Walkable,
+                node.BlockerCount, node.IsDoorway, node.DoorId, node.IsDoorClosed,
+                node.IsDoorway || (node.Walkable && count <= 4));
+        }
+
+        /// <summary>Atomic staged edits. Mutation-time allocations are outside search loops.</summary>
+        public sealed class Batch : IDisposable
+        {
+            readonly GridGraph _graph;
+            readonly int _version;
+            readonly Dictionary<int, GridNode> _staged = new Dictionary<int, GridNode>();
+            bool _finished;
+
+            internal Batch(GridGraph graph) { _graph = graph; _version = graph.Version; }
+
+            GridNode Read(Vector2Int cell)
+            {
+                EnsureActive();
+                int index = _graph.ToIndex(cell);
+                return _staged.TryGetValue(index, out GridNode node) ? node : _graph._nodes[index];
+            }
+
+            void Write(GridNode node, bool walkable, int blockers, bool doorway, int? doorId, bool closed)
+            {
+                _staged[_graph.ToIndex(node.Cell)] = new GridNode(node.Cell, node.WorldPosition,
+                    walkable, blockers, doorway, doorId, closed);
+            }
+
+            public void SetWalkable(Vector2Int cell, bool walkable)
+            {
+                GridNode n = Read(cell);
+                Write(n, walkable, n.BlockerCount, n.IsDoorway, n.DoorId, n.IsDoorClosed);
+            }
+
+            public void SetDoorway(Vector2Int cell, bool doorway)
+            {
+                GridNode n = Read(cell);
+                Write(n, n.Walkable, n.BlockerCount, doorway, doorway ? n.DoorId : null,
+                    doorway && n.IsDoorClosed);
+            }
+
+            public void SetDoor(Vector2Int cell, int? doorId, bool isClosed)
+            {
+                GridNode n = Read(cell);
+                if (!doorId.HasValue && isClosed)
+                    throw new ArgumentException("A closed door requires an ID.", nameof(doorId));
+                Write(n, n.Walkable, n.BlockerCount, n.IsDoorway || doorId.HasValue, doorId, isClosed);
+            }
+
+            public void AddBlocker(Vector2Int cell)
+            {
+                GridNode n = Read(cell);
+                Write(n, n.Walkable, checked(n.BlockerCount + 1), n.IsDoorway, n.DoorId, n.IsDoorClosed);
+            }
+
+            public void RemoveBlocker(Vector2Int cell)
+            {
+                GridNode n = Read(cell);
+                if (n.BlockerCount == 0) throw new InvalidOperationException("The cell has no blocker to remove.");
+                Write(n, n.Walkable, n.BlockerCount - 1, n.IsDoorway, n.DoorId, n.IsDoorClosed);
+            }
+
+            public void Commit()
+            {
+                EnsureActive();
+                _finished = true;
+                _graph.Commit(_staged);
+            }
+
+            public void Dispose() { _finished = true; }
+
+            void EnsureActive()
+            {
+                if (_finished) throw new ObjectDisposedException(nameof(Batch));
+                if (_graph.Version != _version)
+                    throw new InvalidOperationException("Graph changed since this batch began.");
+            }
         }
 
         void ValidateCell(Vector2Int cell)

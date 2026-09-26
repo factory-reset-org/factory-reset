@@ -8,6 +8,7 @@ namespace ToyFactory.AI.Core.Grid
     public sealed class GridChange
     {
         public int Version { get; }
+        /// <summary>Distinct explicitly changed cells, in row-major index order.</summary>
         public IReadOnlyList<Vector2Int> ChangedCells { get; }
 
         /// <summary>
@@ -16,10 +17,10 @@ namespace ToyFactory.AI.Core.Grid
         /// </summary>
         public IReadOnlyList<Vector2Int> AffectedCells { get; }
 
-        internal GridChange(int version, Vector2Int cell, Vector2Int[] affectedCells)
+        internal GridChange(int version, Vector2Int[] changedCells, Vector2Int[] affectedCells)
         {
             Version = version;
-            ChangedCells = Array.AsReadOnly(new[] { cell });
+            ChangedCells = Array.AsReadOnly(changedCells);
             AffectedCells = Array.AsReadOnly(affectedCells);
         }
     }
