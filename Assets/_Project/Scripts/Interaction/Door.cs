@@ -69,12 +69,14 @@ namespace ToyFactory.Interaction
             _openPosition = _closedPosition + openOffset;
         }
 
+        [ContextMenu("Open")]
         public void Open()
         {
             if (_state == State.Closed || _state == State.Closing)
                 _state = State.Opening;
         }
 
+        [ContextMenu("Close")]
         public void Close()
         {
             if (_state == State.Open || _state == State.Opening)
