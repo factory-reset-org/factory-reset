@@ -280,5 +280,87 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual(0, allocated);
             Assert.Greater(field.NodesExpanded, 0);
         }
+
+        [Test]
+        public void BoundedFieldStopsAtTheLimit()
+        {
+            var grid = new GridGraph(20, 1, Vector3.zero);
+            var field = new DijkstraField(grid);
+
+            field.Compute(Vector2Int.zero, BaseCostModel.Instance, maxCost: 5f);
+
+            Assert.AreEqual(5f, field.MaxCost);
+            for (int x = 0; x <= 5; x++)
+                Assert.AreEqual(x, field.Cost(new Vector2Int(x, 0)), Tolerance, $"x = {x} is within the bound.");
+            for (int x = 6; x < 20; x++)
+                Assert.IsFalse(field.IsReachable(new Vector2Int(x, 0)), $"x = {x} is beyond the bound.");
+        }
+
+        [Test]
+        public void CostsInsideTheBoundMatchTheUnboundedField()
+        {
+            var rng = new System.Random(4242);
+            GridGraph grid = RandomGrid(25, 25, 0.2f, rng);
+            Vector2Int source = RandomWalkableCell(grid, rng);
+            const float bound = 8f;
+
+            DijkstraField unbounded = FieldFrom(grid, source);
+            var bounded = new DijkstraField(grid);
+            bounded.Compute(source, BaseCostModel.Instance, bound);
+
+            for (int index = 0; index < grid.CellCount; index++)
+            {
+                Vector2Int cell = grid.FromIndex(index);
+                float full = unbounded.Cost(cell);
+                if (full <= bound)
+                    Assert.AreEqual(full, bounded.Cost(cell), Tolerance, $"Cell {cell} is within the bound.");
+                else
+                    Assert.IsFalse(bounded.IsReachable(cell), $"Cell {cell} is beyond the bound.");
+            }
+        }
+
+        [Test]
+        public void BoundedFieldExpandsFewerCells()
+        {
+            var grid = new GridGraph(40, 40, Vector3.zero);
+            var source = new Vector2Int(20, 20);
+            var field = new DijkstraField(grid);
+
+            field.Compute(source, BaseCostModel.Instance);
+            int unboundedExpanded = field.NodesExpanded;
+            field.Compute(source, BaseCostModel.Instance, maxCost: 5f);
+
+            Assert.Less(field.NodesExpanded, unboundedExpanded);
+        }
+
+        [Test]
+        public void ZeroBoundReachesOnlyTheSource()
+        {
+            var field = new DijkstraField(new GridGraph(5, 5, Vector3.zero));
+            var source = new Vector2Int(2, 2);
+
+            field.Compute(source, BaseCostModel.Instance, maxCost: 0f);
+
+            Assert.AreEqual(0f, field.Cost(source));
+            Assert.IsFalse(field.IsReachable(new Vector2Int(2, 3)));
+            Assert.AreEqual(1, field.NodesExpanded);
+        }
+
+        [Test]
+        public void FieldIsUnboundedByDefault()
+        {
+            DijkstraField field = FieldFrom(new GridGraph(3, 3, Vector3.zero), Vector2Int.zero);
+
+            Assert.IsTrue(float.IsPositiveInfinity(field.MaxCost));
+        }
+
+        [Test]
+        public void NegativeOrNaNBoundIsRejected()
+        {
+            var field = new DijkstraField(new GridGraph(3, 3, Vector3.zero));
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => field.Compute(Vector2Int.zero, BaseCostModel.Instance, -1f));
+            Assert.Throws<ArgumentOutOfRangeException>(() => field.Compute(Vector2Int.zero, BaseCostModel.Instance, float.NaN));
+        }
     }
 }
