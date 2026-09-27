@@ -48,6 +48,12 @@ namespace ToyFactory.AI.Core.Search
         /// <summary>True when the grid has changed since the field was computed.</summary>
         public bool IsStale => !HasBeenComputed || _grid.Version != GraphVersion;
 
+        /// <summary>
+        /// The cost limit of the last compute. Cells further than this from the source are
+        /// left unreachable. <see cref="float.PositiveInfinity"/> means unbounded.
+        /// </summary>
+        public float MaxCost { get; private set; } = float.PositiveInfinity;
+
         /// <summary>Cells expanded by the last compute, for the performance log.</summary>
         public int NodesExpanded { get; private set; }
 
@@ -65,10 +71,18 @@ namespace ToyFactory.AI.Core.Search
         /// reachable cell. If the source is not traversable, every cell is left unreachable;
         /// callers snap the source first with <see cref="GridGraph.TryFindNearestTraversable"/>.
         /// </summary>
-        public void Compute(Vector2Int source, ICostModel cost)
+        /// <param name="source">Cell the costs are measured from.</param>
+        /// <param name="cost">Step cost model; use <see cref="BaseCostModel.Instance"/> for plain distance.</param>
+        /// <param name="maxCost">
+        /// Stop spreading past this cost (grid units). Cells beyond it stay unreachable, which
+        /// keeps the work proportional to the area that matters. Unbounded by default.
+        /// </param>
+        public void Compute(Vector2Int source, ICostModel cost, float maxCost = float.PositiveInfinity)
         {
             if (cost == null)
                 throw new ArgumentNullException(nameof(cost));
+            if (float.IsNaN(maxCost) || maxCost < 0f)
+                throw new ArgumentOutOfRangeException(nameof(maxCost), "Max cost must be zero or positive.");
 
             using (Marker.Auto())
             {
@@ -79,6 +93,7 @@ namespace ToyFactory.AI.Core.Search
                 NextStamp();
                 _open.Clear();
                 Source = source;
+                MaxCost = maxCost;
                 GraphVersion = _grid.Version;
                 HasBeenComputed = true;
 
@@ -108,6 +123,12 @@ namespace ToyFactory.AI.Core.Search
                                 continue;
 
                             float newCost = _cost[current] + cost.StepCost(currentCell, next);
+
+                            // Beyond the bound: never queued, so it stays unreachable and
+                            // the search stops spreading in that direction.
+                            if (newCost > maxCost)
+                                continue;
+
                             bool firstVisit = _seenStamp[nextIndex] != _stamp;
                             if (!firstVisit && newCost >= _cost[nextIndex])
                                 continue;
