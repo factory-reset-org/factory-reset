@@ -52,7 +52,7 @@ Emergency scoring does not override eligibility. Flee interrupts commitment earl
 
 ## Heuristics and response curves
 
-Every consideration maps an observed value into `[0, 1]`, where higher means more desirable. Clamp valid numerical inputs at their defined boundary; reject missing or non-finite inputs. Metres and seconds are used throughout.
+Every consideration maps an observed value into `[0, 1]`, where higher means more desirable. Clamp valid numerical inputs at their defined boundary; reject missing or non-finite inputs. Distances used for action range are in metres and arrival times are in seconds; route costs use the shared search cost model's units.
 
 | Input | Normalisation or curve | Actions |
 | --- | --- | --- |
@@ -90,7 +90,7 @@ gain(d) = (closedCost(d) - openCost) / openCost
 doorConsideration(d) = clamp01(max(0, gain(d)))
 ```
 
-The open cost must be finite and positive. Reject stale results, invalid costs, and closures that leave no player route. A zero or negative gain yields zero detour value. Open cost `10 m` and closed cost `16 m` give gain `0.6`; a second door giving `12 m` has gain `0.2`, so the first ranks higher with equal other inputs.
+The open cost must be finite and positive. Reject stale results, invalid costs, and closures that leave no player route. A zero or negative gain yields zero detour value. Open cost `10` and closed cost `16` in the same search cost units give gain `0.6`; a second door giving `12` has gain `0.2`, so the first ranks higher with equal other inputs.
 
 Reuse the shared A* and base cost model. Do not mutate the live grid while scoring. The current `PathResult` contains cells but no total-cost field, so sum the returned steps with the same cost model. A hypothetical graph view and search scheduling need agreement with S1/S2. Cache the open-route result for the same player cell, objective, and graph version. Compare doors at most 2 Hz through the shared scheduler. Invalidate a comparison when its target, objective, or relevant graph cells change. The plan assumes at most six doors and thus up to 12 A* runs per complete pass; defer or cap work if the actual level exceeds the shared search budget. Never use a result from a different graph version.
 
