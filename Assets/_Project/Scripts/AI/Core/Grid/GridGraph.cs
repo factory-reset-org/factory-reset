@@ -100,6 +100,42 @@ namespace ToyFactory.AI.Core.Grid
 
         public bool IsTraversable(Vector2Int cell) => Contains(cell) && GetNode(cell).IsTraversable;
 
+        /// <summary>
+        /// Finds the closest traversable cell by Euclidean centre distance within maxRadius
+        /// cells (inclusive). Equal distances prefer the lowest row-major index. The input
+        /// may be outside the grid; it is not clamped. This is spatial snapping, not a path
+        /// reachability check. Allocates nothing and does not change the graph.
+        /// </summary>
+        public bool TryFindNearestTraversable(Vector2Int cell, int maxRadius, out Vector2Int result)
+        {
+            if (maxRadius < 0) throw new ArgumentOutOfRangeException(nameof(maxRadius));
+            result = default;
+            if (IsTraversable(cell)) { result = cell; return true; }
+
+            // Widen before arithmetic: an out-of-bounds input can be any integer cell.
+            long minX = Math.Max(0L, (long)cell.x - maxRadius);
+            long maxX = Math.Min((long)Width - 1, (long)cell.x + maxRadius);
+            long minY = Math.Max(0L, (long)cell.y - maxRadius);
+            long maxY = Math.Min((long)Height - 1, (long)cell.y + maxRadius);
+            long radiusSquared = (long)maxRadius * maxRadius;
+            long bestSquared = long.MaxValue;
+            bool found = false;
+            for (long y = minY; y <= maxY; y++)
+            for (long x = minX; x <= maxX; x++)
+            {
+                long dx = x - cell.x;
+                long dy = y - cell.y;
+                long squared = dx * dx + dy * dy;
+                if (squared > radiusSquared || squared >= bestSquared) continue;
+                var candidate = new Vector2Int((int)x, (int)y);
+                if (!IsTraversable(candidate)) continue;
+                result = candidate;
+                bestSquared = squared;
+                found = true;
+            }
+            return found;
+        }
+
         /// <summary>Allocating convenience API. Search loops should use GetNeighboursNonAlloc.</summary>
         public IEnumerable<Vector2Int> GetNeighbours(Vector2Int cell)
         {
@@ -182,13 +218,19 @@ namespace ToyFactory.AI.Core.Grid
         void Commit(Dictionary<int, GridNode> staged)
         {
             var changed = new List<int>();
+            bool movementChanged = false;
+            bool soundChanged = false;
             foreach (KeyValuePair<int, GridNode> entry in staged)
             {
                 GridNode before = _nodes[entry.Key];
                 GridNode after = entry.Value;
-                if (before.Walkable != after.Walkable || before.BlockerCount != after.BlockerCount ||
-                    before.IsDoorway != after.IsDoorway || before.DoorId != after.DoorId ||
-                    before.IsDoorClosed != after.IsDoorClosed) changed.Add(entry.Key);
+                bool affectsSound = before.Walkable != after.Walkable ||
+                    before.BlockerCount != after.BlockerCount || before.DoorId != after.DoorId ||
+                    before.IsDoorClosed != after.IsDoorClosed;
+                bool affectsMovement = affectsSound || before.IsDoorway != after.IsDoorway;
+                if (affectsMovement) changed.Add(entry.Key);
+                movementChanged |= affectsMovement;
+                soundChanged |= affectsSound;
             }
             if (changed.Count == 0) return;
             int nextVersion = checked(Version + 1);
@@ -206,7 +248,7 @@ namespace ToyFactory.AI.Core.Grid
             var affectedCells = new Vector2Int[affected.Count];
             int cursor = 0;
             foreach (int index in affected) affectedCells[cursor++] = FromIndex(index);
-            var change = new GridChange(nextVersion, changedCells, affectedCells);
+            var change = new GridChange(nextVersion, changedCells, affectedCells, movementChanged, soundChanged);
             foreach (int index in changed) _nodes[index] = staged[index];
             foreach (int index in affected) RefreshChokepoint(index);
             Version = nextVersion;

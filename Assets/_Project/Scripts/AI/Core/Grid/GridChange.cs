@@ -8,6 +8,16 @@ namespace ToyFactory.AI.Core.Grid
     public sealed class GridChange
     {
         public int Version { get; }
+        /// <summary>
+        /// Conservative relevance hint: walkability, blocker count, door ID/state or doorway
+        /// metadata changed. This does not prove that movement connectivity changed.
+        /// </summary>
+        public bool MovementChanged { get; }
+        /// <summary>
+        /// Conservative relevance hint: walkability, blocker count or door ID/state changed.
+        /// Doorway-only tagging is excluded. Flags use net batch changes; Version stays global.
+        /// </summary>
+        public bool SoundChanged { get; }
         /// <summary>Distinct explicitly changed cells, in row-major index order.</summary>
         public IReadOnlyList<Vector2Int> ChangedCells { get; }
 
@@ -17,9 +27,12 @@ namespace ToyFactory.AI.Core.Grid
         /// </summary>
         public IReadOnlyList<Vector2Int> AffectedCells { get; }
 
-        internal GridChange(int version, Vector2Int[] changedCells, Vector2Int[] affectedCells)
+        internal GridChange(int version, Vector2Int[] changedCells, Vector2Int[] affectedCells,
+            bool movementChanged, bool soundChanged)
         {
             Version = version;
+            MovementChanged = movementChanged;
+            SoundChanged = soundChanged;
             ChangedCells = Array.AsReadOnly(changedCells);
             AffectedCells = Array.AsReadOnly(affectedCells);
         }
