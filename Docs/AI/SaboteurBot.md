@@ -70,6 +70,8 @@ Every consideration maps an observed value into `[0, 1]`, where higher means mor
 
 Available curve definitions are linear `clamp01(m*x+b)`, power `x^k` for `k > 0`, logistic `1/(1+exp(-k*(x-x0)))` for `k > 0`, and inverse `1-x`. Inputs are clamped to `[0,1]`. The plan calls the power curve quadratic falloff when `k = 2`. Applying a positive logistic directly to *remaining* ammo would favour a well-supplied player; using ammo **deficit** fixes that directional error. Curve parameters should be editable configuration once assembly placement is agreed.
 
+The Saboteur's `ResponseCurve` evaluates these four formulas without scene or world-state dependencies. Its input is a finite, dimensionless observation; finite values outside `[0, 1]` are clamped before evaluation. Linear results are also clamped to `[0, 1]`; the other formulas stay within that range by definition. Non-finite inputs or parameters are rejected. Power exponent and logistic steepness must be positive, and the logistic midpoint must lie in `[0, 1]`. A linear identity (`m = 1`, `b = 0`) preserves a normalised input; `k = 2` gives quadratic falloff; the logistic example uses `k = 10`, `x0 = 0.7` on ammo deficit. These are examples for curve verification, not final per-action tuning values. The calculation type stays in the Saboteur-owned Agents folder; configurable settings remain a separate Step 3 task.
+
 For an eligible action with `n >= 1` considerations `c_i`:
 
 ```text
