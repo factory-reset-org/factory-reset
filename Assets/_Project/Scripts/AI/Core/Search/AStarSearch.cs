@@ -66,7 +66,7 @@ namespace ToyFactory.AI.Core.Search
                 _costSoFar[startIndex] = 0f;
                 _parent[startIndex] = -1;
                 _seenStamp[startIndex] = _stamp;
-                _open.Push(startIndex, Heuristic(start, goal));
+                _open.Push(startIndex, BaseCostModel.OctileDistance(start, goal));
 
                 int expanded = 0;
                 while (!_open.IsEmpty)
@@ -97,7 +97,7 @@ namespace ToyFactory.AI.Core.Search
 
                         _costSoFar[nextIndex] = newCost;
                         _parent[nextIndex] = current;
-                        float priority = newCost + Heuristic(next, goal);
+                        float priority = newCost + BaseCostModel.OctileDistance(next, goal);
 
                         if (firstVisit)
                         {
@@ -113,16 +113,6 @@ namespace ToyFactory.AI.Core.Search
 
                 return PathResult.NotFound(expanded, ElapsedMs(), version);
             }
-        }
-
-        // Octile distance: exact cost of the cheapest route on an open 8-connected grid with
-        // the base step costs. Cost models only ever add to those costs, so this never
-        // overestimates (admissible) and obeys the triangle inequality (consistent).
-        static float Heuristic(Vector2Int a, Vector2Int b)
-        {
-            int dx = Mathf.Abs(a.x - b.x);
-            int dy = Mathf.Abs(a.y - b.y);
-            return Mathf.Abs(dx - dy) + Mathf.Min(dx, dy) * BaseCostModel.DiagonalCost;
         }
 
         List<Vector2Int> BuildPath(int goalIndex)

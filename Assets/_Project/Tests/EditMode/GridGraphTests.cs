@@ -595,6 +595,216 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void NearestReturnsTraversableInputWithoutMutationOrEvents()
+        {
+            var graph = new GridGraph(3, 3, new Vector3(-10, 7, 4));
+            int events = 0;
+            graph.Changed += _ => events++;
+            Assert.IsTrue(graph.TryFindNearestTraversable(Centre, 0, out Vector2Int result));
+            Assert.AreEqual(Centre, result);
+            Assert.AreEqual(0, graph.Version);
+            Assert.AreEqual(0, events);
+            Assert.AreEqual(7f, graph.CellToWorld(result).y);
+        }
+
+        [Test]
+        public void NearestSkipsWallsBlockersAndClosedDoorsAndBreaksTiesByIndex()
+        {
+            var graph = new GridGraph(3, 3, Vector3.zero);
+            graph.SetWalkable(Centre, false);
+            Assert.IsTrue(graph.TryFindNearestTraversable(Centre, 1, out Vector2Int result));
+            Assert.AreEqual(new Vector2Int(1, 0), result);
+            graph.AddBlocker(result);
+            Assert.IsTrue(graph.TryFindNearestTraversable(Centre, 1, out result));
+            Assert.AreEqual(new Vector2Int(0, 1), result);
+            graph.SetDoor(result, 1, true);
+            Assert.IsTrue(graph.TryFindNearestTraversable(Centre, 1, out result));
+            Assert.AreEqual(new Vector2Int(2, 1), result);
+            graph.SetDoor(new Vector2Int(0, 1), 1, false);
+            Assert.IsTrue(graph.TryFindNearestTraversable(Centre, 1, out result));
+            Assert.AreEqual(new Vector2Int(0, 1), result);
+        }
+
+        [TestCase(-1, 1, 1, 0, 1)]
+        [TestCase(3, 1, 1, 2, 1)]
+        [TestCase(1, -1, 1, 1, 0)]
+        [TestCase(1, 3, 1, 1, 2)]
+        [TestCase(-1, -1, 2, 0, 0)]
+        public void NearestSupportsOutsideInputs(int x, int y, int radius, int expectedX, int expectedY)
+        {
+            var graph = new GridGraph(3, 3, Vector3.zero);
+            Assert.IsTrue(graph.TryFindNearestTraversable(new Vector2Int(x, y), radius, out Vector2Int result));
+            Assert.AreEqual(new Vector2Int(expectedX, expectedY), result);
+        }
+
+        [Test]
+        public void NearestUsesCircularInclusiveRadiusWithoutClampingTheInput()
+        {
+            var graph = new GridGraph(1, 1, Vector3.zero);
+            Assert.IsFalse(graph.TryFindNearestTraversable(new Vector2Int(-1, -1), 1, out Vector2Int result));
+            Assert.AreEqual(default(Vector2Int), result);
+            Assert.IsTrue(graph.TryFindNearestTraversable(new Vector2Int(-3, -4), 5, out result));
+            Assert.AreEqual(Vector2Int.zero, result);
+            Assert.IsFalse(graph.TryFindNearestTraversable(new Vector2Int(-3, -4), 4, out result));
+            Assert.AreEqual(default(Vector2Int), result);
+            Assert.IsFalse(graph.TryFindNearestTraversable(new Vector2Int(-100, 0), 1, out result));
+        }
+
+        [Test]
+        public void NearestUsesEuclideanDistanceRatherThanFirstCandidateOrOctileDistance()
+        {
+            var graph = new GridGraph(8, 8, Vector3.zero);
+            using (GridGraph.Batch batch = graph.BeginBatch())
+            {
+                for (int i = 0; i < graph.CellCount; i++) batch.SetWalkable(graph.FromIndex(i), false);
+                batch.SetWalkable(new Vector2Int(7, 0), true); // squared 49, octile 7
+                batch.SetWalkable(new Vector2Int(6, 3), true); // squared 45, octile > 7
+                batch.Commit();
+            }
+            Assert.IsTrue(graph.TryFindNearestTraversable(Vector2Int.zero, 7, out Vector2Int result));
+            Assert.AreEqual(new Vector2Int(6, 3), result);
+        }
+
+        [Test]
+        public void NearestDoesNotPromiseReachabilityAcrossWalls()
+        {
+            var graph = new GridGraph(3, 1, Vector3.zero);
+            graph.SetWalkable(Vector2Int.zero, false);
+            graph.SetWalkable(Vector2Int.right, false);
+            Assert.IsTrue(graph.TryFindNearestTraversable(Vector2Int.zero, 2, out Vector2Int result));
+            Assert.AreEqual(new Vector2Int(2, 0), result);
+        }
+
+        [Test]
+        public void NearestFailureAndNegativeRadiusHaveDefinedResults()
+        {
+            var graph = new GridGraph(1, 1, Vector3.zero);
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                graph.TryFindNearestTraversable(Vector2Int.zero, -1, out _));
+            graph.AddBlocker(Vector2Int.zero);
+            Assert.IsFalse(graph.TryFindNearestTraversable(Vector2Int.zero, 0, out Vector2Int result));
+            Assert.AreEqual(default(Vector2Int), result);
+            Assert.IsFalse(graph.TryFindNearestTraversable(Vector2Int.zero, 10, out result));
+            Assert.AreEqual(default(Vector2Int), result);
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                graph.TryFindNearestTraversable(Vector2Int.zero, -1, out _));
+        }
+
+        [Test]
+        public void NearestHandlesExtremeCoordinatesAndRadiusWithoutOverflow()
+        {
+            var graph = new GridGraph(1, 1, Vector3.zero);
+            Assert.IsTrue(graph.TryFindNearestTraversable(new Vector2Int(int.MaxValue, 0), int.MaxValue, out Vector2Int result));
+            Assert.AreEqual(Vector2Int.zero, result);
+            Assert.IsFalse(graph.TryFindNearestTraversable(new Vector2Int(int.MinValue, 0), int.MaxValue, out result));
+            Assert.IsFalse(graph.TryFindNearestTraversable(new Vector2Int(int.MaxValue, int.MaxValue), int.MaxValue, out result));
+            Assert.AreEqual(default(Vector2Int), result);
+        }
+
+        [Test]
+        public void NearestQueriesAllocateZeroBytesAndLeaveVersionAndEventsUnchanged()
+        {
+            var graph = new GridGraph(3, 3, Vector3.zero);
+            graph.SetWalkable(Centre, false);
+            int events = 0;
+            graph.Changed += _ => events++;
+            int version = graph.Version;
+            int successes = 0;
+            for (int i = 0; i < 100; i++)
+            {
+                graph.TryFindNearestTraversable(Centre, 2, out _);
+                graph.TryFindNearestTraversable(new Vector2Int(-5, 0), 1, out _);
+                graph.TryFindNearestTraversable(Vector2Int.zero, 0, out _);
+            }
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 1000; i++)
+            {
+                if (graph.TryFindNearestTraversable(Centre, 2, out _)) successes++;
+                if (graph.TryFindNearestTraversable(new Vector2Int(-5, 0), 1, out _)) successes++;
+                if (graph.TryFindNearestTraversable(Vector2Int.zero, 0, out _)) successes++;
+            }
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            Assert.AreEqual(0, allocated);
+            Assert.AreEqual(2000, successes);
+            Assert.AreEqual(version, graph.Version);
+            Assert.AreEqual(0, events);
+        }
+
+        [TestCase("walkable", true)]
+        [TestCase("blocker", true)]
+        [TestCase("overlappingBlocker", true)]
+        [TestCase("doorId", true)]
+        [TestCase("doorState", true)]
+        [TestCase("doorway", false)]
+        [TestCase("removeDoorwayWithDoor", true)]
+        public void ChangeFlagsFollowConservativeMutationCategories(string mutation, bool soundChanged)
+        {
+            var graph = new GridGraph(3, 3, Vector3.zero);
+            graph.SetDoor(Centre, 1, false);
+            graph.AddBlocker(Centre); // masks movement effects of several mutations
+            GridChange observed = null;
+            int events = 0;
+            int version = graph.Version;
+            graph.Changed += change => { observed = change; events++; };
+            switch (mutation)
+            {
+                case "walkable": graph.SetWalkable(Centre, false); break;
+                case "blocker": graph.RemoveBlocker(Centre); break;
+                case "overlappingBlocker": graph.AddBlocker(Centre); break;
+                case "doorId": graph.SetDoor(Centre, 2, false); break;
+                case "doorState": graph.SetDoor(Centre, 1, true); break;
+                case "doorway": graph.SetDoorway(Vector2Int.zero, true); break;
+                case "removeDoorwayWithDoor": graph.SetDoorway(Centre, false); break;
+            }
+            Assert.AreEqual(1, events);
+            Assert.AreEqual(version + 1, graph.Version);
+            Assert.AreEqual(graph.Version, observed.Version);
+            Assert.IsTrue(observed.MovementChanged);
+            Assert.AreEqual(soundChanged, observed.SoundChanged);
+        }
+
+        [Test]
+        public void BatchFlagsUseNetChangesAndPreviouslyPublishedFlagsStayStable()
+        {
+            var graph = new GridGraph(3, 3, Vector3.zero);
+            var changes = new List<GridChange>();
+            graph.Changed += changes.Add;
+            using (GridGraph.Batch batch = graph.BeginBatch())
+            {
+                batch.AddBlocker(Centre); batch.RemoveBlocker(Centre);
+                batch.SetWalkable(Centre, false); batch.SetWalkable(Centre, true);
+                batch.SetDoor(Centre, 1, true); batch.SetDoor(Centre, null, false);
+                batch.Commit(); // only the retained doorway tag differs
+            }
+            Assert.AreEqual(1, changes.Count);
+            Assert.IsTrue(changes[0].MovementChanged);
+            Assert.IsFalse(changes[0].SoundChanged);
+            CollectionAssert.AreEqual(new[] { Centre }, changes[0].ChangedCells);
+            using (GridGraph.Batch batch = graph.BeginBatch())
+            {
+                batch.SetDoorway(Vector2Int.zero, true);
+                batch.AddBlocker(Centre);
+                batch.Commit();
+            }
+            Assert.AreEqual(2, changes.Count);
+            Assert.AreEqual(2, graph.Version);
+            Assert.IsTrue(changes[1].MovementChanged);
+            Assert.IsTrue(changes[1].SoundChanged);
+            CollectionAssert.AreEqual(new[] { Vector2Int.zero, Centre }, changes[1].ChangedCells);
+            Assert.AreEqual(9, changes[1].AffectedCells.Count);
+            Assert.IsFalse(changes[0].SoundChanged);
+            using (GridGraph.Batch batch = graph.BeginBatch())
+            {
+                batch.SetDoor(Centre, 4, true); batch.SetDoor(Centre, null, false);
+                batch.AddBlocker(Centre); batch.RemoveBlocker(Centre);
+                batch.SetDoorway(Vector2Int.zero, false); batch.SetDoorway(Vector2Int.zero, true);
+                batch.Commit();
+            }
+            Assert.AreEqual(2, graph.Version);
+            Assert.AreEqual(2, changes.Count);
+        }
+
+        [Test]
         public void DoorwayMetadataDoesNotBlockAndNodeSnapshotsRemainStable()
         {
             var graph = new GridGraph(3, 3, Vector3.zero);
