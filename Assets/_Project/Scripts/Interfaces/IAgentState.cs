@@ -6,6 +6,9 @@ namespace ToyFactory.Interfaces
     /// </summary>
     public interface IAgentState
     {
+        /// <summary>Which of the four enemy classes this agent is.</summary>
+        AgentType Type { get; }
+
         /// <summary>Current ground speed in metres per second.</summary>
         float Speed { get; }
 

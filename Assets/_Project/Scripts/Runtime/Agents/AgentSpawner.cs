@@ -83,7 +83,7 @@ namespace ToyFactory.Runtime.Agents
                 // Parented under the spawner so agents stay in the Agents scene when scenes load additively.
                 AgentController agent = Instantiate(agentPrefab, position, point.transform.rotation, transform);
                 agent.name = $"{point.AgentType}_{_spawned.Count}";
-                agent.Initialise(CreateBrain(point), _blackboard);
+                agent.Initialise(point.AgentType, CreateBrain(point), _blackboard);
                 _spawned.Add(agent);
             }
         }
