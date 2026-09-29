@@ -87,8 +87,14 @@ namespace ToyFactory.AI.Agents.Mock
         /// <summary>Ignored: the mock always follows its fixed waypoints.</summary>
         public void OnGraphChanged(IReadOnlyList<Vector2Int> changedCells) { }
 
-        /// <summary>Ignored: the mock has no behaviour to interrupt.</summary>
-        public void OnStunned(float duration) { }
+        /// <summary>
+        /// The body stops when the agent is stunned, so the route is sent again on the first
+        /// tick after the stun.
+        /// </summary>
+        public void OnStunned(float duration)
+        {
+            _pathSent = false;
+        }
 
         /// <summary>Ignored: the mock holds nothing on the blackboard to release.</summary>
         public void OnDestroyed() { }
