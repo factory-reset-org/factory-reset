@@ -40,7 +40,7 @@ namespace ToyFactory.Runtime.Agents
         /// <summary>True while the brain's current action is <see cref="AgentAction.Shoot"/>.</summary>
         public bool IsAttacking { get; private set; }
 
-        /// <summary>Always false until agents can be scrapped.</summary>
+        /// <summary>True once <see cref="Scrap"/> has been called. Never becomes false again.</summary>
         public bool IsDead { get; private set; }
 
         void Awake()
@@ -59,8 +59,26 @@ namespace ToyFactory.Runtime.Agents
             _blackboard = blackboard ?? throw new ArgumentNullException(nameof(blackboard));
         }
 
+        /// <summary>
+        /// Scraps this agent for good: it stops where it is, its brain is never ticked again,
+        /// and <see cref="AgentEvents.OnDestroyed"/> is raised once. Later calls do nothing.
+        /// </summary>
+        public void Scrap()
+        {
+            if (IsDead)
+                return;
+
+            IsDead = true;
+            IsAttacking = false;
+            _follower.Stop();
+            AgentEvents.RaiseDestroyed(this);
+        }
+
         void Update()
         {
+            if (IsDead)
+                return;
+
             if (_brain == null)
             {
                 // Warn once rather than every frame, and do nothing rather than throw.
