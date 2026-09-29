@@ -89,5 +89,8 @@ namespace ToyFactory.AI.Agents.Mock
 
         /// <summary>Ignored: the mock has no behaviour to interrupt.</summary>
         public void OnStunned(float duration) { }
+
+        /// <summary>Ignored: the mock holds nothing on the blackboard to release.</summary>
+        public void OnDestroyed() { }
     }
 }

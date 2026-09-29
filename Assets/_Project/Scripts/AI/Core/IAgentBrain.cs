@@ -25,5 +25,12 @@ namespace ToyFactory.AI.Core
 
         /// <summary>Called when the agent is stunned for <paramref name="duration"/> seconds.</summary>
         void OnStunned(float duration);
+
+        /// <summary>
+        /// Called once when the agent leaves the game for good: a Saboteur is scrapped, or
+        /// the agent's scene unloads. Release anything held on the shared blackboard here
+        /// (target claims, cover reservations). <see cref="Tick"/> is never called afterwards.
+        /// </summary>
+        void OnDestroyed();
     }
 }
