@@ -165,7 +165,7 @@ A one-to-all search: after one `Compute(source, costModel, maxCost)`, `Cost(cell
 
 - Playing starts in `Bootstrap`, which loads the other scenes additively. `Env` is the active scene, so lighting is baked with only `Env` loaded and only `Env` holds static geometry.
 - Agents are parented under the spawner, so they stay in the `Agents` scene when scenes load.
-- Timelines live in `Agents` but animate objects in other scenes (doors, lamps, cores). They find those objects at runtime by a stable `CutsceneBindingId` on the target, never by a serialised cross-scene reference.
+- Timelines live in `Agents` but animate objects in other scenes (doors, lamps, cores). They find those objects at runtime by a stable `CutsceneBindingId` on the target, never by a serialised cross-scene reference (see §6.1).
 - Test scenes live under `Scenes/Test/` and are not in the build.
 
 ## 6. Event flow
@@ -180,9 +180,34 @@ Systems talk through events and the blackboard, not direct references. The journ
 | Task progress and completion | Task props | Chapter manager, HUD, scoring | Planned |
 | Objective changed | Chapter manager | Blackboard `ObjectiveTargets`, then Captain, Saboteurs, beacon and HUD | Planned |
 | Switch restored | Chapter manager | Cutscene director, which plays the next cutscene after 1.3 s | Planned |
-| Critical cutscene signal | Cutscene Timeline | Captain wake, Control Room door unlock, core shields drop. Also fired when a cutscene is skipped | Planned |
+| Cutscene started, ended (`CutsceneEvents`, §6.1) | Cutscene director | Game manager (Cutscene state), HUD | Events implemented; the director is planned |
+| Critical cutscene signal (`CutsceneEvents.OnCriticalSignal`, §6.1) | Cutscene Timeline | Captain wake, Control Room door unlock, core shields drop. Also fired when a cutscene is skipped | Events and signal ids implemented; the director is planned |
 | Agent disabled, destroyed, rebooted (`AgentEvents`, §2.7) | `AgentController` | Scoring, Saboteur squad, HUD | Events and raising implemented; nothing calls `Disable` or `Scrap` yet |
 | Game state changed (Title, Playing, Cutscene, Paused, Results) | Game manager | `AgentController` (stops ticking brains), player input, timers, HUD | Planned |
+
+### 6.1 Cutscene contracts (S4, implemented)
+
+All three live in `Scripts/Interfaces/`, so code in every scene can use them. They move to the `Journey` assembly once it exists.
+
+**`CutsceneBindingId`**: a component with a unique string id, put on any object a cutscene animates in another scene.
+
+- It registers itself in a static dictionary in `OnEnable` and removes itself in `OnDisable`, so only live objects are listed.
+- The director finds a target with `CutsceneBindingId.TryFind(id, out target)`: an O(1) lookup, with no search through the loaded scenes.
+- A duplicate id logs an error and does not replace the first object. An empty id logs a warning.
+
+**`CutsceneEvents`**: a static hub, like `AgentEvents`.
+
+| Event | Passes | Raised when |
+| --- | --- | --- |
+| `OnCutsceneStarted` | Cutscene id | A cutscene starts playing |
+| `OnCutsceneEnded` | Cutscene id | A cutscene finishes or is skipped |
+| `OnCriticalSignal` | A `CutsceneSignals` id | The Timeline reaches a Critical signal, or straight away on skip for every Critical signal not yet reached |
+
+**`CutsceneSignals`**: constants for the signal ids (`CaptainWake`, `ControlRoomUnlock`, `CoreShieldsDown`). Listeners compare against these, so a misspelt id fails to compile instead of silently never matching.
+
+**Why a skip fires the missed signals:** if the player skips the Chapter 3 cutscene before the wake marker, the Captain would otherwise stay Dormant and the Control Room doors would stay locked. Firing every Critical signal not yet reached leaves the game in the same state as watching the whole cutscene.
+
+**Why the static data is cleared on play:** domain reload is off in this project, so the binding registry and the event listeners would otherwise keep entries from the last play session. Both are cleared with `[RuntimeInitializeOnLoadMethod(SubsystemRegistration)]`, as in `AgentEvents`.
 
 ## 7. Decision log
 
