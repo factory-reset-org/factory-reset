@@ -3,6 +3,7 @@ using UnityEngine;
 using ToyFactory.AI.Agents.Mock;
 using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
+using ToyFactory.Interfaces;
 
 namespace ToyFactory.Runtime.Agents
 {

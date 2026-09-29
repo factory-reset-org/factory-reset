@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using ToyFactory.Interfaces;
 
 namespace ToyFactory.Runtime.Agents
 {
