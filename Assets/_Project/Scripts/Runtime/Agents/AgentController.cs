@@ -64,8 +64,9 @@ namespace ToyFactory.Runtime.Agents
         }
 
         /// <summary>
-        /// Scraps this agent for good: it stops where it is, its brain is never ticked again,
-        /// and <see cref="AgentEvents.OnDestroyed"/> is raised once. Later calls do nothing.
+        /// Scraps this agent for good: it stops where it is, its brain is told through
+        /// <see cref="IAgentBrain.OnDestroyed"/> and never ticked again, and
+        /// <see cref="AgentEvents.OnDestroyed"/> is raised once. Later calls do nothing.
         /// </summary>
         public void Scrap()
         {
@@ -75,6 +76,10 @@ namespace ToyFactory.Runtime.Agents
             IsDead = true;
             IsAttacking = false;
             _follower.Stop();
+
+            // Release the brain's claims before the event, so listeners such as the
+            // Saboteur squad already see the freed targets when they react.
+            ReleaseBrain();
             AgentEvents.RaiseDestroyed(this);
         }
 
@@ -141,6 +146,11 @@ namespace ToyFactory.Runtime.Agents
         }
 
         void OnDestroy()
+        {
+            ReleaseBrain();
+        }
+
+        void ReleaseBrain()
         {
             if (_brain == null)
                 return;
