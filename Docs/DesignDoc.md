@@ -60,7 +60,7 @@ A read-only struct built by `AgentController` every frame.
 | `AgentIntent Tick(in AgentContext ctx)` | Every frame, by `AgentController` |
 | `OnGraphChanged(IReadOnlyList<Vector2Int> changedCells)` | When a door or box changes the grid. Brains replan only if a changed cell affects them |
 | `OnStunned(float duration)` | When `AgentController.Disable` knocks the agent out, with the time left until it reboots. The body has stopped, so the brain sends a new path on its first tick afterwards |
-| `OnDestroyed()` | Once, when the agent leaves the game for good (a Saboteur is scrapped, or the scene unloads). The brain releases anything it holds on the blackboard, such as target claims or cover reservations. `Tick` is never called afterwards. Called from `AgentController.OnDestroy` |
+| `OnDestroyed()` | Once, when the agent leaves the game for good (a Saboteur is scrapped, or the scene unloads). The brain releases anything it holds on the blackboard, such as target claims or cover reservations. `Tick` is never called afterwards. Called from `AgentController.Scrap`, or from `AgentController.OnDestroy` if the agent was never scrapped |
 
 ### 2.4 Runtime wiring (implemented)
 
@@ -110,7 +110,7 @@ A read-only view of an agent's body, in `Scripts/Interfaces/`. `AgentController`
 `AgentController` has two public calls for whoever deals the damage:
 
 - **`Disable(duration)`**: the agent stops, its brain gets `OnStunned` and is not ticked, and it reboots by itself when the time is up. A hit while already disabled can only extend the time. The reboot time is one float checked in `Update`, so there is no coroutine and no allocation.
-- **`Scrap()`**: the agent stops for good and `IsDead` becomes true. Later calls do nothing, so two hits in the same frame count once.
+- **`Scrap()`**: the agent stops for good and `IsDead` becomes true. Later calls do nothing, so two hits in the same frame count once. The brain gets `OnDestroyed` *before* `AgentEvents.OnDestroyed` is raised, so listeners such as the Saboteur squad already see its released claims.
 
 Each change is announced through the static `AgentEvents` class in `Interfaces`. Every event passes the agent's `IAgentState`.
 
