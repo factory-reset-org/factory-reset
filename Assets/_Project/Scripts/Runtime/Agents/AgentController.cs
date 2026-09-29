@@ -65,6 +65,17 @@ namespace ToyFactory.Runtime.Agents
             DebugState = intent.DebugState ?? string.Empty;
         }
 
+        void OnDestroy()
+        {
+            if (_brain == null)
+                return;
+
+            // Clear the reference first so the brain is told exactly once and never ticked again.
+            IAgentBrain brain = _brain;
+            _brain = null;
+            brain.OnDestroyed();
+        }
+
         void ApplyPath(in AgentIntent intent)
         {
             // Null means "keep following the current path": nothing to do.

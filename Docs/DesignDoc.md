@@ -60,6 +60,7 @@ A read-only struct built by `AgentController` every frame.
 | `AgentIntent Tick(in AgentContext ctx)` | Every frame, by `AgentController` |
 | `OnGraphChanged(IReadOnlyList<Vector2Int> changedCells)` | When a door or box changes the grid. Brains replan only if a changed cell affects them |
 | `OnStunned(float duration)` | When the agent is stunned. Declared, not yet called by the runtime |
+| `OnDestroyed()` | Once, when the agent leaves the game for good (a Saboteur is scrapped, or the scene unloads). The brain releases anything it holds on the blackboard, such as target claims or cover reservations. `Tick` is never called afterwards. Called from `AgentController.OnDestroy` |
 
 ### 2.4 Runtime wiring (implemented)
 
