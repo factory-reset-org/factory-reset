@@ -1,6 +1,6 @@
 # Factory Reset
 
-A low-poly, cartoon-styled 3D shooter set inside an abandoned toy factory whose AI has turned every toy against you. Battle four autonomous enemies, restore three control switches, and force a factory reset.
+A low-poly, cartoon-styled 3D shooter set inside an abandoned toy factory whose AI has turned every toy against you. Fight your way through four chapters of the factory against four kinds of autonomous enemy (a Tracker, a Guard, a squad of four Saboteurs and a Captain), earn each of the three control switches by finishing that area's tasks, and force a factory reset.
 
 Joint project for SE3032 Graphics & Visualization and SE3062 Intelligent Systems.
 
@@ -10,8 +10,12 @@ Joint project for SE3032 Graphics & Visualization and SE3062 Intelligent Systems
 | --- | --- | --- | --- |
 | S1 | World Builder | Tracker Toy | Greedy Best-First Search + hierarchical FSM |
 | S2 | Systems Engineer | Guard Bot | Tactical A* + cover evaluation |
-| S3 | Core Developer | Saboteur Bot | Utility AI with response curves |
-| S4 | Agent Controller | Captain Bot | Goal prediction + Dijkstra fields + A* intercept |
+| S3 | Core Developer | Saboteur Squad (4 instances) | Utility AI with response curves and squad target claims |
+| S4 | Agent Controller (movement, animation, cutscenes) | Captain Bot | Goal prediction + Dijkstra fields + A* intercept |
+
+## The journey
+
+Four chapters in a fixed order: Assembly Floor, Painting Room, Storage Area, Control Room. Each chapter's control switch is sealed in an energy cage until the tasks in that area are done. Restoring a switch plays the next cutscene. The Captain sleeps until the second switch is restored, and the Saboteurs, once scrapped, stay scrapped. Design decisions are in [Docs/DesignDoc.md](Docs/DesignDoc.md).
 
 ## Requirements
 
