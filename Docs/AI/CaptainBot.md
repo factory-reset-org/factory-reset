@@ -6,7 +6,8 @@ Owner: S4 · Architecture: Goal prediction + Dijkstra fields + A* intercept
 
 The Captain is the boss of the Control Room area. It does not chase the player. It watches where the player is going, predicts which objective they are heading for, and gets to a point on their route first.
 
-- **Candidate goals:** the active control switches (up to 3), the Control Room door, and battery pickups when the player's ammo is below 30%.
+- **Journey role:** the Captain is **Dormant** in the Control Room for Chapters 1 and 2. It wakes on camera in the Chapter 3 cutscene, after the second switch is restored. From then on it intercepts the player through Chapters 3 and 4.
+- **Candidate goals:** the current chapter's active task targets (for example the keycard, the next relay in the sequence, a power core), the unrestored switches, the console, and battery pickups when the player's ammo is below 30%.
 - **Threat:** the player meets the Captain in front of them, at a chokepoint, rather than being followed from behind.
 - **Pacing:** the Captain only commits to an ambush when it is confident. Otherwise it keeps its distance and observes, so it never feels like it is cheating.
 
@@ -16,7 +17,7 @@ The Captain is the boss of the Control Room area. It does not chase the player. 
 
 **The Captain's solution: it predicts where you are going, not where you are.** Every other enemy reacts to the player's position. The Captain reasons about the player's *intention*:
 
-1. It compares the route the player has taken over the last 5 seconds with the shortest route to each goal. A player who stays on the shortest route to Switch 2 is probably going to Switch 2.
+1. It compares the route the player has taken over the last 5 seconds with the shortest route to each goal. A player who stays on the shortest route to the red relay is probably going to the red relay. Because the goals include chapter tasks, the Captain guesses which *task* the player is doing next, not only which switch.
 2. It works out which chokepoints on that predicted route it can reach at least 1 second before the player.
 3. It walks there and waits, facing the way the player will come.
 
@@ -24,7 +25,9 @@ The Captain is the boss of the Control Room area. It does not chase the player. 
 
 **Counter-play:** the prediction is based on shortest routes, so a player who takes an unexpected route lowers the Captain's confidence and can slip past it. The Captain is beatable by a player who realises it is reading their movement.
 
-**Team play:** the Captain publishes its predicted goal to the shared blackboard at 2 Hz. The Saboteur uses it to measure which door closure forces the longest detour (falling back to the nearest active switch if no prediction exists). Nice-to-have: the Tracker investigates the predicted goal when it has nothing to hear.
+**Team play:** the Captain publishes `PredictedGoal` (goal and confidence) to the shared blackboard at 2 Hz. The Saboteur squad uses it to measure which door closure forces the longest detour. When the prediction is missing or not confident, the squad falls back to the nearest `ObjectiveTargets` entry, then to the nearest active switch. Nice-to-have: the Tracker investigates the predicted goal when it has nothing to hear.
+
+**Decoupled from the story:** the Captain learns about the chapters only through the `ObjectiveTargets` blackboard entry written by S1's `ChapterManager`. The brain never references any Journey code, and the asmdefs make that a compile error.
 
 ## Architecture
 
@@ -36,12 +39,17 @@ The Captain is a finite-state machine built on the shared FSM framework: each st
 
 | State | What the Captain does |
 | --- | --- |
+| **Dormant** | Start state. Stands powered down in the Control Room and ignores the player. The brain skips goal inference and returns an empty intent. Leaves only when the Chapter 3 wake signal arrives. |
 | **Observe** | Prediction is too uncertain to commit. Keeps its distance from the player and stays out of sight while the prediction updates. |
 | **Intercept** | Confident about `g*`. Picks the first chokepoint on the player's predicted route it can reach at least 1 s before them, and walks there with A*. If no cell qualifies, it heads to `g*` itself to defend it. |
 | **Ambush** | At the intercept cell. Stands still, facing the direction the player will arrive from. |
 | **Engage** | Player is in view within 10 m. Faces the player and fires hitscan shots, each with a 0.3 s wind-up telegraph. |
 | **Reassess** | Something invalidated the plan. Discards the current intercept cell, re-runs goal inference immediately, then hands over to Observe or Intercept. Lasts one decision tick. |
-| **Stunned** | Hit points reached 0. Falls apart for the stun duration, releases its reserved cell, then goes to Reassess. |
+| **Stunned** | Hit points reached 0. Falls apart, releases its reserved cell, reassembles after 6 s, then goes to Reassess. |
+
+**Waking up:** the Chapter 3 cutscene fires a Critical signal. The runtime turns it into a wake flag on the blackboard, and the brain reads the flag. The signal fires even when the player skips the cutscene, so the Captain can never stay asleep by mistake.
+
+**Cutscenes and pause:** `AgentController` does not tick any brain while the game state is Cutscene or Paused. All Captain timers use game time, so the 5 s history window and the 2 Hz prediction resume where they stopped.
 
 ### Transitions
 
@@ -49,7 +57,8 @@ Higher priority wins when several conditions are true on the same tick.
 
 | From | To | Condition | Priority |
 | --- | --- | --- | --- |
-| Any | Stunned | Hit points reach 0 | 100 |
+| Dormant | Observe | Wake signal received | 110 |
+| Any except Dormant | Stunned | Hit points reach 0 | 100 |
 | Stunned | Reassess | Stun timer ends | 90 |
 | Observe, Intercept, Ambush | Engage | Player visible within 10 m | 80 |
 | Engage | Reassess | Player no longer visible | 70 |
@@ -60,7 +69,9 @@ Higher priority wins when several conditions are true on the same tick.
 | Observe | Intercept | Confidence ≥ 0.5 | 20 |
 
 ```text
-            confidence ≥ 0.5              reached cell
+  Dormant ── wake signal (Chapter 3 cutscene, also applied on skip)
+     │
+     ▼      confidence ≥ 0.5              reached cell
   Observe ───────────────────▶ Intercept ─────────────▶ Ambush
      ▲                            │  ▲                    │
      │ confidence < 0.5           │  │ confidence ≥ 0.5   │ goal changed /
@@ -129,7 +140,7 @@ P(g | observed) = w(g) / Σ w(g')                 normalise so the goals sum to 
 - **Too low** (e.g. β = 0.1): even a 6 m detour only cuts a goal's likelihood to 0.55, so the Captain would almost never become confident.
 - **β = 0.5** ignores small corrections but responds decisively to real route choices. With two goals and equal priors, `P(A) > 0.8` needs `e^(−β·ΔD) < 0.25`, i.e. the player has to stray about **2.8 m** further from B's shortest route than from A's (`ln 4 / 0.5 ≈ 2.77`).
 
-**Worked example:** three active switches with equal priors. The player is on the shortest route to A (`D = 0`), 4 m off the route to B, and 6 m off the route to C.
+**Worked example:** three chapter task targets, which share the task prior equally (other goals left out to keep the numbers simple). The player is on the shortest route to A (`D = 0`), 4 m off the route to B, and 6 m off the route to C.
 
 ```text
 w(A) = 1.000   w(B) = e^−2 = 0.135   w(C) = e^−3 = 0.050
@@ -146,10 +157,21 @@ Confidence is 0.84 ≥ 0.5, so the Captain moves from Observe to Intercept.
 
 ### Priors
 
-- Active switches share the prior equally. Restored switches are removed from the candidate set.
-- The Control Room door's prior rises as switches are restored, because the player can only win by reaching it after the switches.
-- Batteries join the candidate set only while the player's ammo is below 30%.
+The prior `P(g)` is split between goal categories first, then shared equally inside each category:
+
+| Category | Share | Members |
+| --- | --- | --- |
+| Chapter task targets | 0.60 | Every entry in `ObjectiveTargets` for the current chapter |
+| Unrestored switches | 0.25 | Switches not yet restored |
+| Console | 0.15 (0.50 in Chapter 4) | The Control Room console |
+| Batteries | 0.20, only while ammo < 30% | Battery pickups on the level |
+
+- **Renormalise whenever the goal set changes.** Empty categories are dropped and the remaining shares are scaled so they sum to 1. For example, in Chapter 4 there are no unrestored switches, so the cores (0.60) and the console (0.50) are rescaled to 0.55 and 0.45.
+- **Why tasks get most of the mass:** the player spends most of each chapter on its tasks. A uniform prior would waste early confidence on switches that are still sealed.
+- **Why the console rises to 0.50 in Chapter 4:** holding E at the console ends the game, so once the cores are down it is the player's final destination.
+- **Why batteries only below 30% ammo:** with a full blaster the player has no reason to detour for a battery. Below 30% ammo, recharging becomes a real plan.
 - A goal with no reachable path (infinite field cost) is left out of the candidate set.
+- Goals appear and disappear as tasks complete. Their Dijkstra fields are built lazily the first time a goal enters the set, cached by goal id, and discarded when the goal leaves.
 
 ### Numerical safety
 
@@ -174,7 +196,7 @@ Once confidence ≥ 0.5, the Captain picks where to wait.
    t_captain(i) + 1.0 s ≤ t_player(i)
    ```
    A chokepoint is a doorway cell or a cell with at most 4 walkable neighbours (precomputed on the grid), so the player cannot simply walk around the Captain. If no chokepoint qualifies, take the first route cell that does. If no cell qualifies at all, the player is too close to `g*`: the Captain heads to `g*` and defends it.
-5. **Walk there** with A* through the path scheduler.
+5. **Walk there** with A* (S2's shared `AStarSearch`, called through `IPathfinder` and the path scheduler).
 
 **Why the first qualifying chokepoint:** it is the earliest point where the Captain can be waiting, so it meets the player furthest from their goal and gives the player the least time to notice and reroute.
 
@@ -211,6 +233,11 @@ Once confidence ≥ 0.5, the Captain picks where to wait.
 | Chosen ambush cell reserved by another agent | Take the next qualifying chokepoint on the route. | `Intercept_ReservedCell_SkipsToNext` |
 | Captain stunned mid-intercept | Release the reserved cell. On recovery, go to Reassess, because the old prediction is stale. | PlayMode check in `Test_FourAgentsStress` |
 | Player missing or dead | No inference; the brain returns an empty intent and waits. | `Brain_NoPlayer_ReturnsIdleIntent` |
+| Task completes and its target leaves `ObjectiveTargets` mid-intercept | Drop that goal's field, renormalise the remaining goals, and re-predict on the next tick (Reassess if it was `g*`). | `Inference_GoalRemoved_Renormalises` |
+| New chapter adds new task targets | Build their fields lazily, add them to the candidate set with the task share, and renormalise. | `Inference_GoalAdded_FieldBuiltOnce` |
+| Still Dormant | Ignore every stimulus and return an empty intent until the wake signal. | `Brain_Dormant_IgnoresPlayerUntilWake` |
+| Chapter 3 cutscene skipped | The skip fires every Critical signal not yet reached, so the wake signal still arrives. | PlayMode check in `Test_CutsceneSkip` |
+| Cutscene or pause starts mid-intercept | The brain is not ticked. Game-time timers resume from the same values afterwards. | PlayMode check in `Test_CutsceneSkip` |
 
 ## Tests
 
@@ -234,6 +261,8 @@ EditMode tests run without a scene, which also proves the brain is decoupled fro
 | Detour cost is 0 on an optimal route | The bracket term is computed correctly |
 | Worked example gives `P(A) ≈ 0.84, P(B) ≈ 0.11, P(C) ≈ 0.04` | The code matches the maths in this document |
 | Posteriors always sum to 1 | Normalisation is correct |
+| Removing a goal renormalises the remaining probabilities to sum to 1 | Goals can come and go as tasks complete |
+| Category priors follow the table (tasks 0.60, switches 0.25, console 0.15, batteries only below 30% ammo) | The category priors are implemented as documented |
 | Very large detours do not produce NaN or zeros everywhere | The underflow guard works |
 
 **Intercept planner**
@@ -249,6 +278,7 @@ EditMode tests run without a scene, which also proves the brain is decoupled fro
 | Test | What it proves |
 | --- | --- |
 | Transition table picks the highest-priority valid transition | The FSM is data-driven, not if/else |
+| Dormant stays Dormant until the wake flag is set, then moves to Observe | The Chapter 3 wake works and nothing else wakes the Captain |
 | Confidence crossing 0.5 moves Observe → Intercept and back via Reassess | State changes follow the table |
 
 Edge-case tests are listed in the table above.
