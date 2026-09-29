@@ -79,7 +79,7 @@ Only the owner edits a scene. Everyone else works in a personal test scene and h
 ## Art pipeline
 
 - Blender sources go in `Blender/` (outside `Assets/`, so Unity never tries to import `.blend` files).
-- Export FBX to `Assets/_Project/Models/<Model>/`: Apply Transform, Forward -Z, Up Y, Leaf Bones off.
+- Export FBX to `Assets/_Project/Models/<Model>/`, overwriting the existing file so its `.meta` GUID is kept: Forward Y, Up Z, Apply Transform off, Apply Scalings "FBX Units Scale", Leaf Bones off, Object Types Empty and Mesh only, Bake Animation off. Keep **Bake Axis Conversion** enabled in the Unity model importer. This is the validated pipeline: models authored facing Blender +Y import facing Unity +Z, and every node in the rigid-part hierarchy keeps rotation 0 and scale 1.
 - Textures power-of-two, BC7. Follow [Docs/ArtBible.md](Docs/ArtBible.md).
 - Only S1 commits lighting and NavMesh bake output, and only after major changes (LFS quota).
 
