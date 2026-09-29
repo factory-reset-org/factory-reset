@@ -3,6 +3,7 @@ using UnityEngine;
 using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
 using ToyFactory.AI.Core.Perception;
+using ToyFactory.Interfaces;
 using ToyFactory.Runtime.Movement;
 
 namespace ToyFactory.Runtime.Agents
@@ -14,7 +15,7 @@ namespace ToyFactory.Runtime.Agents
     /// Unity objects: the brain never touches a GameObject and the body never decides.
     /// </summary>
     [RequireComponent(typeof(AgentPathFollower))]
-    public sealed class AgentController : MonoBehaviour
+    public sealed class AgentController : MonoBehaviour, IAgentState
     {
         AgentPathFollower _follower;
         IAgentBrain _brain;
@@ -26,6 +27,18 @@ namespace ToyFactory.Runtime.Agents
 
         /// <summary>The brain's current state name, for the debug overlay and "!"/"?" icons.</summary>
         public string DebugState { get; private set; } = string.Empty;
+
+        /// <inheritdoc/>
+        public float Speed => _follower.CurrentSpeed;
+
+        /// <inheritdoc/>
+        public float TurnRate => _follower.TurnRate;
+
+        /// <summary>True while the brain's current action is <see cref="AgentAction.Shoot"/>.</summary>
+        public bool IsAttacking { get; private set; }
+
+        /// <summary>Always false until agents can be scrapped.</summary>
+        public bool IsDead { get; private set; }
 
         void Awake()
         {
@@ -62,6 +75,7 @@ namespace ToyFactory.Runtime.Agents
             AgentIntent intent = _brain.Tick(context);
 
             ApplyPath(intent);
+            IsAttacking = intent.Action == AgentAction.Shoot;
             DebugState = intent.DebugState ?? string.Empty;
         }
 

@@ -91,6 +91,19 @@ A read-only struct built by `AgentController` every frame.
 
 **Tests:** `MockPathProviderTests` (7 EditMode tests), and the `Scenes/Test/Test_PathFollower` scene (step, ramp and drop) and `Scenes/Test/Test_AgentSpawner` scene (all four types patrolling).
 
+### 2.6 What other systems read: `IAgentState` (implemented)
+
+A read-only view of an agent's body, in `Scripts/Interfaces/`. `AgentController` implements it.
+
+| Property | Meaning | Source |
+| --- | --- | --- |
+| `Speed` | Ground speed in m/s | `AgentPathFollower.CurrentSpeed` |
+| `TurnRate` | Degrees per second, positive = turning right | `AgentPathFollower.TurnRate` |
+| `IsAttacking` | True while the brain's action is `Shoot` | The latest `AgentIntent` |
+| `IsDead` | True once the agent is scrapped; never becomes false again | Always false until agents can be scrapped |
+
+**Why it lives in `Interfaces`:** that assembly references nothing, so animation, the HUD, scoring and the journey can read an agent without being able to see its brain. Readers get it once with `GetComponent<IAgentState>()` when they set up, never in `Update`.
+
 ## 3. Search contracts
 <!-- ICostModel, PathResult, IPathfinder -->
 
