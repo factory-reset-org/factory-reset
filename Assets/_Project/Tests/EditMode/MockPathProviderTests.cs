@@ -57,6 +57,21 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void StunResendsTheRouteOnTheNextTick()
+        {
+            var brain = new MockPathProvider(Route);
+            brain.Tick(ContextAt(Start));
+            brain.Tick(ContextAt(Middle));
+
+            brain.OnStunned(2f);
+            AgentIntent afterStun = brain.Tick(ContextAt(Middle));
+            AgentIntent nextTick = brain.Tick(ContextAt(Middle));
+
+            CollectionAssert.AreEqual(Route, afterStun.Path);
+            Assert.IsNull(nextTick.Path);
+        }
+
+        [Test]
         public void StandingOnTheEndPointResendsOnlyOnce()
         {
             var brain = new MockPathProvider(Route);

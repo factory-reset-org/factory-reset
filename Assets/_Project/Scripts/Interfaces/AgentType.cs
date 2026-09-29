@@ -1,8 +1,9 @@
-namespace ToyFactory.Runtime.Agents
+namespace ToyFactory.Interfaces
 {
     /// <summary>
     /// The four enemy classes, one per team member. Used by spawn points to say which
-    /// agent appears there and by the spawner to pick that agent's brain.
+    /// agent appears there, by the spawner to pick that agent's brain, and by scoring and
+    /// the HUD to tell agents apart without seeing any Runtime code.
     /// </summary>
     public enum AgentType
     {

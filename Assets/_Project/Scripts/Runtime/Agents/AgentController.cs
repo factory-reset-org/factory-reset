@@ -21,12 +21,16 @@ namespace ToyFactory.Runtime.Agents
         IAgentBrain _brain;
         WorldBlackboard _blackboard;
         bool _warnedNotInitialised;
+        float _rebootAt;
 
         /// <summary>True once a brain has been given to this agent.</summary>
         public bool IsInitialised => _brain != null;
 
         /// <summary>The brain's current state name, for the debug overlay and "!"/"?" icons.</summary>
         public string DebugState { get; private set; } = string.Empty;
+
+        /// <inheritdoc/>
+        public AgentType Type { get; private set; }
 
         /// <inheritdoc/>
         public float Speed => _follower.CurrentSpeed;
@@ -37,8 +41,11 @@ namespace ToyFactory.Runtime.Agents
         /// <summary>True while the brain's current action is <see cref="AgentAction.Shoot"/>.</summary>
         public bool IsAttacking { get; private set; }
 
-        /// <summary>Always false until agents can be scrapped.</summary>
+        /// <summary>True once <see cref="Scrap"/> has been called. Never becomes false again.</summary>
         public bool IsDead { get; private set; }
+
+        /// <summary>True while knocked out by <see cref="Disable"/>, until it reboots.</summary>
+        public bool IsDisabled { get; private set; }
 
         void Awake()
         {
@@ -46,17 +53,76 @@ namespace ToyFactory.Runtime.Agents
         }
 
         /// <summary>
-        /// Gives this agent its brain and the shared world blackboard. Called once by the
-        /// spawner, so nothing has to be looked up at runtime.
+        /// Gives this agent its type, its brain and the shared world blackboard. Called once
+        /// by the spawner, so nothing has to be looked up at runtime.
         /// </summary>
-        public void Initialise(IAgentBrain brain, WorldBlackboard blackboard)
+        public void Initialise(AgentType type, IAgentBrain brain, WorldBlackboard blackboard)
         {
+            Type = type;
             _brain = brain ?? throw new ArgumentNullException(nameof(brain));
             _blackboard = blackboard ?? throw new ArgumentNullException(nameof(blackboard));
         }
 
+        /// <summary>
+        /// Scraps this agent for good: it stops where it is, its brain is told through
+        /// <see cref="IAgentBrain.OnDestroyed"/> and never ticked again, and
+        /// <see cref="AgentEvents.OnDestroyed"/> is raised once. Later calls do nothing.
+        /// </summary>
+        public void Scrap()
+        {
+            if (IsDead)
+                return;
+
+            IsDead = true;
+            IsAttacking = false;
+            _follower.Stop();
+
+            // Release the brain's claims before the event, so listeners such as the
+            // Saboteur squad already see the freed targets when they react.
+            ReleaseBrain();
+            AgentEvents.RaiseDestroyed(this);
+        }
+
+        /// <summary>
+        /// Knocks this agent out for <paramref name="duration"/> seconds. It stops, its brain
+        /// is told through <see cref="IAgentBrain.OnStunned"/> and is not ticked, and
+        /// <see cref="AgentEvents.OnDisabled"/> is raised. It reboots by itself when the time
+        /// is up. A hit while already disabled can only extend the time. Ignored once scrapped.
+        /// </summary>
+        public void Disable(float duration)
+        {
+            if (IsDead)
+                return;
+
+            bool wasDisabled = IsDisabled;
+            _rebootAt = wasDisabled ? Mathf.Max(_rebootAt, Time.time + duration) : Time.time + duration;
+            IsDisabled = true;
+            IsAttacking = false;
+            _follower.Stop();
+            _brain?.OnStunned(_rebootAt - Time.time);
+
+            if (!wasDisabled)
+                AgentEvents.RaiseDisabled(this);
+        }
+
+        void Reboot()
+        {
+            IsDisabled = false;
+            AgentEvents.RaiseRebooted(this);
+        }
+
         void Update()
         {
+            if (IsDead)
+                return;
+
+            if (IsDisabled)
+            {
+                if (Time.time < _rebootAt)
+                    return;
+                Reboot();
+            }
+
             if (_brain == null)
             {
                 // Warn once rather than every frame, and do nothing rather than throw.
@@ -80,6 +146,11 @@ namespace ToyFactory.Runtime.Agents
         }
 
         void OnDestroy()
+        {
+            ReleaseBrain();
+        }
+
+        void ReleaseBrain()
         {
             if (_brain == null)
                 return;
