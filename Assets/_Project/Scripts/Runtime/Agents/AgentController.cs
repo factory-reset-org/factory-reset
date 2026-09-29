@@ -21,6 +21,7 @@ namespace ToyFactory.Runtime.Agents
         IAgentBrain _brain;
         WorldBlackboard _blackboard;
         bool _warnedNotInitialised;
+        float _rebootAt;
 
         /// <summary>True once a brain has been given to this agent.</summary>
         public bool IsInitialised => _brain != null;
@@ -42,6 +43,9 @@ namespace ToyFactory.Runtime.Agents
 
         /// <summary>True once <see cref="Scrap"/> has been called. Never becomes false again.</summary>
         public bool IsDead { get; private set; }
+
+        /// <summary>True while knocked out by <see cref="Disable"/>, until it reboots.</summary>
+        public bool IsDisabled { get; private set; }
 
         void Awake()
         {
@@ -74,10 +78,45 @@ namespace ToyFactory.Runtime.Agents
             AgentEvents.RaiseDestroyed(this);
         }
 
+        /// <summary>
+        /// Knocks this agent out for <paramref name="duration"/> seconds. It stops, its brain
+        /// is told through <see cref="IAgentBrain.OnStunned"/> and is not ticked, and
+        /// <see cref="AgentEvents.OnDisabled"/> is raised. It reboots by itself when the time
+        /// is up. A hit while already disabled can only extend the time. Ignored once scrapped.
+        /// </summary>
+        public void Disable(float duration)
+        {
+            if (IsDead)
+                return;
+
+            bool wasDisabled = IsDisabled;
+            _rebootAt = wasDisabled ? Mathf.Max(_rebootAt, Time.time + duration) : Time.time + duration;
+            IsDisabled = true;
+            IsAttacking = false;
+            _follower.Stop();
+            _brain?.OnStunned(_rebootAt - Time.time);
+
+            if (!wasDisabled)
+                AgentEvents.RaiseDisabled(this);
+        }
+
+        void Reboot()
+        {
+            IsDisabled = false;
+            AgentEvents.RaiseRebooted(this);
+        }
+
         void Update()
         {
             if (IsDead)
                 return;
+
+            if (IsDisabled)
+            {
+                if (Time.time < _rebootAt)
+                    return;
+                Reboot();
+            }
 
             if (_brain == null)
             {
