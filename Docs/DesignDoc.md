@@ -59,7 +59,7 @@ A read-only struct built by `AgentController` every frame.
 | --- | --- |
 | `AgentIntent Tick(in AgentContext ctx)` | Every frame, by `AgentController` |
 | `OnGraphChanged(IReadOnlyList<Vector2Int> changedCells)` | When a door or box changes the grid. Brains replan only if a changed cell affects them |
-| `OnStunned(float duration)` | When the agent is stunned. Declared, not yet called by the runtime |
+| `OnStunned(float duration)` | When `AgentController.Disable` knocks the agent out, with the time left until it reboots. The body has stopped, so the brain sends a new path on its first tick afterwards |
 | `OnDestroyed()` | Once, when the agent leaves the game for good (a Saboteur is scrapped, or the scene unloads). The brain releases anything it holds on the blackboard, such as target claims or cover reservations. `Tick` is never called afterwards. Called from `AgentController.OnDestroy` |
 
 ### 2.4 Runtime wiring (implemented)
@@ -87,9 +87,9 @@ A read-only struct built by `AgentController` every frame.
 
 **Why not `NavMeshAgent`:** the brains plan their own paths on the grid (GBFS, tactical A*, intercepts). A `NavMeshAgent` would replan on its own and fight those decisions, and the Captain's timing maths needs the agent to walk exactly the route it was given.
 
-**Not built yet:** path smoothing (string pulling, then Catmull-Rom), blending into a new path on replan, the path request scheduler, grid cells in the context, and calls to `OnStunned`.
+**Not built yet:** path smoothing (string pulling, then Catmull-Rom), blending into a new path on replan, the path request scheduler, and grid cells in the context.
 
-**Tests:** `MockPathProviderTests` (7 EditMode tests), and the `Scenes/Test/Test_PathFollower` scene (step, ramp and drop) and `Scenes/Test/Test_AgentSpawner` scene (all four types patrolling).
+**Tests:** `MockPathProviderTests` (8 EditMode tests), and the `Scenes/Test/Test_PathFollower` scene (step, ramp and drop) and `Scenes/Test/Test_AgentSpawner` scene (all four types patrolling).
 
 ### 2.6 What other systems read: `IAgentState` (implemented)
 
@@ -97,12 +97,34 @@ A read-only view of an agent's body, in `Scripts/Interfaces/`. `AgentController`
 
 | Property | Meaning | Source |
 | --- | --- | --- |
+| `Type` | Tracker, Guard, Saboteur or Captain (`AgentType`, also in `Interfaces`) | The spawn point, passed in through `Initialise` |
 | `Speed` | Ground speed in m/s | `AgentPathFollower.CurrentSpeed` |
 | `TurnRate` | Degrees per second, positive = turning right | `AgentPathFollower.TurnRate` |
 | `IsAttacking` | True while the brain's action is `Shoot` | The latest `AgentIntent` |
-| `IsDead` | True once the agent is scrapped; never becomes false again | Always false until agents can be scrapped |
+| `IsDead` | True once the agent is scrapped; never becomes false again | Set by `AgentController.Scrap` |
 
 **Why it lives in `Interfaces`:** that assembly references nothing, so animation, the HUD, scoring and the journey can read an agent without being able to see its brain. Readers get it once with `GetComponent<IAgentState>()` when they set up, never in `Update`.
+
+### 2.7 Knock-outs and scrapping: `AgentEvents` (implemented)
+
+`AgentController` has two public calls for whoever deals the damage:
+
+- **`Disable(duration)`**: the agent stops, its brain gets `OnStunned` and is not ticked, and it reboots by itself when the time is up. A hit while already disabled can only extend the time. The reboot time is one float checked in `Update`, so there is no coroutine and no allocation.
+- **`Scrap()`**: the agent stops for good and `IsDead` becomes true. Later calls do nothing, so two hits in the same frame count once.
+
+Each change is announced through the static `AgentEvents` class in `Interfaces`. Every event passes the agent's `IAgentState`.
+
+| Event | Raised when | Raised how often |
+| --- | --- | --- |
+| `OnDisabled` | `Disable` knocks out an active agent | Once per knock-out, not again when the time is extended |
+| `OnRebooted` | The knock-out time runs out | Once per knock-out |
+| `OnDestroyed` | `Scrap` is called | Once per agent |
+
+Listeners (scoring, the HUD, the Saboteur squad) subscribe in `OnEnable` and unsubscribe in `OnDisable`.
+
+**Why static events:** with seven agents, a listener would otherwise need a reference to every one of them. One hub means scoring subscribes once and hears about all of them.
+
+**Why the listeners are cleared on play:** domain reload is turned off in this project (Enter Play Mode Options), so static fields keep their values between play sessions. A listener left over from the last session would be called on a destroyed object. `AgentEvents` clears every event with `[RuntimeInitializeOnLoadMethod(SubsystemRegistration)]` at the start of each session.
 
 ## 3. Search contracts
 <!-- ICostModel, PathResult, IPathfinder -->
@@ -159,7 +181,7 @@ Systems talk through events and the blackboard, not direct references. The journ
 | Objective changed | Chapter manager | Blackboard `ObjectiveTargets`, then Captain, Saboteurs, beacon and HUD | Planned |
 | Switch restored | Chapter manager | Cutscene director, which plays the next cutscene after 1.3 s | Planned |
 | Critical cutscene signal | Cutscene Timeline | Captain wake, Control Room door unlock, core shields drop. Also fired when a cutscene is skipped | Planned |
-| Agent disabled, destroyed, rebooted | `AgentController` | Scoring, Saboteur squad, HUD | Planned |
+| Agent disabled, destroyed, rebooted (`AgentEvents`, §2.7) | `AgentController` | Scoring, Saboteur squad, HUD | Events and raising implemented; nothing calls `Disable` or `Scrap` yet |
 | Game state changed (Title, Playing, Cutscene, Paused, Results) | Game manager | `AgentController` (stops ticking brains), player input, timers, HUD | Planned |
 
 ## 7. Decision log
