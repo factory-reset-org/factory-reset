@@ -165,7 +165,7 @@ A one-to-all search: after one `Compute(source, costModel, maxCost)`, `Cost(cell
 
 - Playing starts in `Bootstrap`, which loads the other scenes additively. `Env` is the active scene, so lighting is baked with only `Env` loaded and only `Env` holds static geometry.
 - Agents are parented under the spawner, so they stay in the `Agents` scene when scenes load.
-- Timelines live in `Agents` but animate objects in other scenes (doors, lamps, cores). They find those objects at runtime by a stable `CutsceneBindingId` on the target, never by a serialised cross-scene reference (see §6.1).
+- Timelines live in `Agents` but animate objects in other scenes (doors, lamps, cores). They find those objects at runtime by a stable `CutsceneBindingId` on the target, never by a serialised cross-scene reference (see Cutscene contracts under Event flow).
 - Test scenes live under `Scenes/Test/` and are not in the build.
 
 ## 6. Event flow
@@ -180,9 +180,9 @@ Systems talk through events and the blackboard, not direct references. The journ
 | Task progress and completion | Task props | Chapter manager, HUD, scoring | Planned |
 | Objective changed | Chapter manager | Blackboard `ObjectiveTargets`, then Captain, Saboteurs, beacon and HUD | Planned |
 | Switch restored | Chapter manager | Cutscene director, which plays the next cutscene after 1.3 s | Planned |
-| Cutscene started, ended (`CutsceneEvents`, §6.1) | Cutscene director | Game manager (Cutscene state), HUD | Events implemented; the director is planned |
-| Critical cutscene signal (`CutsceneEvents.OnCriticalSignal`, §6.1) | Cutscene Timeline | Captain wake, Control Room door unlock, core shields drop. Also fired when a cutscene is skipped | Events and signal ids implemented; the director is planned |
-| Agent disabled, destroyed, rebooted (`AgentEvents`, §2.7) | `AgentController` | Scoring, Saboteur squad, HUD | Events and raising implemented; nothing calls `Disable` or `Scrap` yet |
+| Cutscene started, ended (`CutsceneEvents`) | Cutscene director | Game manager (Cutscene state), HUD | Events implemented; the director is planned |
+| Critical cutscene signal (`CutsceneEvents.OnCriticalSignal`) | Cutscene Timeline | Captain wake, Control Room door unlock, core shields drop. Also fired when a cutscene is skipped | Events and signal ids implemented; the director is planned |
+| Agent disabled, destroyed, rebooted (`AgentEvents`) | `AgentController` | Scoring, Saboteur squad, HUD | Events and raising implemented; nothing calls `Disable` or `Scrap` yet |
 | Game state changed (Title, Playing, Cutscene, Paused, Results) | Game manager | `AgentController` (stops ticking brains), player input, timers, HUD | Planned |
 
 ### 6.1 Cutscene contracts (S4, implemented)
@@ -217,15 +217,16 @@ All three live in `Scripts/Interfaces/`, so code in every scene can use them. Th
 | 2026-09-24 | Brains get their dependencies once, through `AgentController.Initialise` at spawn | Look up the player, grid and blackboard with `FindObjectOfType` / `GetComponent` | No per-frame searches or hidden null references, and brains can be tested without a scene | S4 |
 | 2026-09-24 | `AgentIntent.Path`: `null` keeps the current route, an empty list stops, a non-empty list replaces the route | A separate "stop" flag; resend the full path every tick | Most ticks have no new route, so `null` costs nothing; stopping is an explicit answer | S4 |
 | 2026-09-27 | `DijkstraField` uses the same step costs as A* and reuses its arrays (stamp trick) | Recompute with fresh arrays; a separate distance metric | Field costs match A* path costs exactly, so the Captain's arrival times agree with the path it walks; recomputes allocate nothing | S4 |
-| 2026-09-29 | Extend the game into a four-chapter journey: each control switch is sealed until its chapter's tasks are done, a fixed area order (Assembly Floor, Painting Room, Storage Area, Control Room), task props, six cutscenes, a Saboteur squad of four that is destroyed permanently, scoring with a leaderboard, and a `UI` scene. Ownership: chapters S1, task props S2, models, UI and scoring S3, cutscenes and agent execution S4. The Unity version (6000.6.2f1), the `develop` branch, the +Z-forward pipeline in §8.8 and the no-Issues workflow are unchanged | Keep three switches restorable in any order with one Saboteur | A story gives the agents a reason to matter: the Captain predicts which task the player is heading to, and the Saboteur squad coordinates on shared targets. Each new piece has exactly one owner, so every individual Git history stays clean | Team |
+| 2026-09-29 | Extend the game into a four-chapter journey: each control switch is sealed until its chapter's tasks are done, a fixed area order (Assembly Floor, Painting Room, Storage Area, Control Room), task props, six cutscenes, a Saboteur squad of four that is destroyed permanently, scoring with a leaderboard, and a `UI` scene. Ownership: chapters S1, task props S2, models, UI and scoring S3, cutscenes and agent execution S4. The Unity version (6000.6.2f1), the `develop` branch, the +Z-forward export pipeline and the no-Issues workflow are unchanged | Keep three switches restorable in any order with one Saboteur | A story gives the agents a reason to matter: the Captain predicts which task the player is heading to, and the Saboteur squad coordinates on shared targets. Each new piece has exactly one owner, so every individual Git history stays clean | Team |
 | 2026-09-29 | Character models face Unity +Z; authored facing Blender +Y; character left is -X; every contracted pivot has rotation 0 and scale 1 | Keep the first greybox's -Z facing; rotate prefab instances 180° | S4's movement turns agents with `LookRotation(velocity)`, which assumes +Z forward, and identity pivots give clean local rotation axes for clips | S3 |
 | 2026-09-29 | Export FBX with Forward Y, Up Z, Apply Transform off, Apply Scalings "FBX Units Scale", and rely on Unity's Bake Axis Conversion | The previous CONTRIBUTING settings (Forward -Z / Up Y / Apply Transform); the same without Apply Transform | With Blender 5.2, the previous settings put +90° X rotations and 0.01 scales on nested nodes, and without Apply Transform every root imported at +90° X. The validated settings give identity transforms and Y-up meshes on all four models. The team agreed, and `CONTRIBUTING.md` now uses these settings | S3 (team agreed) |
-| 2026-09-29 | Freeze the greybox hierarchy in §8 once S4 accepts it; later detail meshes may only be added beneath frozen nodes | Allow renames during final modelling | Animation clips bind to hierarchy paths | S3 (pending S4 acceptance) |
-| 2026-09-29 | Guard treads stay rigid assemblies under their pivots | Road wheels with individual pivots | The reference draws the treads as boxes and lists no tread animation; a scrolling tread material can suggest rolling later | S3 (S4 to be informed) |
+| 2026-09-29 | Freeze the greybox hierarchy in §8 once S4 accepts it; later detail meshes may only be added beneath frozen nodes | Allow renames during final modelling | Animation clips bind to hierarchy paths | S3 (accepted by S4 on 2026-09-30) |
+| 2026-09-29 | Guard treads stay rigid assemblies under their pivots | Road wheels with individual pivots | The reference draws the treads as boxes and lists no tread animation; a scrolling tread material can suggest rolling later | S3 (S4 informed on 2026-09-30) |
+| 2026-09-30 | Accept the greybox model hierarchy as the animation contract, after checking every model node by node | Record clips first and fix broken paths later | A clip bound to a renamed or moved node silently stops animating it, so the paths must be fixed before the first clip. The check compared each `.blend` source and FBX export against the greybox model contract (see its acceptance check) | S4 |
 
 ## 8. Greybox character model contract (S3)
 
-Status: implemented and audited; **S4 acceptance pending**. Paths are relative to each model's FBX root and were read from the imported assets. The FBXs are in `Assets/_Project/Models/<Model>/`, and the prefab variants are in `Assets/_Project/Prefabs/Characters/`.
+Status: implemented, audited and **accepted by S4 on 2026-09-30**. The hierarchy is now frozen under the freeze rule below. Paths are relative to each model's FBX root and were read from the imported assets. The FBXs are in `Assets/_Project/Models/<Model>/`, and the prefab variants are in `Assets/_Project/Prefabs/Characters/`.
 
 ### 8.1 Conventions
 
@@ -238,6 +239,15 @@ Status: implemented and audited; **S4 acceptance pending**. Paths are relative t
 ### 8.2 Freeze rule
 
 Once S4 accepts this handoff, contracted nodes and pivots must not be renamed, reparented, repositioned or have their transforms changed without coordinating with S4, because animation clips depend on these paths. Final modelling may add non-animated detail meshes beneath existing nodes, as long as the existing paths and pivot transforms stay unchanged.
+
+**Acceptance check (S4, 2026-09-30).** Each `Blender/<Model>.blend` was loaded read-only in Blender 5.2 and compared with the four model trees below:
+
+- **Names and parents:** every node and parent matches the trees below (TrackerToy 30 nodes, SaboteurBot 33, GuardBot 22, CaptainBot 33).
+- **Pivot positions:** every pivot sits at the position listed, converted to Unity axes (Unity x, y, z = Blender x, z, y).
+- **Transforms:** every node has rotation 0, scale 1, no delta transforms and an identity parent-inverse matrix, so nothing carries a hidden offset.
+- **Ground:** the lowest geometry of each model is at y = 0.
+- **Exports:** each `Assets/_Project/Models/<Model>/<Model>.fbx` contains exactly the same node names as its `.blend`.
+- **Facing:** in a front view of all four, the faces point forward and `_L` parts are on the character's left.
 
 ### 8.3 TrackerToy
 
@@ -312,7 +322,7 @@ CaptainBot_Root                          origin, between the boots
       └─ ShoulderBall_*, Arm_*, Cannon_*
 ```
 
-The `UpperLeg_*` and `LowerLeg_*` names replace the earlier `Leg_L`/`Leg_R` meshes. **S4 must acknowledge these names before recording clips.** Positive local X rotation on a knee pivot bends the knee (boot moves backward).
+The `UpperLeg_*` and `LowerLeg_*` names replace the earlier `Leg_L`/`Leg_R` meshes. S4 acknowledged these names on 2026-09-30. Positive local X rotation on a knee pivot bends the knee (boot moves backward).
 
 ### 8.7 Approximate greybox motion limits
 
@@ -340,8 +350,8 @@ Validated on all four models with Blender 5.2 and Unity 6000.6.2f1:
 
 ### 8.10 Open handoff items
 
-1. S4 accepts the §8 hierarchy, explicitly including the Captain `UpperLeg_*`/`LowerLeg_*` paths, before recording clips.
-2. S4 is told the Guard uses rigid tread assemblies rather than road-wheel articulation.
-3. S4 is told the §8.7 motion limits.
+1. ~~S4 accepts the §8 hierarchy, explicitly including the Captain `UpperLeg_*`/`LowerLeg_*` paths, before recording clips.~~ Done: accepted by S4 on 2026-09-30 after the acceptance check above.
+2. ~~S4 is told the Guard uses rigid tread assemblies rather than road-wheel articulation.~~ Done: acknowledged by S4. Tread motion will be a scrolling material, not animated pivots.
+3. ~~S4 is told the §8.7 motion limits.~~ Done: acknowledged by S4. Clips stay within these limits.
 4. Someone opens ModelShowcase fresh in Unity at 16:9 for a clean lit check. The automated render picked up stale renderer objects from another open scene.
 5. Before the PR: EditMode tests pass, the game plays from `Bootstrap` without console errors, and Git LFS tracks the `.blend` and `.fbx` files.
