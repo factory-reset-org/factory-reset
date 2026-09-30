@@ -87,7 +87,7 @@ A read-only struct built by `AgentController` every frame.
 
 **Why not `NavMeshAgent`:** the brains plan their own paths on the grid (GBFS, tactical A*, intercepts). A `NavMeshAgent` would replan on its own and fight those decisions, and the Captain's timing maths needs the agent to walk exactly the route it was given.
 
-**Not built yet:** path smoothing (string pulling, then Catmull-Rom), blending into a new path on replan, the path request scheduler, and grid cells in the context.
+**Not built yet:** switching path smoothing on in the body (the smoother itself is built; see Path smoothing under Search contracts), blending into a new path on replan, the path request scheduler, and grid cells in the context.
 
 **Tests:** `MockPathProviderTests` (8 EditMode tests), and the `Scenes/Test/Test_PathFollower` scene (step, ramp and drop) and `Scenes/Test/Test_AgentSpawner` scene (all four types patrolling).
 
@@ -148,6 +148,41 @@ A one-to-all search: after one `Compute(source, costModel, maxCost)`, `Cost(cell
 - blocked cells and corner-cutting are respected;
 - the bound stops the search;
 - a recompute allocates 0 bytes.
+
+### 3.2 Path smoothing: `GridLineCheck` and `PathSmoother` (S4, implemented)
+
+A brain's path has one waypoint per cell centre, so walking it directly gives a 45-degree staircase and a sharp turn at every corner. Smoothing runs in two stages, both pure C# in AI Core:
+
+```text
+brain path (cell centres) ──StringPull──▶ turning points only ──CatmullRom──▶ rounded route ──▶ AgentPathFollower
+```
+
+**`GridLineCheck.IsWalkable(grid, from, to)`**: can an agent walk in a straight line from A to B?
+
+- Traces the segment through every cell it touches (a supercover line, using the Amanatides and Woo traversal) and requires each cell to be traversable. Closed doors and off-grid cells block it.
+- A line through a cell corner is treated as a diagonal step, so both side cells must be traversable. That is the grid's own no-corner-cutting rule, so a line accepted here is never a move A* would forbid.
+- Ignores world height; allocates nothing.
+
+**`PathSmoother.StringPull(grid, path, result)`**: keeps only the waypoints where the route must turn.
+
+- From each kept point it skips ahead while the straight line stays walkable, then keeps the last reachable point and carries on from there. Each waypoint is tested once.
+- **Invariant:** every segment of the result is either a step of the original path or a line that passed `GridLineCheck`, so it never crosses a cell the original route avoided. The kept points are a subset of the original in order, so the route is never longer.
+
+**`PathSmoother.CatmullRom(grid, path, result, spacing)`**: rounds the corners.
+
+- A centripetal Catmull-Rom spline (alpha = 0.5) through every waypoint, sampled about every 0.5 m (one cell). Centripetal spacing never forms loops or cusps and overshoots less at sharp corners than the uniform version.
+- The ends use mirrored phantom points, so the route leaves the start and reaches the goal in a straight line.
+- **Safety fallback:** each span is sampled and every sampled piece must pass `GridLineCheck`. If the curve would enter a blocked cell (a tight turn round the end of a wall), that span stays straight. The invariant above still holds.
+
+Both write into a caller-owned list and allocate nothing once it has capacity.
+
+**Why the grid and not a NavMesh raycast:** the brains plan on the grid, so checking lines on the same grid keeps smoothing consistent with their plans, including closed doors, and it can be tested in EditMode without a scene or a baked NavMesh.
+
+**Tests:** `GridLineCheckTests` (12) and `PathSmootherTests` (17), including:
+- on random grids, every one-cell line agrees with the grid's neighbour rule, and lines are symmetric;
+- on 100 random A* paths, string pulling keeps the same ends, walkable segments, original points in order and a length no longer than the original;
+- on 100 random A* paths, string pulling then curving leaves every piece walkable;
+- smoothing and curving into a reused list allocate 0 bytes.
 
 ## 4. Grid
 <!-- Cell size, connectivity, GridChange events, Version -->
@@ -223,6 +258,7 @@ All three live in `Scripts/Interfaces/`, so code in every scene can use them. Th
 | 2026-09-29 | Freeze the greybox hierarchy in §8 once S4 accepts it; later detail meshes may only be added beneath frozen nodes | Allow renames during final modelling | Animation clips bind to hierarchy paths | S3 (accepted by S4 on 2026-09-30) |
 | 2026-09-29 | Guard treads stay rigid assemblies under their pivots | Road wheels with individual pivots | The reference draws the treads as boxes and lists no tread animation; a scrolling tread material can suggest rolling later | S3 (S4 informed on 2026-09-30) |
 | 2026-09-30 | Accept the greybox model hierarchy as the animation contract, after checking every model node by node | Record clips first and fix broken paths later | A clip bound to a renamed or moved node silently stops animating it, so the paths must be fixed before the first clip. The check compared each `.blend` source and FBX export against the greybox model contract (see its acceptance check) | S4 |
+| 2026-09-30 | Smooth paths in two stages: string pulling with a grid line check, then a centripetal Catmull-Rom spline that falls back to straight near walls | NavMesh raycasts for the line check; a uniform Catmull-Rom spline; Bézier corner rounding | The line check uses the same grid and corner rule as A*, so smoothing can never allow a move the brain's search forbade, and it is testable without a scene. Centripetal splines have no loops or cusps and pass through every waypoint; the straight fallback keeps the curve out of walls | S4 |
 
 ## 8. Greybox character model contract (S3)
 
