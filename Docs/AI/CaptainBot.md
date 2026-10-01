@@ -175,7 +175,7 @@ The prior `P(g)` is split between goal categories first, then shared equally ins
 
 ### Numerical safety
 
-Before taking the exponent, subtract the smallest `D(g)` from every goal's detour. This does not change the normalised result, but it keeps `exp` away from underflow when every goal has a large detour.
+The weights are computed in log space: `log w(g) = log P(g) − β·D(g)`. Before taking the exponent, the largest log-weight is subtracted from every goal's log-weight. This does not change the normalised result, because it multiplies every weight by the same constant, but it gives the most likely goal a weight of exactly 1. The sum is therefore at least 1 and can never underflow to 0, even when every goal has a huge detour (`e^(−0.5 · 1000)` is far below the smallest float). Subtracting the log-weight rather than only the smallest detour also stays correct when the priors differ.
 
 ### Intercept point selection
 
@@ -222,19 +222,19 @@ Once confidence ≥ 0.5, the Captain picks where to wait.
 | Case | Handling | Test |
 | --- | --- | --- |
 | Two goals nearly equally likely (top two within 0.1) | Look for a chokepoint shared by both predicted routes and ambush there. If none exists, stay in Observe. | `Intercept_TwoCloseGoals_PicksSharedChokepoint` |
-| Player standing still | Every detour is 0, so the posterior equals the prior. The Captain keeps its current plan and does not replan. | `Inference_StationaryPlayer_ReturnsPrior` |
+| Player standing still | Every detour is 0, so the posterior equals the prior. The Captain keeps its current plan and does not replan. | `GoalInferenceTests.StandingStillGivesThePrior` |
 | Player too close to `g*` (no cell passes the 1 s margin) | Go straight to `g*` and defend it. | `Intercept_NoQualifyingCell_DefendsGoal` |
 | Player reaches `g*` | Remove `g*` from the candidate set and re-predict (Reassess). | `Inference_GoalReached_RemovedFromCandidates` |
 | Route blocked by a pushed box or closed door | Recompute only the fields containing a changed cell, then re-run the prediction. If the intercept cell is blocked, Reassess. | `Field_AfterBlock_MatchesFreshCompute` |
-| Goal unreachable (walled off) | Its field cost is infinite, so it is left out of the candidate set. | `Inference_UnreachableGoal_Excluded` |
-| All goals unreachable, or no active goals | No prediction: stay in Observe and keep distance from the player. | `Inference_NoCandidates_ConfidenceZero` |
-| Player's cell 5 s ago not available yet (game start, respawn) | Use the oldest recorded cell. With fewer than 2 samples, stay in Observe. | `Inference_ShortHistory_StaysObserve` |
-| Player off the grid (jumping, standing on a box) | Snap to the nearest traversable cell before looking up field costs. | `Inference_OffGridPlayer_SnapsToNearestCell` |
+| Goal unreachable (walled off) | Its field cost is infinite, so it is left out of the candidate set. | `GoalInferenceTests.UnreachableGoalIsLeftOut` |
+| All goals unreachable, or no active goals | No prediction: stay in Observe and keep distance from the player. | `GoalInferenceTests.NoGoalsGivesNoPrediction` |
+| Player's cell 5 s ago not available yet (game start, respawn) | Use the oldest recorded cell. With fewer than 2 samples, stay in Observe. | `PlayerTrackTests.ShortHistoryFallsBackToTheOldestSample`, `PlayerTrackTests.FewerThanTwoSamplesGivesNoPast` |
+| Player off the grid (jumping, standing on a box) | Snap to the nearest traversable cell before looking up field costs. | `GoalInferenceTests.PlayerOnABlockedCellIsSnappedToANearbyWalkableCell` |
 | Chosen ambush cell reserved by another agent | Take the next qualifying chokepoint on the route. | `Intercept_ReservedCell_SkipsToNext` |
 | Captain stunned mid-intercept | Release the reserved cell. On recovery, go to Reassess, because the old prediction is stale. | PlayMode check in `Test_FourAgentsStress` |
 | Player missing or dead | No inference; the brain returns an empty intent and waits. | `Brain_NoPlayer_ReturnsIdleIntent` |
-| Task completes and its target leaves `ObjectiveTargets` mid-intercept | Drop that goal's field, renormalise the remaining goals, and re-predict on the next tick (Reassess if it was `g*`). | `Inference_GoalRemoved_Renormalises` |
-| New chapter adds new task targets | Build their fields lazily, add them to the candidate set with the task share, and renormalise. | `Inference_GoalAdded_FieldBuiltOnce` |
+| Task completes and its target leaves `ObjectiveTargets` mid-intercept | Drop that goal's field, renormalise the remaining goals, and re-predict on the next tick (Reassess if it was `g*`). | `GoalInferenceTests.RemovingAGoalDropsItsFieldAndRenormalises` |
+| New chapter adds new task targets | Build their fields lazily, add them to the candidate set with the task share, and renormalise. | `GoalInferenceTests.EachGoalFieldIsBuiltOnceUntilTheGridChanges` |
 | Still Dormant | Ignore every stimulus and return an empty intent until the wake signal. | `Brain_Dormant_IgnoresPlayerUntilWake` |
 | Chapter 3 cutscene skipped | The skip fires every Critical signal not yet reached, so the wake signal still arrives. | PlayMode check in `Test_CutsceneSkip` |
 | Cutscene or pause starts mid-intercept | The brain is not ticked. Game-time timers resume from the same values afterwards. | PlayMode check in `Test_CutsceneSkip` |
@@ -253,17 +253,20 @@ EditMode tests run without a scene, which also proves the brain is decoupled fro
 | Bounded field stops at the max cost | The bound limits work as intended |
 | Recomputing after a blocking change matches a fresh field | Incremental updates are correct |
 
-**Goal inference**
+**Goal inference** (implemented: `GoalInferenceTests`, `GoalPriorsTests`, `PlayerTrackTests`)
 
 | Test | What it proves |
 | --- | --- |
-| Straight line towards goal A gives `P(A) > 0.8` within 3 s | The prediction becomes confident on a clear route |
-| Detour cost is 0 on an optimal route | The bracket term is computed correctly |
-| Worked example gives `P(A) ≈ 0.84, P(B) ≈ 0.11, P(C) ≈ 0.04` | The code matches the maths in this document |
-| Posteriors always sum to 1 | Normalisation is correct |
-| Removing a goal renormalises the remaining probabilities to sum to 1 | Goals can come and go as tasks complete |
-| Category priors follow the table (tasks 0.60, switches 0.25, console 0.15, batteries only below 30% ammo) | The category priors are implemented as documented |
-| Very large detours do not produce NaN or zeros everywhere | The underflow guard works |
+| `WalkingStraightAtAGoalIsConfidentWithinThreeSeconds` | The prediction becomes confident on a clear route |
+| `DetourIsZeroOnAnOptimalRoute` | The bracket term is computed correctly: 0 m towards the goal, 6 m after walking 12 cells away from the other |
+| `WorkedExampleFromTheDesignDocument` | The code matches the maths in this document: 0.84 / 0.11 / 0.04 |
+| `PosteriorsSumToOneOnRandomGrids` | Normalisation is correct, with no NaN, on 50 random grids |
+| `RemovingAGoalDropsItsFieldAndRenormalises` | Goals can come and go as tasks complete |
+| `EachGoalFieldIsBuiltOnceUntilTheGridChanges` | Fields are built lazily and cached, and rebuilt only when the grid changes |
+| `GoalPriorsTests` (9 tests) | The category priors follow the table, including the final-chapter 0.55 / 0.45 example and batteries only below 30% ammo |
+| `HugeDetoursDoNotUnderflowToNaN` | The underflow guard works |
+| `PlayerTrackTests` (9 tests) | The 5 s window, the short-history fallback and the ring buffer |
+| `RepeatedUpdatesAllocateZeroBytes` | A 2 Hz update allocates nothing once the fields exist |
 
 **Intercept planner**
 
@@ -283,5 +286,28 @@ EditMode tests run without a scene, which also proves the brain is decoupled fro
 
 Edge-case tests are listed in the table above.
 
+## Implementation status
+
+| Part | Code | Status |
+| --- | --- | --- |
+| Distance fields | `AI/Core/Search/DijkstraField` | Implemented, 20 tests |
+| Candidate goals and priors | `Captain/CandidateGoal`, `GoalCategory`, `GoalPriors` | Implemented, 9 tests |
+| Player history (5 s window) | `Captain/PlayerTrack` | Implemented, 9 tests |
+| Goal inference | `Captain/GoalInference` | Implemented, 13 tests |
+| Intercept planner | | Planned |
+| `CaptainBrain` states and transitions | | Planned |
+| `PredictedGoal` on the blackboard | | Planned (with the brain) |
+
+**How the implemented parts fit together:** each 2 Hz decision tick, the brain records the player's cell in `PlayerTrack`, takes the cell from about 5 s ago with `TryGetPast`, and calls `GoalInference.Update` with the current candidate goals. `Update` computes the category priors, looks up each goal's cached field and returns the posteriors, the most likely goal and the confidence.
+
 ## Measured results
 <!-- Numbers from AIPerformanceLog.md -->
+
+**Prediction speed (EditMode scenario, not yet measured in game):** three task goals to the east, north and west of the player, on an open 40 × 40 grid. The player walks east at 3 m/s and is sampled at 2 Hz. Output of `WalkingStraightAtAGoalIsConfidentWithinThreeSeconds` (2026-10-01):
+
+| Time | P(east) | P(north) | P(west) | Captain state |
+| --- | --- | --- | --- | --- |
+| 0.5 s | 0.637 | 0.221 | 0.142 | Intercept threshold (0.5) reached |
+| 1.0 s | 0.855 | 0.102 | 0.043 | Above the 0.8 test target |
+
+The prediction is confident after 1.0 s, well inside the 3 s requirement. The north goal keeps more probability than the west goal because walking east costs less detour towards north than towards west. These values match the formula worked by hand to two decimal places. In-game accuracy runs replace them once the level exists.
