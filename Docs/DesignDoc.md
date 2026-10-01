@@ -261,6 +261,7 @@ All three live in `Scripts/Interfaces/`, so code in every scene can use them. Th
 | 2026-09-30 | Smooth paths in two stages: string pulling with a grid line check, then a centripetal Catmull-Rom spline that falls back to straight near walls | NavMesh raycasts for the line check; a uniform Catmull-Rom spline; Bézier corner rounding | The line check uses the same grid and corner rule as A*, so smoothing can never allow a move the brain's search forbade, and it is testable without a scene. Centripetal splines have no loops or cusps and pass through every waypoint; the straight fallback keeps the curve out of walls | S4 |
 | 2026-10-01 | Keep the `ResponseCurve` library in `Scripts/AI/Agents/Saboteur/`, although the v2 responsibilities matrix lists it under AI Core | Move it to `AI/Core` | Only the Saboteur uses it, so keeping it beside its users avoids a shared dependency and any change to AI Core. It moves only if another agent needs it and the team agrees | S3 |
 | 2026-10-01 | Propose, for S2's review, a Saboteur-owned `ICostModel` that returns infinity for a door's cells to cost a hypothetical closure, treating an infinite total as a lockout; the live grid is never mutated | Mutate and restore the live grid; clone the grid per door | `ICostModel` only requires at least the base cost, so infinity is allowed, and nothing shared changes. Status: proposed, awaiting S2 (including how `AStarSearch` handles an infinite step) | S3 (proposed) |
+| 2026-10-02 | Unit 047 blockout: legs under the root, body, head, arms, blaster and key as rigid parts with pivots at joints; one `Eyes` mesh with its own material; decal carrier plates built in now | Legs under the body pivot; separate eye meshes; add decal plates later | Planted legs let the body sway without foot sliding; one eye material is one switch for eyes on/off; plates now mean the final decals never change the hierarchy S4 animates. Sized so its eyes meet the Guard's visor (1.91 m): the hero should read as an equal of the robots it fights, not a small prop. A 1.57 m first version read as smaller than the Saboteur, and a 2.20 m second version still sat below the Guard's eye line. Proposed, awaiting S4's acceptance (§8.11) | S3 (proposed) |
 
 ## 8. Greybox character model contract (S3)
 
@@ -385,7 +386,7 @@ Validated on all four models with Blender 5.2 and Unity 6000.6.2f1:
 ### 8.9 ModelShowcase
 
 - The models stay at neutral rotation, and the orthographic camera views them from the +Z side.
-- Framing is intended for 16:9. The visual order, left to right, is TrackerToy, SaboteurBot, GuardBot, CaptainBot.
+- Framing is intended for 16:9. The visual order, left to right, is TrackerToy, SaboteurBot, GuardBot, CaptainBot, Unit047, at x = 4.85, 2.65, 0.2, -2.6 and -5.0 so all five fit the orthographic frame (size 3.3).
 - The scene is excluded from the build settings.
 
 ### 8.10 Open handoff items
@@ -393,5 +394,32 @@ Validated on all four models with Blender 5.2 and Unity 6000.6.2f1:
 1. ~~S4 accepts the §8 hierarchy, explicitly including the Captain `UpperLeg_*`/`LowerLeg_*` paths, before recording clips.~~ Done: accepted by S4 on 2026-09-30 after the acceptance check above.
 2. ~~S4 is told the Guard uses rigid tread assemblies rather than road-wheel articulation.~~ Done: acknowledged by S4. Tread motion will be a scrolling material, not animated pivots.
 3. ~~S4 is told the §8.7 motion limits.~~ Done: acknowledged by S4. Clips stay within these limits.
-4. Someone opens ModelShowcase fresh in Unity at 16:9 for a clean lit check. The automated render picked up stale renderer objects from another open scene.
+4. ~~Someone opens ModelShowcase fresh in Unity at 16:9 for a clean lit check.~~ Done 2026-10-02: the scene was opened on its own and its camera rendered at 1600 x 900; all five models are inside the frame.
 5. Before the PR: EditMode tests pass, the game plays from `Bootstrap` without console errors, and Git LFS tracks the `.blend` and `.fbx` files.
+6. S4 accepts the §8.11 Unit 047 hierarchy before recording any Unit 047 clip. Until then it may still change.
+7. S2 confirms Unit 047's eye height (1.91 m, level with the Guard's visor) against the first-person camera height, so cutscene cuts to and from gameplay line up.
+
+### 8.11 Unit047 (blockout, proposed)
+
+Status: blockout delivered 2026-10-02 for S4's review; **not yet accepted or frozen**. Cutscene-only hero model (Full Plan v5 §10.3, §11.3): S4 animates idle sway, head turn, key spin and eyes on/off. Budget < 2,500 triangles; the blockout is 760. Same conventions as §8.1, exported with §8.8.
+
+```text
+Unit047_Root                             origin, between the feet
+├─ Leg_{L,R}_Pivot → Leg_*, Foot_*       (∓0.20, 0.77, 0) hips; legs stay planted while the body sways
+└─ Body_Pivot                            (0, 0.77, 0) waist: idle sway and bob
+   ├─ Pelvis, Torso
+   ├─ Chest_Tag, Sticker                 non-animated decal carriers (047 tag, DEFECTIVE sticker)
+   ├─ Head_Pivot                         (0, 1.571, 0) neck base: head turn
+   │  └─ Neck, Head, Visor, Eyes, Antenna_Stem, Antenna_Bulb
+   ├─ Arm_L_Pivot                        (-0.431, 1.478, 0) shoulder
+   │  └─ ShoulderBall_L, Arm_L, Hand_L
+   ├─ Arm_R_Pivot                        (0.431, 1.478, 0) shoulder
+   │  ├─ ShoulderBall_R, Arm_R, Hand_R
+   │  └─ Blaster_Pivot → Blaster_Body, Blaster_Barrel   (0.431, 0.878, 0) grip, in the right hand
+   └─ WindupKey_Pivot → Key_Shaft, Key_Bar   (0, 1.309, -0.216) key spins about Z
+```
+
+- `Eyes` holds both eyes in one mesh with its own material (`Greybox_Eyes`), so one material property switches them on and off.
+- `Chest_Tag` and `Sticker` are flat plates already in place, so the final decals from the prop atlas need no new nodes.
+- Size 1.05 x 2.42 x 0.94 m (W x H x D). The hero is sized from the Guard's eye line: its eye centre is at 1.91 m and its visor spans 1.83-1.99 m, against the Guard's visor at 1.85-1.96 m (measured from `GuardBot.fbx`). That puts it eye to eye with the Guard, with its head top at 2.13 m (Guard 2.08) and antenna top at 2.42 m (Guard 2.44), while the Captain (3.23 m) stays the tallest and the Tracker and Saboteur stay smaller. The model is one uniform scale (1.54) of the reviewed blockout proportions, so no part changed shape. The prefab variant `Prefabs/Characters/Unit047.prefab` has 24 disabled primitive colliders (spheres on the shoulder balls and antenna bulb, boxes elsewhere) fitted to the meshes and no Rigidbody, like the other characters.
+- Clearance: at rest the inner face of each arm is 3.9 cm from the torso side, so arms swing forward and back (about X) without touching it. Other motion limits have not been measured yet; S4 should report any clipping found while authoring clips.
