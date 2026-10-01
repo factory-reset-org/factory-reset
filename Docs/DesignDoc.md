@@ -304,6 +304,8 @@ TrackerToy_Root                          origin, midway between the axles
 └─ Wheel_{L,R}_{Front,Rear}_Pivot → Wheel_*   (±0.40, 0.16, ±0.355) spin about X
 ```
 
+Final model (2026-10-02): detail was added inside the existing meshes only: pupils in `Eye_L`/`Eye_R`, the nose in `Muzzle`, inner ear discs in `Ear_L`/`Ear_R` (second material slots) and round end loops in `Key_Bar`. No node was added, renamed, reparented or moved, so the tree above and the prefab-variant colliders are unchanged. 1,816 triangles after import; one shared UV layout.
+
 ### 8.4 SaboteurBot
 
 ```text
