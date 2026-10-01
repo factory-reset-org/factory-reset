@@ -20,6 +20,7 @@
 *.prefab merge=unityyamlmerge text eol=lf
 *.mat merge=unityyamlmerge text eol=lf
 *.asset merge=unityyamlmerge text eol=lf
+*.playable merge=unityyamlmerge text eol=lf
 
 # Binary bake output: MUST come after *.asset (later lines win)
 LightingData.asset filter=lfs diff=lfs merge=lfs -text
