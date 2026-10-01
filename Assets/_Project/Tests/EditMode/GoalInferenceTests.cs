@@ -131,6 +131,8 @@ namespace ToyFactory.Tests.EditMode
                     continue;
 
                 inference.Update(goals, past, cell, false, FullAmmo);
+                TestContext.WriteLine($"t = {time:0.0} s   P(east) = {inference.Posterior(0):0.000}   " +
+                    $"P(north) = {inference.Posterior(1):0.000}   P(west) = {inference.Posterior(2):0.000}");
                 if (inference.MostLikelyIndex == 0 && inference.Posterior(0) > 0.8f)
                 {
                     confidentAt = time;
