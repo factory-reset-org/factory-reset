@@ -202,6 +202,39 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | Game time in `AgentContext` | S4 / S2 | `Time.time` today. |
 | Infinite-cost step behaviour in `AStarSearch` | S2 | To be confirmed (see hypothetical closure). |
 
+### Implementation status
+
+| Part | Status | Code and tests |
+| --- | --- | --- |
+| Response curves and curve settings | Implemented | `ResponseCurve`, `SaboteurCurveSettings`; `UtilityCurveTests`, `SaboteurCurveSettingsTests` |
+| Considerations, compensation, selection, momentum, commitment, door cooldown | Implemented | `Consideration`, `UtilityAction`, `ActionSelector`; `UtilityScoringTests`, `ActionSelectorTests` |
+| Brain skeleton: identity, 4 Hz selection, Idle/Patrol, stun, graph changes, destruction | Implemented | `SaboteurIdentity`, `SaboteurBrain`; `SaboteurBrainTests` |
+| CloseDoor, ArmTrap, StealBattery, AttackPlayer, Flee | Not started | Need the blackboard facts in the handoff table |
+| Squad layer, `DetourCache`, keycard drop | Not started | Squad claims build on the brain skeleton |
+
+The skeleton's behaviour:
+
+- **Selection.** At most every 0.25 s of `AgentContext.Time`, the brain rebuilds its candidates and asks `ActionSelector` for a choice. Today the only candidate is Idle/Patrol at 0.1, so the loop is in place before the other actions exist.
+- **Patrol.** Patrol points are given in world space and converted to cells once. Points outside the grid are dropped; a blocked point snaps to the nearest free cell within 2 cells. Routes come from the injected `IPathfinder` with `BaseCostModel`, and are sent once per leg (`Path = null` keeps the current route). An unreachable point is skipped. If no point is reachable the Saboteur holds, and A* is retried only on the next selection pass or grid change, never every tick. With no patrol points it holds in place.
+- **Grid changes.** `OnGraphChanged` replans only when a changed cell lies on the current route.
+- **Stun.** `OnStunned` cancels the current selection and releases this instance's claims. The stun starts on the next tick, because the brain only knows the time inside `Tick`; it sends one stop, then nothing until the stun ends, then plans a fresh route.
+- **Destruction.** `OnDestroyed` releases this instance's claims only (other instances keep theirs) and the brain only ever returns a stop afterwards. There is no reboot.
+
+### Spawn hookup for S4
+
+`AgentSpawner.CreateBrain` (S4's file) still returns `MockPathProvider` for Saboteurs. When the shared grid is available at spawn (S1's `GridManager`), the Saboteur case needs:
+
+```csharp
+new SaboteurBrain(
+    new SaboteurIdentity(agentId, letter),  // unique claim id; letter A-D from the spawn point
+    grid,                                   // the shared GridGraph
+    new AStarSearch(grid),                  // or one shared IPathfinder
+    claims,                                 // the one TargetClaims shared by all four
+    point.GetPatrolPositions());
+```
+
+The spawn point does not yet carry a letter or id, and there is no shared `TargetClaims` instance at runtime; both are listed in the handoff table above. Until then the Saboteurs keep the mock brain, and in-scene behaviour is untested.
+
 ## Architecture rationale
 
 A fixed priority list would select the same action when a door gives no detour or a battery is easier to steal. Behaviour phases organise execution but cannot rank different disruptions. Utility scores make that comparison; logical gates keep it valid and safe. The calculations and rejection reasons can be shown directly in the debug overlay. The Guard and Captain designs are consistency references only; their implementations and shared infrastructure remain with their owners.
