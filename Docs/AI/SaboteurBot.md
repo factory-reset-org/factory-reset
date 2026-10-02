@@ -210,7 +210,8 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | Considerations, compensation, selection, momentum, commitment, door cooldown | Implemented | `Consideration`, `UtilityAction`, `ActionSelector`; `UtilityScoringTests`, `ActionSelectorTests` |
 | Brain skeleton: identity, 4 Hz selection, Idle/Patrol, stun, graph changes, destruction | Implemented | `SaboteurIdentity`, `SaboteurBrain`; `SaboteurBrainTests` |
 | CloseDoor, ArmTrap, StealBattery, AttackPlayer, Flee | Not started | Need the blackboard facts in the handoff table |
-| Squad layer, `DetourCache`, keycard drop | Not started | Squad claims build on the brain skeleton |
+| Squad layer: claim on commit, "not claimed" veto, displacement check, release, attack saturation, tick stagger | Implemented as a standalone class; not yet used by the brain | `SquadCoordinator`; `SquadClaimTests` |
+| `DetourCache`, keycard drop | Not started | Build on the brain skeleton |
 
 The skeleton's behaviour:
 
@@ -220,6 +221,19 @@ The skeleton's behaviour:
 - **Stun.** The controller owns stun timing: it stops the body and does not tick the brain until the reboot. `OnStunned` therefore only cancels the current selection, releases this instance's claims and asks for a fresh route; the brain keeps no stun timer of its own, so a stun lasts exactly as long as the controller says.
 - **Identity.** The brain rejects `default(SaboteurIdentity)`, which would otherwise read as Saboteur A, the keycard carrier.
 - **Destruction.** `OnDestroyed` releases this instance's claims only (other instances keep theirs) and the brain only ever returns a stop afterwards. There is no reboot.
+
+### Squad coordinator
+
+`SquadCoordinator` takes the one shared `TargetClaims` and each instance registers with its `SaboteurIdentity`. It keeps no claim ownership of its own; it only remembers each member's committed action so it can count attackers and check the holder.
+
+- `NotClaimedFactor(agentId, key)` is the "not claimed" consideration: 0 for a CloseDoor, ArmTrap or StealBattery target held by another instance, otherwise 1.
+- `TryCommit(agentId, key, finalScore)` releases the instance's previous claim when the plan changes, then claims the target through `TryClaim` with the final score. Recommitting to the same pair refreshes the score.
+- `CheckOutscored(agentId)`, called before each selection, returns true once when another instance has taken the claim, and drops the member's plan.
+- `EndPlan(agentId)` covers action end, invalidation and stun; `OnDestroyed(agentId)` releases every claim and stops the instance counting as an attacker.
+- `AttackSaturation(agentId)` returns `1.0` for 0-1 other live attackers and `0.45` for 2 or more.
+- `DecisionOffset(letter)` returns 0, 62.5, 125 and 187.5 ms for A-D.
+
+The brain does not use it yet; wiring it into `SaboteurBrain` is the next squad step.
 
 ### Spawn hookup
 
