@@ -258,10 +258,11 @@ All three live in `Scripts/Interfaces/`, so code in every scene can use them. Th
 | 2026-09-29 | Freeze the greybox hierarchy in §8 once S4 accepts it; later detail meshes may only be added beneath frozen nodes | Allow renames during final modelling | Animation clips bind to hierarchy paths | S3 (accepted by S4 on 2026-09-30) |
 | 2026-09-29 | Guard treads stay rigid assemblies under their pivots | Road wheels with individual pivots | The reference draws the treads as boxes and lists no tread animation; a scrolling tread material can suggest rolling later | S3 (S4 informed on 2026-09-30) |
 | 2026-09-30 | Accept the greybox model hierarchy as the animation contract, after checking every model node by node | Record clips first and fix broken paths later | A clip bound to a renamed or moved node silently stops animating it, so the paths must be fixed before the first clip. The check compared each `.blend` source and FBX export against the greybox model contract (see its acceptance check) | S4 |
+| 2026-10-02 | Accept the Unit 047 blockout hierarchy for the cutscene clips, after the same node-by-node check as the four robots | Wait for the final model before accepting | The clips (idle sway, head turn, key spin, eyes on/off) bind to node paths, and S3 can only finish the model safely once the paths are frozen. Accepting the blockout now lets both sides work in parallel | S4 |
 | 2026-09-30 | Smooth paths in two stages: string pulling with a grid line check, then a centripetal Catmull-Rom spline that falls back to straight near walls | NavMesh raycasts for the line check; a uniform Catmull-Rom spline; Bézier corner rounding | The line check uses the same grid and corner rule as A*, so smoothing can never allow a move the brain's search forbade, and it is testable without a scene. Centripetal splines have no loops or cusps and pass through every waypoint; the straight fallback keeps the curve out of walls | S4 |
 | 2026-10-01 | Keep the `ResponseCurve` library in `Scripts/AI/Agents/Saboteur/`, although the v2 responsibilities matrix lists it under AI Core | Move it to `AI/Core` | Only the Saboteur uses it, so keeping it beside its users avoids a shared dependency and any change to AI Core. It moves only if another agent needs it and the team agrees | S3 |
 | 2026-10-01 | Propose, for S2's review, a Saboteur-owned `ICostModel` that returns infinity for a door's cells to cost a hypothetical closure, treating an infinite total as a lockout; the live grid is never mutated | Mutate and restore the live grid; clone the grid per door | `ICostModel` only requires at least the base cost, so infinity is allowed, and nothing shared changes. Status: proposed, awaiting S2 (including how `AStarSearch` handles an infinite step) | S3 (proposed) |
-| 2026-10-02 | Unit 047 blockout: legs under the root, body, head, arms, blaster and key as rigid parts with pivots at joints; one `Eyes` mesh with its own material; decal carrier plates built in now | Legs under the body pivot; separate eye meshes; add decal plates later | Planted legs let the body sway without foot sliding; one eye material is one switch for eyes on/off; plates now mean the final decals never change the hierarchy S4 animates. Sized so its eyes meet the Guard's visor (1.91 m): the hero should read as an equal of the robots it fights, not a small prop. A 1.57 m first version read as smaller than the Saboteur, and a 2.20 m second version still sat below the Guard's eye line. Proposed, awaiting S4's acceptance (§8.11) | S3 (proposed) |
+| 2026-10-02 | Unit 047 blockout: legs under the root, body, head, arms, blaster and key as rigid parts with pivots at joints; one `Eyes` mesh with its own material; decal carrier plates built in now | Legs under the body pivot; separate eye meshes; add decal plates later | Planted legs let the body sway without foot sliding; one eye material is one switch for eyes on/off; plates now mean the final decals never change the hierarchy S4 animates. Sized so its eyes meet the Guard's visor (1.91 m): the hero should read as an equal of the robots it fights, not a small prop. A 1.57 m first version read as smaller than the Saboteur, and a 2.20 m second version still sat below the Guard's eye line. Accepted by S4 on 2026-10-02 after a node-by-node check | S3 (accepted by S4 on 2026-10-02) |
 
 ## 8. Greybox character model contract (S3)
 
@@ -396,12 +397,12 @@ Validated on all four models with Blender 5.2 and Unity 6000.6.2f1:
 3. ~~S4 is told the §8.7 motion limits.~~ Done: acknowledged by S4. Clips stay within these limits.
 4. ~~Someone opens ModelShowcase fresh in Unity at 16:9 for a clean lit check.~~ Done 2026-10-02: the scene was opened on its own and its camera rendered at 1600 x 900; all five models are inside the frame.
 5. Before the PR: EditMode tests pass, the game plays from `Bootstrap` without console errors, and Git LFS tracks the `.blend` and `.fbx` files.
-6. S4 accepts the §8.11 Unit 047 hierarchy before recording any Unit 047 clip. Until then it may still change.
+6. ~~S4 accepts the §8.11 Unit 047 hierarchy before recording any Unit 047 clip. Until then it may still change.~~ Done: accepted by S4 on 2026-10-02 after the Unit 047 acceptance check.
 7. S2 confirms Unit 047's eye height (1.91 m, level with the Guard's visor) against the first-person camera height, so cutscene cuts to and from gameplay line up.
 
-### 8.11 Unit047 (blockout, proposed)
+### 8.11 Unit047 (blockout, accepted)
 
-Status: blockout delivered 2026-10-02 for S4's review; **not yet accepted or frozen**. Cutscene-only hero model (Full Plan v5 §10.3, §11.3): S4 animates idle sway, head turn, key spin and eyes on/off. Budget < 2,500 triangles; the blockout is 760. Same conventions as §8.1, exported with §8.8.
+Status: blockout delivered 2026-10-02 and **accepted by S4 on 2026-10-02**; the hierarchy is now frozen under the same freeze rule as the other characters. Cutscene-only hero model (Full Plan v5 §10.3, §11.3): S4 animates idle sway, head turn, key spin and eyes on/off. Budget < 2,500 triangles; the blockout is 760. Same conventions as §8.1, exported with §8.8.
 
 ```text
 Unit047_Root                             origin, between the feet
@@ -423,3 +424,13 @@ Unit047_Root                             origin, between the feet
 - `Chest_Tag` and `Sticker` are flat plates already in place, so the final decals from the prop atlas need no new nodes.
 - Size 1.05 x 2.42 x 0.94 m (W x H x D). The hero is sized from the Guard's eye line: its eye centre is at 1.91 m and its visor spans 1.83-1.99 m, against the Guard's visor at 1.85-1.96 m (measured from `GuardBot.fbx`). That puts it eye to eye with the Guard, with its head top at 2.13 m (Guard 2.08) and antenna top at 2.42 m (Guard 2.44), while the Captain (3.23 m) stays the tallest and the Tracker and Saboteur stay smaller. The model is one uniform scale (1.54) of the reviewed blockout proportions, so no part changed shape. The prefab variant `Prefabs/Characters/Unit047.prefab` has 24 disabled primitive colliders (spheres on the shoulder balls and antenna bulb, boxes elsewhere) fitted to the meshes and no Rigidbody, like the other characters.
 - Clearance: at rest the inner face of each arm is 3.9 cm from the torso side, so arms swing forward and back (about X) without touching it. Other motion limits have not been measured yet; S4 should report any clipping found while authoring clips.
+
+**Acceptance check (S4, 2026-10-02).** `Blender/Unit047.blend` was loaded read-only in Blender 5.2 and compared with the tree above:
+
+- **Names and parents:** all 33 nodes and their parents match the tree.
+- **Pivot positions:** every pivot sits at the listed position, converted to Unity axes (Unity x, y, z = Blender x, z, y): legs (∓0.20, 0.77, 0), body (0, 0.77, 0), head (0, 1.571, 0), arms (∓0.431, 1.478, 0), blaster (0.431, 0.878, 0), wind-up key (0, 1.309, −0.216).
+- **Transforms:** every node has rotation 0, scale 1, no delta transforms and an identity parent-inverse matrix.
+- **Size and budget:** 1.05 × 2.42 × 0.94 m, lowest geometry at y = 0, 760 triangles.
+- **Details the clips rely on:** the eye centre is at 1.91 m; `Eyes` is one mesh on its own `Greybox_Eyes` material; each arm's inner face is 3.9 cm from the torso.
+- **Export:** `Assets/_Project/Models/Unit047/Unit047.fbx` contains exactly the same 33 node names.
+- **Facing:** in a front view the visor and eyes face forward, and the blaster is in the character's right hand.
