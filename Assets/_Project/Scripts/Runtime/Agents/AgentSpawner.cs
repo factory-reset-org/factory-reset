@@ -74,16 +74,22 @@ namespace ToyFactory.Runtime.Agents
             }
 
             float feetToPivot = FeetToPivotHeight(agentPrefab);
+            var usedSquadSlots = new HashSet<(AgentType, int)>();
 
             foreach (SpawnPoint point in GetComponentsInChildren<SpawnPoint>())
             {
+                // Ids are given out in spawn order, so they are unique without anyone typing them.
+                var identity = new AgentIdentity(point.AgentType, _spawned.Count, point.SquadIndex);
+                if (identity.IsInSquad && !usedSquadSlots.Add((identity.Type, identity.SquadIndex)))
+                    Debug.LogError($"Two {identity.Type} spawn points use squad slot {identity.SquadLetter}; each slot must be used once.", point);
+
                 // Spawn points mark where the agent's feet go; the prefab's pivot is higher up.
                 Vector3 position = point.transform.position + Vector3.up * feetToPivot;
 
                 // Parented under the spawner so agents stay in the Agents scene when scenes load additively.
                 AgentController agent = Instantiate(agentPrefab, position, point.transform.rotation, transform);
-                agent.name = $"{point.AgentType}_{_spawned.Count}";
-                agent.Initialise(point.AgentType, CreateBrain(point), _blackboard);
+                agent.name = identity.ToString();
+                agent.Initialise(identity, CreateBrain(point, identity), _blackboard);
                 _spawned.Add(agent);
             }
         }
@@ -91,8 +97,10 @@ namespace ToyFactory.Runtime.Agents
         /// <summary>
         /// Builds the brain for a spawn point's agent type. Every type uses the mock brain
         /// until its owner's real brain exists; each owner replaces only their own case.
+        /// <paramref name="identity"/> carries the agent's unique id (use it as the target
+        /// claim owner) and its squad slot (Saboteurs: 0-3 = A-D).
         /// </summary>
-        static IAgentBrain CreateBrain(SpawnPoint point)
+        static IAgentBrain CreateBrain(SpawnPoint point, AgentIdentity identity)
         {
             switch (point.AgentType)
             {

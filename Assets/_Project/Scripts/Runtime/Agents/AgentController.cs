@@ -30,7 +30,10 @@ namespace ToyFactory.Runtime.Agents
         public string DebugState { get; private set; } = string.Empty;
 
         /// <inheritdoc/>
-        public AgentType Type { get; private set; }
+        public AgentIdentity Identity { get; private set; }
+
+        /// <inheritdoc/>
+        public AgentType Type => Identity.Type;
 
         /// <inheritdoc/>
         public float Speed => _follower.CurrentSpeed;
@@ -53,12 +56,12 @@ namespace ToyFactory.Runtime.Agents
         }
 
         /// <summary>
-        /// Gives this agent its type, its brain and the shared world blackboard. Called once
-        /// by the spawner, so nothing has to be looked up at runtime.
+        /// Gives this agent its identity, its brain and the shared world blackboard. Called
+        /// once by the spawner, so nothing has to be looked up at runtime.
         /// </summary>
-        public void Initialise(AgentType type, IAgentBrain brain, WorldBlackboard blackboard)
+        public void Initialise(AgentIdentity identity, IAgentBrain brain, WorldBlackboard blackboard)
         {
-            Type = type;
+            Identity = identity;
             _brain = brain ?? throw new ArgumentNullException(nameof(brain));
             _blackboard = blackboard ?? throw new ArgumentNullException(nameof(blackboard));
         }
