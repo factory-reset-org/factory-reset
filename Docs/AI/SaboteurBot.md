@@ -215,25 +215,26 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 The skeleton's behaviour:
 
 - **Selection.** At most every 0.25 s of `AgentContext.Time`, the brain rebuilds its candidates and asks `ActionSelector` for a choice. Today the only candidate is Idle/Patrol at 0.1, so the loop is in place before the other actions exist.
-- **Patrol.** Patrol points are given in world space and converted to cells once. Points outside the grid are dropped; a blocked point snaps to the nearest free cell within 2 cells. Routes come from the injected `IPathfinder` with `BaseCostModel`, and are sent once per leg (`Path = null` keeps the current route). An unreachable point is skipped. If no point is reachable the Saboteur holds, and A* is retried only on the next selection pass or grid change, never every tick. With no patrol points it holds in place.
+- **Patrol.** Patrol points are given in world space and converted to cells once. Points outside the grid are dropped; a blocked point snaps to the nearest free cell within 2 cells. A leg counts as finished when the Saboteur is within 0.5 m of its last waypoint on the ground plane, because the body stops up to 0.3 m short and may still be in the previous cell; `AgentContext.Cell` is only used as the start of the next search. Routes come from the injected `IPathfinder` with `BaseCostModel`, and are sent once per leg (`Path = null` keeps the current route). An unreachable point is skipped. If no point is reachable the Saboteur holds, and A* is retried only on the next selection pass or grid change, never every tick. With no patrol points it holds in place.
 - **Grid changes.** `OnGraphChanged` replans only when a changed cell lies on the current route.
-- **Stun.** `OnStunned` cancels the current selection and releases this instance's claims. The stun starts on the next tick, because the brain only knows the time inside `Tick`; it sends one stop, then nothing until the stun ends, then plans a fresh route.
+- **Stun.** The controller owns stun timing: it stops the body and does not tick the brain until the reboot. `OnStunned` therefore only cancels the current selection, releases this instance's claims and asks for a fresh route; the brain keeps no stun timer of its own, so a stun lasts exactly as long as the controller says.
+- **Identity.** The brain rejects `default(SaboteurIdentity)`, which would otherwise read as Saboteur A, the keycard carrier.
 - **Destruction.** `OnDestroyed` releases this instance's claims only (other instances keep theirs) and the brain only ever returns a stop afterwards. There is no reboot.
 
-### Spawn hookup for S4
+### Spawn hookup
 
-`AgentSpawner.CreateBrain` (S4's file) still returns `MockPathProvider` for Saboteurs. When the shared grid is available at spawn (S1's `GridManager`), the Saboteur case needs:
+`AgentSpawner.CreateBrain(point, identity)` now receives an `AgentIdentity` (spawn-order id and squad index), and its Saboteur case is S3's to replace. It still returns `MockPathProvider` until the shared grid and claims exist. The Saboteur case will be:
 
 ```csharp
 new SaboteurBrain(
-    new SaboteurIdentity(agentId, letter),  // unique claim id; letter A-D from the spawn point
-    grid,                                   // the shared GridGraph
-    new AStarSearch(grid),                  // or one shared IPathfinder
-    claims,                                 // the one TargetClaims shared by all four
+    new SaboteurIdentity(identity.Id, (SaboteurLetter)identity.SquadIndex),
+    grid,                     // the shared GridGraph (S4's grid-cell branch, using S1's GridManager)
+    pathfinder,               // one shared IPathfinder over that grid
+    claims,                   // the one TargetClaims shared by all four (S2, via the blackboard)
     point.GetPatrolPositions());
 ```
 
-The spawn point does not yet carry a letter or id, and there is no shared `TargetClaims` instance at runtime; both are listed in the handoff table above. Until then the Saboteurs keep the mock brain, and in-scene behaviour is untested.
+`SaboteurIdentity` rejects a squad index outside A-D, so a Saboteur spawn point without a squad slot fails loudly instead of becoming a second Saboteur A. The four squad slots are set on the spawn points in `Agents.unity`, which is S4's scene. Until the grid and claims exist the Saboteurs keep the mock brain, and in-scene behaviour is untested.
 
 ## Architecture rationale
 
