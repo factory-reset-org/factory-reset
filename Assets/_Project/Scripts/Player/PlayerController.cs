@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using ToyFactory.Interaction;
 
 namespace ToyFactory.Player
 {
@@ -33,6 +34,12 @@ namespace ToyFactory.Player
         [Header("Grid")]
         [Tooltip("Must match the shared grid's cell size (0.5 m).")]
         [SerializeField] float cellSize = 0.5f;
+
+        [Header("Pushing")]
+        [Tooltip("Force applied to a Pushable box per collision hit. Must clear the " +
+                 "box's static friction (roughly mass * 9.81 * frictionCoefficient) " +
+                 "or it will never start moving.")]
+        [SerializeField] float pushForce = 400f;
 
         CharacterController _controller;
         InputAction _moveAction;
@@ -71,6 +78,24 @@ namespace ToyFactory.Player
             HandleCursorLock();
             Look();
             Move();
+        }
+
+        // Fires once per colliding hit during CharacterController.Move(). Pushes are
+        // only queued here; PushableBox applies them on its own FixedUpdate so a box
+        // never receives force outside the physics step.
+        void OnControllerColliderHit(ControllerColliderHit hit)
+        {
+            if (!hit.collider.CompareTag("Pushable"))
+                return;
+            if (hit.moveDirection.y < -0.3f)
+                return;
+
+            PushableBox box = hit.collider.GetComponent<PushableBox>();
+            if (box == null)
+                return;
+
+            Vector3 direction = new Vector3(hit.moveDirection.x, 0f, hit.moveDirection.z).normalized;
+            box.AddPush(direction * pushForce);
         }
 
         // Locks and hides the cursor so mouse movement only ever reports a look
