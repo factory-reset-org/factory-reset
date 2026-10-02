@@ -26,6 +26,12 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// <summary>Saboteur A carries the chapter keycard and drops it when destroyed.</summary>
         public bool CarriesKeycard => Letter == SaboteurLetter.A;
 
+        /// <summary>
+        /// True when built through the constructor. <c>default(SaboteurIdentity)</c> skips the
+        /// checks and would read as Saboteur A, so brains reject an identity that is not assigned.
+        /// </summary>
+        public bool IsAssigned { get; }
+
         /// <summary>Creates an identity.</summary>
         public SaboteurIdentity(int agentId, SaboteurLetter letter)
         {
@@ -36,6 +42,7 @@ namespace ToyFactory.AI.Agents.Saboteur
 
             AgentId = agentId;
             Letter = letter;
+            IsAssigned = true;
         }
 
         /// <inheritdoc />

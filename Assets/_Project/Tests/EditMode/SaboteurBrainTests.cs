@@ -96,6 +96,39 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void StoppingShortOfTheLastWaypointInThePreviousCellStillCountsAsArrival()
+        {
+            var first = new Vector2Int(5, 0);
+            var second = new Vector2Int(5, 5);
+            SaboteurBrain brain = Brain(first, second);
+            brain.Tick(At(new Vector2Int(0, 0), 0f));
+
+            // The follower stops 0.3 m before the last waypoint, which is inside cell (4, 0).
+            Vector3 stop = _grid.CellToWorld(first) - new Vector3(0.3f, 0f, 0f);
+            Vector2Int stopCell = _grid.WorldToCell(stop);
+            Assert.AreNotEqual(first, stopCell, "The test must stop in the previous cell.");
+
+            AgentIntent next = brain.Tick(new AgentContext(stopCell, stop, Vector3.right, 1f, new WorldBlackboard(), default));
+
+            Assert.IsNotNull(next.Path, "The next leg is planned instead of waiting forever.");
+            Assert.AreEqual(_grid.CellToWorld(stopCell), next.Path[0], "The route starts from the agent's cell.");
+            Assert.AreEqual(_grid.CellToWorld(second), next.Path[next.Path.Count - 1]);
+        }
+
+        [Test]
+        public void FarFromTheLastWaypointKeepsFollowingTheRoute()
+        {
+            SaboteurBrain brain = Brain(new Vector2Int(5, 0), new Vector2Int(5, 5));
+            brain.Tick(At(new Vector2Int(0, 0), 0f));
+
+            Vector3 midway = _grid.CellToWorld(new Vector2Int(3, 0)) + new Vector3(0.1f, 0f, 0f);
+            AgentIntent intent = brain.Tick(new AgentContext(new Vector2Int(3, 0), midway, Vector3.right, 0.5f, new WorldBlackboard(), default));
+
+            Assert.IsNull(intent.Path);
+            Assert.AreEqual(1, _pathfinder.Calls);
+        }
+
+        [Test]
         public void NoPatrolPointsHoldsInPlaceOnce()
         {
             SaboteurBrain brain = Brain();
@@ -194,22 +227,21 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void StunStopsOnceThenWaitsAndResumesWithAFreshRoute()
+        public void FirstTickAfterAStunPlansAFreshRouteWithoutAStunTimerOfItsOwn()
         {
             SaboteurBrain brain = Brain(new Vector2Int(6, 0));
             brain.Tick(At(new Vector2Int(0, 0), 0f));
+            _claims.TryClaim(10, IdentityA.AgentId, 0.6f);
 
+            // The controller does not tick a stunned brain; the next tick is after the reboot.
             brain.OnStunned(2f);
-            AgentIntent stopped = brain.Tick(At(new Vector2Int(2, 0), 1f));
-            AgentIntent stillStunned = brain.Tick(At(new Vector2Int(2, 0), 2.5f));
-            AgentIntent resumed = brain.Tick(At(new Vector2Int(2, 0), 3f));
+            AgentIntent resumed = brain.Tick(At(new Vector2Int(2, 0), 2.1f));
 
-            Assert.AreEqual(0, stopped.Path.Count);
-            Assert.AreEqual("Stunned", stopped.DebugState);
-            Assert.IsNull(stillStunned.Path);
-            Assert.AreEqual("Stunned", stillStunned.DebugState);
             Assert.IsNotNull(resumed.Path);
+            Assert.Greater(resumed.Path.Count, 0);
+            Assert.AreEqual(_grid.CellToWorld(new Vector2Int(2, 0)), resumed.Path[0]);
             Assert.AreEqual("Patrol", resumed.DebugState);
+            Assert.IsNull(_claims.ClaimedBy(10));
         }
 
         [Test]
@@ -263,6 +295,15 @@ namespace ToyFactory.Tests.EditMode
         public void IdentityRejectsANegativeId()
         {
             Assert.Throws<ArgumentOutOfRangeException>(() => new SaboteurIdentity(-1, SaboteurLetter.C));
+        }
+
+        [Test]
+        public void ADefaultIdentityIsRejected()
+        {
+            Assert.IsFalse(default(SaboteurIdentity).IsAssigned);
+            Assert.IsTrue(IdentityA.IsAssigned);
+            Assert.Throws<ArgumentException>(() =>
+                new SaboteurBrain(default, _grid, _pathfinder, _claims, new List<Vector3>()));
         }
 
         [Test]

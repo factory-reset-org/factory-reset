@@ -33,6 +33,12 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// <summary>How far, in cells, a blocked patrol point may be snapped to a free cell.</summary>
         public const int PatrolSnapRadius = 2;
 
+        /// <summary>
+        /// Ground-plane distance, in metres, at which the last waypoint counts as reached.
+        /// The body stops within 0.3 m of it, so a slightly larger radius never misses it.
+        /// </summary>
+        public const float ArrivalRadius = 0.5f;
+
         static readonly ActionKey IdleKey = new ActionKey(SaboteurActionKind.Idle);
 
         readonly SaboteurIdentity _identity;
@@ -53,9 +59,6 @@ namespace ToyFactory.AI.Agents.Saboteur
         // holding; cleared by the next selection pass or any grid change.
         bool _routeRetryWaiting;
 
-        float _pendingStun;
-        float _stunnedUntil = float.NegativeInfinity;
-        bool _stunStopSent;
         bool _destroyed;
 
         /// <summary>Creates a brain for one Saboteur instance.</summary>
@@ -68,6 +71,10 @@ namespace ToyFactory.AI.Agents.Saboteur
         public SaboteurBrain(SaboteurIdentity identity, GridGraph grid, IPathfinder pathfinder,
             TargetClaims claims, IReadOnlyList<Vector3> patrolPoints, SelectorSettings selectorSettings = null)
         {
+            // default(SaboteurIdentity) would otherwise pass as "Saboteur A, the keycard carrier".
+            if (!identity.IsAssigned)
+                throw new ArgumentException("The Saboteur needs an identity from the spawner.", nameof(identity));
+
             _identity = identity;
             _grid = grid ?? throw new ArgumentNullException(nameof(grid));
             _pathfinder = pathfinder ?? throw new ArgumentNullException(nameof(pathfinder));
@@ -102,21 +109,6 @@ namespace ToyFactory.AI.Agents.Saboteur
             if (_destroyed)
                 return Stop("Destroyed");
 
-            if (_pendingStun > 0f)
-            {
-                _stunnedUntil = ctx.Time + _pendingStun;
-                _pendingStun = 0f;
-            }
-
-            if (ctx.Time < _stunnedUntil)
-            {
-                if (_stunStopSent)
-                    return Keep("Stunned");
-
-                _stunStopSent = true;
-                return Stop("Stunned");
-            }
-
             if (ctx.Time >= _nextDecisionTime)
             {
                 _nextDecisionTime = ctx.Time + DecisionInterval;
@@ -124,7 +116,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             }
 
             // Only Idle/Patrol exists so far; later actions branch here on CurrentAction.
-            return Patrol(ctx.Cell);
+            return Patrol(ctx.Cell, ctx.Position);
         }
 
         /// <inheritdoc />
@@ -153,12 +145,12 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// <inheritdoc />
         public void OnStunned(float duration)
         {
-            if (_destroyed || !(duration > 0f))
+            if (_destroyed)
                 return;
 
-            // The stun starts on the next tick, where the game time is known.
-            _pendingStun = Math.Max(_pendingStun, duration);
-            _stunStopSent = false;
+            // The controller has stopped the body and owns the stun timing: it does not tick
+            // this brain until the reboot. So only drop the plan here; the first tick after
+            // the reboot selects and routes afresh.
             _selector.CancelCurrent();
             _claims.Release(_identity.AgentId);
             _needsRoute = true;
@@ -185,12 +177,14 @@ namespace ToyFactory.AI.Agents.Saboteur
             _selector.Select(_candidates, now);
         }
 
-        AgentIntent Patrol(Vector2Int currentCell)
+        AgentIntent Patrol(Vector2Int currentCell, Vector3 position)
         {
             if (_patrolCells.Length == 0)
                 return Hold();
 
-            if (_routeCells != null && currentCell == _routeCells[_routeCells.Count - 1])
+            // Arrival is by distance: the body stops short of the last waypoint, often in the
+            // previous cell, so comparing cells could wait forever. The cell only starts searches.
+            if (_routeCells != null && HasArrived(position))
             {
                 _patrolIndex = (_patrolIndex + 1) % _patrolCells.Length;
                 _needsRoute = true;
@@ -218,6 +212,14 @@ namespace ToyFactory.AI.Agents.Saboteur
             _routeCells = null;
             _routeRetryWaiting = true;
             return Hold();
+        }
+
+        bool HasArrived(Vector3 position)
+        {
+            Vector3 end = _grid.CellToWorld(_routeCells[_routeCells.Count - 1]);
+            float dx = position.x - end.x;
+            float dz = position.z - end.z;
+            return dx * dx + dz * dz <= ArrivalRadius * ArrivalRadius;
         }
 
         bool TryRoute(Vector2Int from, Vector2Int target, out List<Vector2Int> cells)
