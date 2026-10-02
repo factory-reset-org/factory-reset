@@ -23,7 +23,14 @@ namespace ToyFactory.AI.Core
         /// </summary>
         void OnGraphChanged(IReadOnlyList<Vector2Int> changedCells);
 
-        /// <summary>Called when the agent is stunned for <paramref name="duration"/> seconds.</summary>
+        /// <summary>
+        /// Called when the agent is knocked out. The body has already stopped, and
+        /// <see cref="Tick"/> is not called again until the agent reboots, so the controller
+        /// owns the stun timing. Do not start a stun timer of your own: drop the current plan
+        /// (and release anything you should not hold while down), then plan a fresh route on
+        /// the first tick after the reboot.
+        /// </summary>
+        /// <param name="duration">Seconds until the agent reboots, for information only.</param>
         void OnStunned(float duration);
 
         /// <summary>
