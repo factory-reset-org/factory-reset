@@ -66,13 +66,16 @@ A read-only struct built by `AgentController` every frame.
 
 ### 2.4 Runtime wiring (implemented)
 
-- **`SpawnPoint`** (in `Agents.unity`): marks where an agent's feet go, which way it faces, its `AgentType` and optional patrol waypoints. Each type has its own gizmo colour: Tracker yellow, Guard blue, Saboteur green, Captain red.
+- **`SpawnPoint`** (in `Agents.unity`): marks where an agent's feet go, which way it faces, its `AgentType`, its squad slot (0-3 = A-D for the four Saboteurs, -1 otherwise) and optional patrol waypoints. Each type has its own gizmo colour: Tracker yellow, Guard blue, Saboteur green, Captain red.
 - **`AgentSpawner.SpawnAll()`**:
   - Instantiates one body per child spawn point, raised by the CharacterController's feet-to-pivot height so it stands on the floor.
   - Parents each body under the spawner, so agents stay in the Agents scene when scenes load additively.
-  - Builds the brain for that type in `CreateBrain` and passes it with the shared blackboard to `AgentController.Initialise`.
+  - Gives each agent an `AgentIdentity`: its type, a unique `Id` handed out in spawn order (0, 1, 2, ...), and the spawn point's squad slot. Two spawn points of the same type with the same slot log an error.
+  - Names the body after its identity (e.g. `Saboteur B (#3)`), builds the brain in `CreateBrain(point, identity)` and passes the identity, the brain and the shared blackboard to `AgentController.Initialise`.
   - Can only run once. The scene loader calls it after the level exists; test scenes can tick "Spawn On Start".
-- **`CreateBrain`**: every type currently gets `MockPathProvider`, a fake brain that loops a patrol route. Each owner replaces only their own case when their brain is ready.
+- **`CreateBrain`**: every type currently gets `MockPathProvider`, a fake brain that loops a patrol route. Each owner replaces only their own case when their brain is ready, using the identity for anything that must tell instances apart: `identity.Id` as the target-claim owner, `identity.SquadIndex` for the Saboteur letter.
+
+**Why ids are handed out but squad slots are set by hand:** an id only has to be unique, so the spawner generates it and nobody can type a duplicate. The squad slot is a design choice (which spawn room holds Saboteur A, the keycard carrier), so the level designer sets it on the spawn point, and the spawner only checks that no slot is used twice.
 - **`AgentController.Update()`**: builds the context, calls `Tick`, applies the path semantics above, and stores `DebugState`. With no brain it logs one warning and does nothing, instead of throwing every frame.
 
 **Why dependencies are injected at spawn:** no `FindObjectOfType` or `GetComponent` calls in `Update`, so there is no per-frame search cost and no hidden null references. EditMode tests can also create a brain without any scene.
@@ -99,7 +102,8 @@ A read-only view of an agent's body, in `Scripts/Interfaces/`. `AgentController`
 
 | Property | Meaning | Source |
 | --- | --- | --- |
-| `Type` | Tracker, Guard, Saboteur or Captain (`AgentType`, also in `Interfaces`) | The spawn point, passed in through `Initialise` |
+| `Type` | Tracker, Guard, Saboteur or Captain (`AgentType`, also in `Interfaces`) | `Identity.Type` |
+| `Identity` | `AgentIdentity`: type, unique `Id` and `SquadIndex` (`SquadLetter` gives A-D). Fixed for the agent's life | The spawner, through `Initialise` |
 | `Speed` | Ground speed in m/s | `AgentPathFollower.CurrentSpeed` |
 | `TurnRate` | Degrees per second, positive = turning right | `AgentPathFollower.TurnRate` |
 | `IsAttacking` | True while the brain's action is `Shoot` | The latest `AgentIntent` |
