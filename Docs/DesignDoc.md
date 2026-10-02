@@ -35,7 +35,7 @@ A read-only struct built by `AgentController` every frame.
 
 | Field | Meaning | Current source |
 | --- | --- | --- |
-| `Cell` | Agent's grid cell | Always `(0, 0)` until the controller is connected to the grid |
+| `Cell` | Agent's grid cell, for starting searches. **Not an arrival test** (see below) | Always `(0, 0)` until the controller is connected to the grid |
 | `Position`, `Forward` | Agent's world position and facing | The agent's transform |
 | `Time` | Seconds since the game started | `Time.time` |
 | `World` | Shared `WorldBlackboard` (read-only for brains) | One instance created by `AgentSpawner` |
@@ -53,24 +53,29 @@ A read-only struct built by `AgentController` every frame.
 
 **Why `null` and an empty list mean different things:** most ticks a brain has no new route, so returning `null` costs nothing and lets the body keep walking. Stopping on purpose is a separate, explicit answer.
 
+**Check arrival by distance, not by cell.** The body counts a waypoint as reached within 0.3 m on the ground plane and stops after the last one. Half a cell is only 0.25 m, so after a straight final step the agent stands in the cell *before* the last one. A brain that waits for `Cell` to equal its last route cell would wait forever, with the body already stopped. Compare `Position` with the last waypoint instead, on the ground plane, with a radius of at least the body's 0.3 m (`MockPathProvider` uses exactly 0.3 m; a little more, such as 0.5 m, leaves a safety margin). The body may also smooth the route, so intermediate cells are not guaranteed either.
+
 ### 2.3 The brain interface: `IAgentBrain`
 
 | Method | When it is called |
 | --- | --- |
 | `AgentIntent Tick(in AgentContext ctx)` | Every frame, by `AgentController` |
 | `OnGraphChanged(IReadOnlyList<Vector2Int> changedCells)` | When a door or box changes the grid. Brains replan only if a changed cell affects them |
-| `OnStunned(float duration)` | When `AgentController.Disable` knocks the agent out, with the time left until it reboots. The body has stopped, so the brain sends a new path on its first tick afterwards |
+| `OnStunned(float duration)` | When `AgentController.Disable` knocks the agent out, with the time left until it reboots. The body has stopped and **the brain is not ticked until the reboot**, so the controller owns the timing: `duration` is for information only, and a brain must not start its own stun timer (that would stun it twice). The brain drops its plan, releases what it should not hold while down, and sends a new path on its first tick afterwards |
 | `OnDestroyed()` | Once, when the agent leaves the game for good (a Saboteur is scrapped, or the scene unloads). The brain releases anything it holds on the blackboard, such as target claims or cover reservations. `Tick` is never called afterwards. Called from `AgentController.Scrap`, or from `AgentController.OnDestroy` if the agent was never scrapped |
 
 ### 2.4 Runtime wiring (implemented)
 
-- **`SpawnPoint`** (in `Agents.unity`): marks where an agent's feet go, which way it faces, its `AgentType` and optional patrol waypoints. Each type has its own gizmo colour: Tracker yellow, Guard blue, Saboteur green, Captain red.
+- **`SpawnPoint`** (in `Agents.unity`): marks where an agent's feet go, which way it faces, its `AgentType`, its squad slot (0-3 = A-D for the four Saboteurs, -1 otherwise) and optional patrol waypoints. Each type has its own gizmo colour: Tracker yellow, Guard blue, Saboteur green, Captain red.
 - **`AgentSpawner.SpawnAll()`**:
   - Instantiates one body per child spawn point, raised by the CharacterController's feet-to-pivot height so it stands on the floor.
   - Parents each body under the spawner, so agents stay in the Agents scene when scenes load additively.
-  - Builds the brain for that type in `CreateBrain` and passes it with the shared blackboard to `AgentController.Initialise`.
+  - Gives each agent an `AgentIdentity`: its type, a unique `Id` handed out in spawn order (0, 1, 2, ...), and the spawn point's squad slot. Two spawn points of the same type with the same slot log an error.
+  - Names the body after its identity (e.g. `Saboteur B (#3)`), builds the brain in `CreateBrain(point, identity)` and passes the identity, the brain and the shared blackboard to `AgentController.Initialise`.
   - Can only run once. The scene loader calls it after the level exists; test scenes can tick "Spawn On Start".
-- **`CreateBrain`**: every type currently gets `MockPathProvider`, a fake brain that loops a patrol route. Each owner replaces only their own case when their brain is ready.
+- **`CreateBrain`**: every type currently gets `MockPathProvider`, a fake brain that loops a patrol route. Each owner replaces only their own case when their brain is ready, using the identity for anything that must tell instances apart: `identity.Id` as the target-claim owner, `identity.SquadIndex` for the Saboteur letter.
+
+**Why ids are handed out but squad slots are set by hand:** an id only has to be unique, so the spawner generates it and nobody can type a duplicate. The squad slot is a design choice (which spawn room holds Saboteur A, the keycard carrier), so the level designer sets it on the spawn point, and the spawner only checks that no slot is used twice.
 - **`AgentController.Update()`**: builds the context, calls `Tick`, applies the path semantics above, and stores `DebugState`. With no brain it logs one warning and does nothing, instead of throwing every frame.
 
 **Why dependencies are injected at spawn:** no `FindObjectOfType` or `GetComponent` calls in `Update`, so there is no per-frame search cost and no hidden null references. EditMode tests can also create a brain without any scene.
@@ -97,7 +102,8 @@ A read-only view of an agent's body, in `Scripts/Interfaces/`. `AgentController`
 
 | Property | Meaning | Source |
 | --- | --- | --- |
-| `Type` | Tracker, Guard, Saboteur or Captain (`AgentType`, also in `Interfaces`) | The spawn point, passed in through `Initialise` |
+| `Type` | Tracker, Guard, Saboteur or Captain (`AgentType`, also in `Interfaces`) | `Identity.Type` |
+| `Identity` | `AgentIdentity`: type, unique `Id` and `SquadIndex` (`SquadLetter` gives A-D). Fixed for the agent's life | The spawner, through `Initialise` |
 | `Speed` | Ground speed in m/s | `AgentPathFollower.CurrentSpeed` |
 | `TurnRate` | Degrees per second, positive = turning right | `AgentPathFollower.TurnRate` |
 | `IsAttacking` | True while the brain's action is `Shoot` | The latest `AgentIntent` |

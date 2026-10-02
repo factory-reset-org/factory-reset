@@ -10,7 +10,12 @@ namespace ToyFactory.AI.Core
     /// </summary>
     public readonly struct AgentContext
     {
-        /// <summary>The agent's current grid cell.</summary>
+        /// <summary>
+        /// The agent's current grid cell, for starting searches. Not an arrival test: the
+        /// body counts a waypoint as reached within 0.3 m, which is more than half a cell
+        /// (0.25 m), so an agent that has arrived may stand in a neighbouring cell. Decide
+        /// arrival from <see cref="Position"/> instead.
+        /// </summary>
         public readonly Vector2Int Cell;
 
         /// <summary>The agent's current world position.</summary>

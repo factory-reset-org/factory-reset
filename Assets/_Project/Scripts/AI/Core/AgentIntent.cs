@@ -14,6 +14,9 @@ namespace ToyFactory.AI.Core
         /// Grid cells from the agent's current cell to its target, in world-position order.
         /// Null means "keep following the current path" rather than "stop";
         /// an empty list means "stop where you are".
+        /// The body may smooth the route, and it counts each waypoint as reached within
+        /// 0.3 m on the ground plane, then stops after the last one. So the agent ends up
+        /// near the last waypoint, not exactly on it: check arrival by distance, not by cell.
         /// </summary>
         public List<Vector3> Path;
 
