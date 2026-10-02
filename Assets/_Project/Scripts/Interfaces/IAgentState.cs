@@ -6,8 +6,11 @@ namespace ToyFactory.Interfaces
     /// </summary>
     public interface IAgentState
     {
-        /// <summary>Which of the four enemy classes this agent is.</summary>
+        /// <summary>Which of the four enemy classes this agent is (the same as <c>Identity.Type</c>).</summary>
         AgentType Type { get; }
+
+        /// <summary>This agent's unique id and squad position, fixed at spawn.</summary>
+        AgentIdentity Identity { get; }
 
         /// <summary>Current ground speed in metres per second.</summary>
         float Speed { get; }

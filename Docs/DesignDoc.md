@@ -35,7 +35,7 @@ A read-only struct built by `AgentController` every frame.
 
 | Field | Meaning | Current source |
 | --- | --- | --- |
-| `Cell` | Agent's grid cell | Always `(0, 0)` until the controller is connected to the grid |
+| `Cell` | Agent's grid cell, for starting searches. **Not an arrival test** (see below) | Always `(0, 0)` until the controller is connected to the grid |
 | `Position`, `Forward` | Agent's world position and facing | The agent's transform |
 | `Time` | Seconds since the game started | `Time.time` |
 | `World` | Shared `WorldBlackboard` (read-only for brains) | One instance created by `AgentSpawner` |
@@ -53,24 +53,29 @@ A read-only struct built by `AgentController` every frame.
 
 **Why `null` and an empty list mean different things:** most ticks a brain has no new route, so returning `null` costs nothing and lets the body keep walking. Stopping on purpose is a separate, explicit answer.
 
+**Check arrival by distance, not by cell.** The body counts a waypoint as reached within 0.3 m on the ground plane and stops after the last one. Half a cell is only 0.25 m, so after a straight final step the agent stands in the cell *before* the last one. A brain that waits for `Cell` to equal its last route cell would wait forever, with the body already stopped. Compare `Position` with the last waypoint instead, on the ground plane, with a radius of at least the body's 0.3 m (`MockPathProvider` uses exactly 0.3 m; a little more, such as 0.5 m, leaves a safety margin). The body may also smooth the route, so intermediate cells are not guaranteed either.
+
 ### 2.3 The brain interface: `IAgentBrain`
 
 | Method | When it is called |
 | --- | --- |
 | `AgentIntent Tick(in AgentContext ctx)` | Every frame, by `AgentController` |
 | `OnGraphChanged(IReadOnlyList<Vector2Int> changedCells)` | When a door or box changes the grid. Brains replan only if a changed cell affects them |
-| `OnStunned(float duration)` | When `AgentController.Disable` knocks the agent out, with the time left until it reboots. The body has stopped, so the brain sends a new path on its first tick afterwards |
+| `OnStunned(float duration)` | When `AgentController.Disable` knocks the agent out, with the time left until it reboots. The body has stopped and **the brain is not ticked until the reboot**, so the controller owns the timing: `duration` is for information only, and a brain must not start its own stun timer (that would stun it twice). The brain drops its plan, releases what it should not hold while down, and sends a new path on its first tick afterwards |
 | `OnDestroyed()` | Once, when the agent leaves the game for good (a Saboteur is scrapped, or the scene unloads). The brain releases anything it holds on the blackboard, such as target claims or cover reservations. `Tick` is never called afterwards. Called from `AgentController.Scrap`, or from `AgentController.OnDestroy` if the agent was never scrapped |
 
 ### 2.4 Runtime wiring (implemented)
 
-- **`SpawnPoint`** (in `Agents.unity`): marks where an agent's feet go, which way it faces, its `AgentType` and optional patrol waypoints. Each type has its own gizmo colour: Tracker yellow, Guard blue, Saboteur green, Captain red.
+- **`SpawnPoint`** (in `Agents.unity`): marks where an agent's feet go, which way it faces, its `AgentType`, its squad slot (0-3 = A-D for the four Saboteurs, -1 otherwise) and optional patrol waypoints. Each type has its own gizmo colour: Tracker yellow, Guard blue, Saboteur green, Captain red.
 - **`AgentSpawner.SpawnAll()`**:
   - Instantiates one body per child spawn point, raised by the CharacterController's feet-to-pivot height so it stands on the floor.
   - Parents each body under the spawner, so agents stay in the Agents scene when scenes load additively.
-  - Builds the brain for that type in `CreateBrain` and passes it with the shared blackboard to `AgentController.Initialise`.
+  - Gives each agent an `AgentIdentity`: its type, a unique `Id` handed out in spawn order (0, 1, 2, ...), and the spawn point's squad slot. Two spawn points of the same type with the same slot log an error.
+  - Names the body after its identity (e.g. `Saboteur B (#3)`), builds the brain in `CreateBrain(point, identity)` and passes the identity, the brain and the shared blackboard to `AgentController.Initialise`.
   - Can only run once. The scene loader calls it after the level exists; test scenes can tick "Spawn On Start".
-- **`CreateBrain`**: every type currently gets `MockPathProvider`, a fake brain that loops a patrol route. Each owner replaces only their own case when their brain is ready.
+- **`CreateBrain`**: every type currently gets `MockPathProvider`, a fake brain that loops a patrol route. Each owner replaces only their own case when their brain is ready, using the identity for anything that must tell instances apart: `identity.Id` as the target-claim owner, `identity.SquadIndex` for the Saboteur letter.
+
+**Why ids are handed out but squad slots are set by hand:** an id only has to be unique, so the spawner generates it and nobody can type a duplicate. The squad slot is a design choice (which spawn room holds Saboteur A, the keycard carrier), so the level designer sets it on the spawn point, and the spawner only checks that no slot is used twice.
 - **`AgentController.Update()`**: builds the context, calls `Tick`, applies the path semantics above, and stores `DebugState`. With no brain it logs one warning and does nothing, instead of throwing every frame.
 
 **Why dependencies are injected at spawn:** no `FindObjectOfType` or `GetComponent` calls in `Update`, so there is no per-frame search cost and no hidden null references. EditMode tests can also create a brain without any scene.
@@ -97,7 +102,8 @@ A read-only view of an agent's body, in `Scripts/Interfaces/`. `AgentController`
 
 | Property | Meaning | Source |
 | --- | --- | --- |
-| `Type` | Tracker, Guard, Saboteur or Captain (`AgentType`, also in `Interfaces`) | The spawn point, passed in through `Initialise` |
+| `Type` | Tracker, Guard, Saboteur or Captain (`AgentType`, also in `Interfaces`) | `Identity.Type` |
+| `Identity` | `AgentIdentity`: type, unique `Id` and `SquadIndex` (`SquadLetter` gives A-D). Fixed for the agent's life | The spawner, through `Initialise` |
 | `Speed` | Ground speed in m/s | `AgentPathFollower.CurrentSpeed` |
 | `TurnRate` | Degrees per second, positive = turning right | `AgentPathFollower.TurnRate` |
 | `IsAttacking` | True while the brain's action is `Shoot` | The latest `AgentIntent` |
@@ -258,9 +264,11 @@ All three live in `Scripts/Interfaces/`, so code in every scene can use them. Th
 | 2026-09-29 | Freeze the greybox hierarchy in §8 once S4 accepts it; later detail meshes may only be added beneath frozen nodes | Allow renames during final modelling | Animation clips bind to hierarchy paths | S3 (accepted by S4 on 2026-09-30) |
 | 2026-09-29 | Guard treads stay rigid assemblies under their pivots | Road wheels with individual pivots | The reference draws the treads as boxes and lists no tread animation; a scrolling tread material can suggest rolling later | S3 (S4 informed on 2026-09-30) |
 | 2026-09-30 | Accept the greybox model hierarchy as the animation contract, after checking every model node by node | Record clips first and fix broken paths later | A clip bound to a renamed or moved node silently stops animating it, so the paths must be fixed before the first clip. The check compared each `.blend` source and FBX export against the greybox model contract (see its acceptance check) | S4 |
+| 2026-10-02 | Accept the Unit 047 blockout hierarchy for the cutscene clips, after the same node-by-node check as the four robots | Wait for the final model before accepting | The clips (idle sway, head turn, key spin, eyes on/off) bind to node paths, and S3 can only finish the model safely once the paths are frozen. Accepting the blockout now lets both sides work in parallel | S4 |
 | 2026-09-30 | Smooth paths in two stages: string pulling with a grid line check, then a centripetal Catmull-Rom spline that falls back to straight near walls | NavMesh raycasts for the line check; a uniform Catmull-Rom spline; Bézier corner rounding | The line check uses the same grid and corner rule as A*, so smoothing can never allow a move the brain's search forbade, and it is testable without a scene. Centripetal splines have no loops or cusps and pass through every waypoint; the straight fallback keeps the curve out of walls | S4 |
 | 2026-10-01 | Keep the `ResponseCurve` library in `Scripts/AI/Agents/Saboteur/`, although the v2 responsibilities matrix lists it under AI Core | Move it to `AI/Core` | Only the Saboteur uses it, so keeping it beside its users avoids a shared dependency and any change to AI Core. It moves only if another agent needs it and the team agrees | S3 |
 | 2026-10-01 | Propose, for S2's review, a Saboteur-owned `ICostModel` that returns infinity for a door's cells to cost a hypothetical closure, treating an infinite total as a lockout; the live grid is never mutated | Mutate and restore the live grid; clone the grid per door | `ICostModel` only requires at least the base cost, so infinity is allowed, and nothing shared changes. Status: proposed, awaiting S2 (including how `AStarSearch` handles an infinite step) | S3 (proposed) |
+| 2026-10-02 | Unit 047 blockout: legs under the root, body, head, arms, blaster and key as rigid parts with pivots at joints; one `Eyes` mesh with its own material; decal carrier plates built in now | Legs under the body pivot; separate eye meshes; add decal plates later | Planted legs let the body sway without foot sliding; one eye material is one switch for eyes on/off; plates now mean the final decals never change the hierarchy S4 animates. Sized so its eyes meet the Guard's visor (1.91 m): the hero should read as an equal of the robots it fights, not a small prop. A 1.57 m first version read as smaller than the Saboteur, and a 2.20 m second version still sat below the Guard's eye line. Accepted by S4 on 2026-10-02 after a node-by-node check | S3 (accepted by S4 on 2026-10-02) |
 
 ## 8. Greybox character model contract (S3)
 
@@ -385,7 +393,7 @@ Validated on all four models with Blender 5.2 and Unity 6000.6.2f1:
 ### 8.9 ModelShowcase
 
 - The models stay at neutral rotation, and the orthographic camera views them from the +Z side.
-- Framing is intended for 16:9. The visual order, left to right, is TrackerToy, SaboteurBot, GuardBot, CaptainBot.
+- Framing is intended for 16:9. The visual order, left to right, is TrackerToy, SaboteurBot, GuardBot, CaptainBot, Unit047, at x = 4.85, 2.65, 0.2, -2.6 and -5.0 so all five fit the orthographic frame (size 3.3).
 - The scene is excluded from the build settings.
 
 ### 8.10 Open handoff items
@@ -393,5 +401,42 @@ Validated on all four models with Blender 5.2 and Unity 6000.6.2f1:
 1. ~~S4 accepts the §8 hierarchy, explicitly including the Captain `UpperLeg_*`/`LowerLeg_*` paths, before recording clips.~~ Done: accepted by S4 on 2026-09-30 after the acceptance check above.
 2. ~~S4 is told the Guard uses rigid tread assemblies rather than road-wheel articulation.~~ Done: acknowledged by S4. Tread motion will be a scrolling material, not animated pivots.
 3. ~~S4 is told the §8.7 motion limits.~~ Done: acknowledged by S4. Clips stay within these limits.
-4. Someone opens ModelShowcase fresh in Unity at 16:9 for a clean lit check. The automated render picked up stale renderer objects from another open scene.
+4. ~~Someone opens ModelShowcase fresh in Unity at 16:9 for a clean lit check.~~ Done 2026-10-02: the scene was opened on its own and its camera rendered at 1600 x 900; all five models are inside the frame.
 5. Before the PR: EditMode tests pass, the game plays from `Bootstrap` without console errors, and Git LFS tracks the `.blend` and `.fbx` files.
+6. ~~S4 accepts the §8.11 Unit 047 hierarchy before recording any Unit 047 clip. Until then it may still change.~~ Done: accepted by S4 on 2026-10-02 after the Unit 047 acceptance check.
+7. S2 confirms Unit 047's eye height (1.91 m, level with the Guard's visor) against the first-person camera height, so cutscene cuts to and from gameplay line up.
+
+### 8.11 Unit047 (blockout, accepted)
+
+Status: blockout delivered 2026-10-02 and **accepted by S4 on 2026-10-02**; the hierarchy is now frozen under the same freeze rule as the other characters. Cutscene-only hero model (Full Plan v5 §10.3, §11.3): S4 animates idle sway, head turn, key spin and eyes on/off. Budget < 2,500 triangles; the blockout is 760. Same conventions as §8.1, exported with §8.8.
+
+```text
+Unit047_Root                             origin, between the feet
+├─ Leg_{L,R}_Pivot → Leg_*, Foot_*       (∓0.20, 0.77, 0) hips; legs stay planted while the body sways
+└─ Body_Pivot                            (0, 0.77, 0) waist: idle sway and bob
+   ├─ Pelvis, Torso
+   ├─ Chest_Tag, Sticker                 non-animated decal carriers (047 tag, DEFECTIVE sticker)
+   ├─ Head_Pivot                         (0, 1.571, 0) neck base: head turn
+   │  └─ Neck, Head, Visor, Eyes, Antenna_Stem, Antenna_Bulb
+   ├─ Arm_L_Pivot                        (-0.431, 1.478, 0) shoulder
+   │  └─ ShoulderBall_L, Arm_L, Hand_L
+   ├─ Arm_R_Pivot                        (0.431, 1.478, 0) shoulder
+   │  ├─ ShoulderBall_R, Arm_R, Hand_R
+   │  └─ Blaster_Pivot → Blaster_Body, Blaster_Barrel   (0.431, 0.878, 0) grip, in the right hand
+   └─ WindupKey_Pivot → Key_Shaft, Key_Bar   (0, 1.309, -0.216) key spins about Z
+```
+
+- `Eyes` holds both eyes in one mesh with its own material (`Greybox_Eyes`), so one material property switches them on and off.
+- `Chest_Tag` and `Sticker` are flat plates already in place, so the final decals from the prop atlas need no new nodes.
+- Size 1.05 x 2.42 x 0.94 m (W x H x D). The hero is sized from the Guard's eye line: its eye centre is at 1.91 m and its visor spans 1.83-1.99 m, against the Guard's visor at 1.85-1.96 m (measured from `GuardBot.fbx`). That puts it eye to eye with the Guard, with its head top at 2.13 m (Guard 2.08) and antenna top at 2.42 m (Guard 2.44), while the Captain (3.23 m) stays the tallest and the Tracker and Saboteur stay smaller. The model is one uniform scale (1.54) of the reviewed blockout proportions, so no part changed shape. The prefab variant `Prefabs/Characters/Unit047.prefab` has 24 disabled primitive colliders (spheres on the shoulder balls and antenna bulb, boxes elsewhere) fitted to the meshes and no Rigidbody, like the other characters.
+- Clearance: at rest the inner face of each arm is 3.9 cm from the torso side, so arms swing forward and back (about X) without touching it. Other motion limits have not been measured yet; S4 should report any clipping found while authoring clips.
+
+**Acceptance check (S4, 2026-10-02).** `Blender/Unit047.blend` was loaded read-only in Blender 5.2 and compared with the tree above:
+
+- **Names and parents:** all 33 nodes and their parents match the tree.
+- **Pivot positions:** every pivot sits at the listed position, converted to Unity axes (Unity x, y, z = Blender x, z, y): legs (∓0.20, 0.77, 0), body (0, 0.77, 0), head (0, 1.571, 0), arms (∓0.431, 1.478, 0), blaster (0.431, 0.878, 0), wind-up key (0, 1.309, −0.216).
+- **Transforms:** every node has rotation 0, scale 1, no delta transforms and an identity parent-inverse matrix.
+- **Size and budget:** 1.05 × 2.42 × 0.94 m, lowest geometry at y = 0, 760 triangles.
+- **Details the clips rely on:** the eye centre is at 1.91 m; `Eyes` is one mesh on its own `Greybox_Eyes` material; each arm's inner face is 3.9 cm from the torso.
+- **Export:** `Assets/_Project/Models/Unit047/Unit047.fbx` contains exactly the same 33 node names.
+- **Facing:** in a front view the visor and eyes face forward, and the blaster is in the character's right hand.

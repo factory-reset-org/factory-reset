@@ -6,19 +6,25 @@ namespace ToyFactory.Runtime.Agents
 {
     /// <summary>
     /// Scene marker saying "spawn this type of agent here, facing this way". Placed in
-    /// Agents.unity and read by the agent spawner. Holds optional patrol
-    /// waypoints used by brains that need a route (currently the mock brain).
+    /// Agents.unity and read by the agent spawner. Holds the agent's squad position (for
+    /// the four Saboteurs) and optional patrol waypoints used by brains that need a route.
     /// </summary>
     public sealed class SpawnPoint : MonoBehaviour
     {
         [Tooltip("Which agent appears at this spawn point.")]
         [SerializeField] AgentType agentType = AgentType.Tracker;
 
+        [Tooltip("Position in this type's squad: 0 = A, 1 = B, 2 = C, 3 = D (the four Saboteurs). -1 = not in a squad.")]
+        [SerializeField, Range(AgentIdentity.NoSquad, 3)] int squadIndex = AgentIdentity.NoSquad;
+
         [Tooltip("Optional patrol route markers, in walking order. Empty means the agent stays at the spawn point.")]
         [SerializeField] Transform[] patrolWaypoints = new Transform[0];
 
         /// <summary>Which agent appears here.</summary>
         public AgentType AgentType => agentType;
+
+        /// <summary>Squad position of the agent spawned here, or <see cref="AgentIdentity.NoSquad"/>.</summary>
+        public int SquadIndex => squadIndex;
 
         /// <summary>
         /// World positions of the patrol waypoints, skipping any empty slots. If none are
@@ -76,7 +82,8 @@ namespace ToyFactory.Runtime.Agents
             }
 
 #if UNITY_EDITOR
-            UnityEditor.Handles.Label(transform.position + Vector3.up * 2.2f, agentType.ToString());
+            string label = squadIndex >= 0 ? $"{agentType} {(char)('A' + squadIndex)}" : agentType.ToString();
+            UnityEditor.Handles.Label(transform.position + Vector3.up * 2.2f, label);
 #endif
         }
     }
