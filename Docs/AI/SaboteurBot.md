@@ -202,6 +202,40 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | Game time in `AgentContext` | S4 / S2 | `Time.time` today. |
 | Infinite-cost step behaviour in `AStarSearch` | S2 | To be confirmed (see hypothetical closure). |
 
+### Implementation status
+
+| Part | Status | Code and tests |
+| --- | --- | --- |
+| Response curves and curve settings | Implemented | `ResponseCurve`, `SaboteurCurveSettings`; `UtilityCurveTests`, `SaboteurCurveSettingsTests` |
+| Considerations, compensation, selection, momentum, commitment, door cooldown | Implemented | `Consideration`, `UtilityAction`, `ActionSelector`; `UtilityScoringTests`, `ActionSelectorTests` |
+| Brain skeleton: identity, 4 Hz selection, Idle/Patrol, stun, graph changes, destruction | Implemented | `SaboteurIdentity`, `SaboteurBrain`; `SaboteurBrainTests` |
+| CloseDoor, ArmTrap, StealBattery, AttackPlayer, Flee | Not started | Need the blackboard facts in the handoff table |
+| Squad layer, `DetourCache`, keycard drop | Not started | Squad claims build on the brain skeleton |
+
+The skeleton's behaviour:
+
+- **Selection.** At most every 0.25 s of `AgentContext.Time`, the brain rebuilds its candidates and asks `ActionSelector` for a choice. Today the only candidate is Idle/Patrol at 0.1, so the loop is in place before the other actions exist.
+- **Patrol.** Patrol points are given in world space and converted to cells once. Points outside the grid are dropped; a blocked point snaps to the nearest free cell within 2 cells. A leg counts as finished when the Saboteur is within 0.5 m of its last waypoint on the ground plane, because the body stops up to 0.3 m short and may still be in the previous cell; `AgentContext.Cell` is only used as the start of the next search. Routes come from the injected `IPathfinder` with `BaseCostModel`, and are sent once per leg (`Path = null` keeps the current route). An unreachable point is skipped. If no point is reachable the Saboteur holds, and A* is retried only on the next selection pass or grid change, never every tick. With no patrol points it holds in place.
+- **Grid changes.** `OnGraphChanged` replans only when a changed cell lies on the current route.
+- **Stun.** The controller owns stun timing: it stops the body and does not tick the brain until the reboot. `OnStunned` therefore only cancels the current selection, releases this instance's claims and asks for a fresh route; the brain keeps no stun timer of its own, so a stun lasts exactly as long as the controller says.
+- **Identity.** The brain rejects `default(SaboteurIdentity)`, which would otherwise read as Saboteur A, the keycard carrier.
+- **Destruction.** `OnDestroyed` releases this instance's claims only (other instances keep theirs) and the brain only ever returns a stop afterwards. There is no reboot.
+
+### Spawn hookup
+
+`AgentSpawner.CreateBrain(point, identity)` now receives an `AgentIdentity` (spawn-order id and squad index), and its Saboteur case is S3's to replace. It still returns `MockPathProvider` until the shared grid and claims exist. The Saboteur case will be:
+
+```csharp
+new SaboteurBrain(
+    new SaboteurIdentity(identity.Id, (SaboteurLetter)identity.SquadIndex),
+    grid,                     // the shared GridGraph (S4's grid-cell branch, using S1's GridManager)
+    pathfinder,               // one shared IPathfinder over that grid
+    claims,                   // the one TargetClaims shared by all four (S2, via the blackboard)
+    point.GetPatrolPositions());
+```
+
+`SaboteurIdentity` rejects a squad index outside A-D, so a Saboteur spawn point without a squad slot fails loudly instead of becoming a second Saboteur A. The four squad slots are set on the spawn points in `Agents.unity`, which is S4's scene. Until the grid and claims exist the Saboteurs keep the mock brain, and in-scene behaviour is untested.
+
 ## Architecture rationale
 
 A fixed priority list would select the same action when a door gives no detour or a battery is easier to steal. Behaviour phases organise execution but cannot rank different disruptions. Utility scores make that comparison; logical gates keep it valid and safe. The calculations and rejection reasons can be shown directly in the debug overlay. The Guard and Captain designs are consistency references only; their implementations and shared infrastructure remain with their owners.
