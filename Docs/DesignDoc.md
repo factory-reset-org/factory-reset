@@ -333,6 +333,8 @@ SaboteurBot_Root                         origin, wheel contact point
 
 The claws are 2.5 cm apart at rest and meet after about 4° of closing each.
 
+Final model (2026-10-02): detail was added inside the existing meshes only: a rounder body with the goggle strap in `Body`, recessed lenses in `Goggle_Rim_L`/`Goggle_Rim_R`, wrist cuffs in `Forearm_L`/`Forearm_R`, axle caps on the octagonal `Wheel_Hub_L`/`Wheel_Hub_R` and a label band and terminals on `Battery` (second material slots), plus a rounded tyre in `Wheel` and hinge knuckles and tips on the four claws. No node was added, renamed, reparented or moved, and every part stays inside its greybox bounds, so the tree above, the pivots and the prefab-variant colliders are unchanged. 2,488 triangles after import; one shared UV layout. Colours and the A-D tints are B5.
+
 ### 8.5 GuardBot
 
 ```text
