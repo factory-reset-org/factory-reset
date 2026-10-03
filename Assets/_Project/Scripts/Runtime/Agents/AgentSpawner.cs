@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using ToyFactory.AI.Agents.Mock;
@@ -25,7 +26,7 @@ namespace ToyFactory.Runtime.Agents
         [Tooltip("Agent body to spawn. One placeholder body is used for every type until the real models exist.")]
         [SerializeField] AgentController agentPrefab;
 
-        [Tooltip("Spawn as soon as the scene starts. Use in test scenes that have no scene loader; leave off in Agents.unity.")]
+        [Tooltip("Spawn as soon as the scene starts, building the level grid first if the scene has a GridManager. Use in test scenes that have no scene loader; leave off in Agents.unity.")]
         [SerializeField] bool spawnOnStart;
 
         readonly List<AgentController> _spawned = new List<AgentController>();
@@ -54,8 +55,25 @@ namespace ToyFactory.Runtime.Agents
 
         void Start()
         {
-            if (spawnOnStart)
-                SpawnAll();
+            if (!spawnOnStart)
+                return;
+
+            // Test scenes have no scene loader to build the grid, so build it here first when
+            // the scene has a GridManager. If the build fails (e.g. the NavMesh is not baked),
+            // log why and still spawn, without a grid.
+            if (GridManager.Current == null && GridManager.Instance != null)
+            {
+                try
+                {
+                    GridManager.Instance.BuildGrid();
+                }
+                catch (Exception e)
+                {
+                    Debug.LogException(e, GridManager.Instance);
+                }
+            }
+
+            SpawnAll();
         }
 
         /// <summary>
