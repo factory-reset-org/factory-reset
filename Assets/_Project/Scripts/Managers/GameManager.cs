@@ -9,7 +9,7 @@ namespace ToyFactory.Managers
     /// Playing. Other systems implement <see cref="IGameStateListener"/> and register
     /// here to react to a state change instead of polling every frame.
     /// </summary>
-    public sealed class GameManager : MonoBehaviour
+    public sealed class GameManager : MonoBehaviour, IGameClock
     {
         public static GameManager Instance { get; private set; }
 
@@ -27,6 +27,10 @@ namespace ToyFactory.Managers
         {
             Instance = this;
             State = startState;
+
+            // Published through Interfaces so Runtime-assembly code (which can never
+            // reference this default-assembly type directly) can still reach it.
+            GameClock.Publish(this);
         }
 
         void Update()
