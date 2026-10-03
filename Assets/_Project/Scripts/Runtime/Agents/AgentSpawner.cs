@@ -31,6 +31,7 @@ namespace ToyFactory.Runtime.Agents
 
         readonly List<AgentController> _spawned = new List<AgentController>();
         WorldBlackboard _blackboard;
+        ObjectiveTargetWriter _objectiveWriter;
 
         /// <summary>Every agent spawned so far, for the debug overlay and tests.</summary>
         public IReadOnlyList<AgentController> SpawnedAgents => _spawned;
@@ -45,10 +46,15 @@ namespace ToyFactory.Runtime.Agents
 
             Instance = this;
             _blackboard = new WorldBlackboard();
+
+            // Created with the blackboard, in Awake, so it is already listening when the
+            // chapter manager publishes Chapter 1's targets after the agents spawn.
+            _objectiveWriter = new ObjectiveTargetWriter(_blackboard);
         }
 
         void OnDestroy()
         {
+            _objectiveWriter?.Dispose();
             if (Instance == this)
                 Instance = null;
         }
