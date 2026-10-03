@@ -3,7 +3,10 @@ using UnityEngine;
 using ToyFactory.AI.Agents.Mock;
 using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
+using ToyFactory.AI.Core.Grid;
+using ToyFactory.AI.Core.Search;
 using ToyFactory.Interfaces;
+using ToyFactory.Runtime.World;
 
 namespace ToyFactory.Runtime.Agents
 {
@@ -76,6 +79,14 @@ namespace ToyFactory.Runtime.Agents
             float feetToPivot = FeetToPivotHeight(agentPrefab);
             var usedSquadSlots = new HashSet<(AgentType, int)>();
 
+            // The level grid is built by the scene loader before agents spawn. Without one
+            // (a test scene with no GridManager) agents still spawn and patrol with the mock
+            // brain, but nothing can plan routes on a grid.
+            GridGraph grid = GridManager.Current;
+            IPathfinder pathfinder = grid != null ? new AStarSearch(grid) : null;
+            if (grid == null)
+                Debug.LogWarning($"{nameof(AgentSpawner)}: no level grid has been built, so brains get no grid or pathfinder.", this);
+
             foreach (SpawnPoint point in GetComponentsInChildren<SpawnPoint>())
             {
                 // Ids are given out in spawn order, so they are unique without anyone typing them.
@@ -89,7 +100,8 @@ namespace ToyFactory.Runtime.Agents
                 // Parented under the spawner so agents stay in the Agents scene when scenes load additively.
                 AgentController agent = Instantiate(agentPrefab, position, point.transform.rotation, transform);
                 agent.name = identity.ToString();
-                agent.Initialise(identity, CreateBrain(point, identity), _blackboard);
+                var setup = new BrainSetup(identity, grid, pathfinder, _blackboard, point.GetPatrolPositions());
+                agent.Initialise(identity, CreateBrain(point, setup), _blackboard);
                 _spawned.Add(agent);
             }
         }
@@ -97,10 +109,12 @@ namespace ToyFactory.Runtime.Agents
         /// <summary>
         /// Builds the brain for a spawn point's agent type. Every type uses the mock brain
         /// until its owner's real brain exists; each owner replaces only their own case.
-        /// <paramref name="identity"/> carries the agent's unique id (use it as the target
-        /// claim owner) and its squad slot (Saboteurs: 0-3 = A-D).
+        /// <paramref name="setup"/> carries everything a brain may need: the identity (its
+        /// unique id is the target-claim owner; its squad slot is the Saboteur letter), the
+        /// level grid and the shared A* (both null without a grid), the blackboard and the
+        /// patrol route.
         /// </summary>
-        static IAgentBrain CreateBrain(SpawnPoint point, AgentIdentity identity)
+        static IAgentBrain CreateBrain(SpawnPoint point, in BrainSetup setup)
         {
             switch (point.AgentType)
             {
@@ -109,7 +123,7 @@ namespace ToyFactory.Runtime.Agents
                 case AgentType.Saboteur:  // S3: replace with the Saboteur brain when ready
                 case AgentType.Captain:   // S4: replace with the Captain brain when ready
                 default:
-                    return new MockPathProvider(point.GetPatrolPositions());
+                    return new MockPathProvider(setup.PatrolPoints);
             }
         }
 
