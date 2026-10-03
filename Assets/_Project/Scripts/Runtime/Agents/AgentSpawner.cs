@@ -101,7 +101,7 @@ namespace ToyFactory.Runtime.Agents
                 AgentController agent = Instantiate(agentPrefab, position, point.transform.rotation, transform);
                 agent.name = identity.ToString();
                 var setup = new BrainSetup(identity, grid, pathfinder, _blackboard, point.GetPatrolPositions());
-                agent.Initialise(identity, CreateBrain(point, setup), _blackboard);
+                agent.Initialise(identity, CreateBrain(point, setup), _blackboard, grid);
                 _spawned.Add(agent);
             }
         }

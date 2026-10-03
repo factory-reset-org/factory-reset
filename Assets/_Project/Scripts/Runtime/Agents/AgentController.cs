@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
+using ToyFactory.AI.Core.Grid;
 using ToyFactory.AI.Core.Perception;
 using ToyFactory.Interfaces;
 using ToyFactory.Runtime.Movement;
@@ -20,6 +21,7 @@ namespace ToyFactory.Runtime.Agents
         AgentPathFollower _follower;
         IAgentBrain _brain;
         WorldBlackboard _blackboard;
+        GridGraph _grid;
         bool _warnedNotInitialised;
         float _rebootAt;
 
@@ -59,11 +61,13 @@ namespace ToyFactory.Runtime.Agents
         /// Gives this agent its identity, its brain and the shared world blackboard. Called
         /// once by the spawner, so nothing has to be looked up at runtime.
         /// </summary>
-        public void Initialise(AgentIdentity identity, IAgentBrain brain, WorldBlackboard blackboard)
+        public void Initialise(AgentIdentity identity, IAgentBrain brain, WorldBlackboard blackboard,
+            GridGraph grid = null)
         {
             Identity = identity;
             _brain = brain ?? throw new ArgumentNullException(nameof(brain));
             _blackboard = blackboard ?? throw new ArgumentNullException(nameof(blackboard));
+            _grid = grid;
         }
 
         /// <summary>
@@ -137,8 +141,8 @@ namespace ToyFactory.Runtime.Agents
                 return;
             }
 
-            // The cell stays at zero until the grid exists; no brain uses it yet.
-            var context = new AgentContext(Vector2Int.zero, transform.position, transform.forward,
+            Vector3 position = transform.position;
+            var context = new AgentContext(CurrentCell(position), position, transform.forward,
                 Time.time, _blackboard, new SensorSnapshot());
 
             AgentIntent intent = _brain.Tick(context);
@@ -163,6 +167,12 @@ namespace ToyFactory.Runtime.Agents
             _brain = null;
             brain.OnDestroyed();
         }
+
+        // The grid cell under the agent, for brains to start searches from. Without a grid it
+        // stays (0, 0). A cell outside the grid is passed on as is; brains snap it to the
+        // nearest walkable cell, which also covers an agent standing on a box.
+        Vector2Int CurrentCell(Vector3 position) =>
+            _grid != null ? _grid.WorldToCell(position) : Vector2Int.zero;
 
         void ApplyPath(in AgentIntent intent)
         {
