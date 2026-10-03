@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
 using ToyFactory.AI.Core.Grid;
 using ToyFactory.AI.Core.Perception;
+using ToyFactory.AI.Core.Search;
 using ToyFactory.Interfaces;
 using ToyFactory.Runtime.Movement;
 
@@ -18,6 +20,13 @@ namespace ToyFactory.Runtime.Agents
     [RequireComponent(typeof(AgentPathFollower))]
     public sealed class AgentController : MonoBehaviour, IAgentState
     {
+        [Tooltip("Smooth the brain's grid paths before walking them: drop the waypoints the agent does not need, then round the corners. Only works with a level grid; untick to compare with the raw path.")]
+        [SerializeField] bool smoothPaths = true;
+
+        // Reused for every new route, so smoothing allocates nothing once they have grown.
+        readonly List<Vector3> _pulledPath = new List<Vector3>();
+        readonly List<Vector3> _smoothedPath = new List<Vector3>();
+
         AgentPathFollower _follower;
         IAgentBrain _brain;
         WorldBlackboard _blackboard;
@@ -181,9 +190,21 @@ namespace ToyFactory.Runtime.Agents
                 return;
 
             if (intent.Path.Count == 0)
+            {
                 _follower.Stop();
+            }
+            else if (smoothPaths && _grid != null && intent.Path.Count > 2)
+            {
+                // Both stages keep the first and last waypoints and never cross a cell the
+                // brain's path avoided, so the brain's route is still respected.
+                PathSmoother.StringPull(_grid, intent.Path, _pulledPath);
+                PathSmoother.CatmullRom(_grid, _pulledPath, _smoothedPath);
+                _follower.SetPath(_smoothedPath, intent.DesiredSpeed);
+            }
             else
+            {
                 _follower.SetPath(intent.Path, intent.DesiredSpeed);
+            }
         }
     }
 }
