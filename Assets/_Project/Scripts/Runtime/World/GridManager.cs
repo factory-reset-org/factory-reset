@@ -231,5 +231,64 @@ namespace ToyFactory.Runtime.World
 
         static bool IsPositiveFinite(float value) => NavMeshGridSampler.IsFinite(value) && value > 0f;
         static bool IsNonZeroFinite(float value) => NavMeshGridSampler.IsFinite(value) && value != 0f;
+
+#if UNITY_EDITOR
+        const int MaxGizmoGridLines = 10000;
+        const int MaxGizmoCells = 100000;
+        static readonly Color GridLineColor = new Color(0.25f, 0.8f, 1f, 0.6f);
+        static readonly Color WalkableColor = new Color(0.2f, 0.9f, 0.25f, 0.3f);
+        static readonly Color UnwalkableColor = new Color(1f, 0.2f, 0.15f, 0.5f);
+        static readonly Color OpenDoorColor = new Color(0.1f, 0.85f, 1f, 0.65f);
+        static readonly Color ClosedDoorColor = new Color(1f, 0.55f, 0.05f, 0.75f);
+
+        void OnDrawGizmosSelected()
+        {
+            if (width <= 0 || height <= 0 ||
+                !NavMeshGridSampler.IsFinite(origin.x) || !NavMeshGridSampler.IsFinite(origin.y) ||
+                !NavMeshGridSampler.IsFinite(origin.z))
+                return;
+
+            float worldWidth = width * GridGraph.CellSize;
+            float worldHeight = height * GridGraph.CellSize;
+            if (!NavMeshGridSampler.IsFinite(worldWidth) || !NavMeshGridSampler.IsFinite(worldHeight))
+                return;
+
+            DrawConfiguredGrid(worldWidth, worldHeight);
+            if (_grid == null || _grid.CellCount > MaxGizmoCells) return;
+
+            Vector3 cellSize = new Vector3(GridGraph.CellSize * 0.88f, 0.02f,
+                GridGraph.CellSize * 0.88f);
+            for (int index = 0; index < _grid.CellCount; index++)
+            {
+                GridNode node = _grid.GetNode(_grid.FromIndex(index));
+                if (node.IsDoorway)
+                    Gizmos.color = node.IsDoorClosed ? ClosedDoorColor : OpenDoorColor;
+                else
+                    Gizmos.color = node.Walkable ? WalkableColor : UnwalkableColor;
+                Gizmos.DrawCube(node.WorldPosition + Vector3.up * 0.015f, cellSize);
+            }
+        }
+
+        void DrawConfiguredGrid(float worldWidth, float worldHeight)
+        {
+            Gizmos.color = GridLineColor;
+            Vector3 centre = origin + new Vector3(worldWidth * 0.5f, 0f, worldHeight * 0.5f);
+            Gizmos.DrawWireCube(centre, new Vector3(worldWidth, 0.02f, worldHeight));
+            if ((long)width + height > MaxGizmoGridLines) return;
+
+            for (int x = 0; x <= width; x++)
+            {
+                float worldX = origin.x + x * GridGraph.CellSize;
+                Gizmos.DrawLine(new Vector3(worldX, origin.y, origin.z),
+                    new Vector3(worldX, origin.y, origin.z + worldHeight));
+            }
+            for (int y = 0; y <= height; y++)
+            {
+                float worldZ = origin.z + y * GridGraph.CellSize;
+                Gizmos.DrawLine(new Vector3(origin.x, origin.y, worldZ),
+                    new Vector3(origin.x + worldWidth, origin.y, worldZ));
+            }
+        }
+#endif
     }
 }

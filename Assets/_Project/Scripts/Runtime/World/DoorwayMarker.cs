@@ -24,5 +24,23 @@ namespace ToyFactory.Runtime.World
                 Mathf.Abs(local.y) <= half.y + epsilon &&
                 Mathf.Abs(local.z) <= half.z + epsilon;
         }
+
+#if UNITY_EDITOR
+        void OnDrawGizmosSelected()
+        {
+            BoxCollider volume = Volume;
+            if (volume == null) return;
+
+            Gizmos.matrix = transform.localToWorldMatrix;
+            Gizmos.color = initiallyClosed
+                ? new Color(1f, 0.55f, 0.05f, 0.9f)
+                : new Color(0.1f, 0.85f, 1f, 0.9f);
+            Gizmos.DrawWireCube(volume.center, volume.size);
+            Gizmos.matrix = Matrix4x4.identity;
+
+            UnityEditor.Handles.Label(transform.TransformPoint(volume.center),
+                $"Door {doorId} ({(initiallyClosed ? "initially closed" : "initially open")})");
+        }
+#endif
     }
 }
