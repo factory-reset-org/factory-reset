@@ -34,6 +34,10 @@ namespace ToyFactory.Runtime.Agents
         bool _warnedNotInitialised;
         float _rebootAt;
 
+        // Game time from the GameManager: it stops during cutscenes and the pause menu, so brain
+        // timers and stun reboots stop with it. Test scenes without a GameManager use Unity's clock.
+        static float Now => GameClock.Current != null ? GameClock.Current.GameTime : Time.time;
+
         /// <summary>True once a brain has been given to this agent.</summary>
         public bool IsInitialised => _brain != null;
 
@@ -116,11 +120,11 @@ namespace ToyFactory.Runtime.Agents
                 return;
 
             bool wasDisabled = IsDisabled;
-            _rebootAt = wasDisabled ? Mathf.Max(_rebootAt, Time.time + duration) : Time.time + duration;
+            _rebootAt = wasDisabled ? Mathf.Max(_rebootAt, Now + duration) : Now + duration;
             IsDisabled = true;
             IsAttacking = false;
             _follower.Stop();
-            _brain?.OnStunned(_rebootAt - Time.time);
+            _brain?.OnStunned(_rebootAt - Now);
 
             if (!wasDisabled)
                 AgentEvents.RaiseDisabled(this);
@@ -139,7 +143,7 @@ namespace ToyFactory.Runtime.Agents
 
             if (IsDisabled)
             {
-                if (Time.time < _rebootAt)
+                if (Now < _rebootAt)
                     return;
                 Reboot();
             }
@@ -157,7 +161,7 @@ namespace ToyFactory.Runtime.Agents
 
             Vector3 position = transform.position;
             var context = new AgentContext(CurrentCell(position), position, transform.forward,
-                Time.time, _blackboard, new SensorSnapshot());
+                Now, _blackboard, new SensorSnapshot());
 
             AgentIntent intent = _brain.Tick(context);
 
