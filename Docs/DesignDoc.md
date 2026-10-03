@@ -35,7 +35,7 @@ A read-only struct built by `AgentController` every frame.
 
 | Field | Meaning | Current source |
 | --- | --- | --- |
-| `Cell` | Agent's grid cell, for starting searches. **Not an arrival test** (see below) | Always `(0, 0)` until the controller is connected to the grid |
+| `Cell` | Agent's grid cell, for starting searches. **Not an arrival test** (see below) | `grid.WorldToCell(position)` on the level grid; `(0, 0)` only when no grid has been built |
 | `Position`, `Forward` | Agent's world position and facing | The agent's transform |
 | `Time` | Seconds since the game started | `Time.time` |
 | `World` | Shared `WorldBlackboard` (read-only for brains) | One instance created by `AgentSpawner` |
@@ -71,12 +71,18 @@ A read-only struct built by `AgentController` every frame.
   - Instantiates one body per child spawn point, raised by the CharacterController's feet-to-pivot height so it stands on the floor.
   - Parents each body under the spawner, so agents stay in the Agents scene when scenes load additively.
   - Gives each agent an `AgentIdentity`: its type, a unique `Id` handed out in spawn order (0, 1, 2, ...), and the spawn point's squad slot. Two spawn points of the same type with the same slot log an error.
-  - Names the body after its identity (e.g. `Saboteur B (#3)`), builds the brain in `CreateBrain(point, identity)` and passes the identity, the brain and the shared blackboard to `AgentController.Initialise`.
-  - Can only run once. The scene loader calls it after the level exists; test scenes can tick "Spawn On Start".
-- **`CreateBrain`**: every type currently gets `MockPathProvider`, a fake brain that loops a patrol route. Each owner replaces only their own case when their brain is ready, using the identity for anything that must tell instances apart: `identity.Id` as the target-claim owner, `identity.SquadIndex` for the Saboteur letter.
+  - Reads the level grid from S1's `GridManager.Current` and creates **one** `AStarSearch` over it, shared by every brain. Without a grid it logs one warning and agents still spawn with the mock brain.
+  - Names the body after its identity (e.g. `Saboteur B (#3)`), builds the brain in `CreateBrain(point, setup)` and passes the identity, the brain, the shared blackboard and the grid to `AgentController.Initialise`.
+  - Can only run once. The scene loader calls it after the grid is built; test scenes can tick "Spawn On Start", which first builds the grid itself if the scene has a `GridManager`.
+- **`BrainSetup`**: everything a brain may need at spawn, in one struct: the identity, the level grid, the shared pathfinder (both null without a grid), the blackboard and the patrol route. A new dependency (for example the squad's shared target claims) becomes a field here instead of a new `CreateBrain` parameter in every owner's case.
+- **`CreateBrain(point, setup)`**: every type currently gets `MockPathProvider`, a fake brain that loops a patrol route. Each owner replaces only their own case when their brain is ready, using `setup.Identity` for anything that must tell instances apart (`Id` as the target-claim owner, `SquadIndex` for the Saboteur letter) and `setup.Grid` / `setup.Pathfinder` to plan routes.
+
+**Why one shared A\* instead of one per brain:** `AStarSearch` reuses its per-cell arrays between searches and returns a fresh path list each time, so one instance serves all seven brains safely. Seven instances would hold seven copies of those arrays for no benefit.
 
 **Why ids are handed out but squad slots are set by hand:** an id only has to be unique, so the spawner generates it and nobody can type a duplicate. The squad slot is a design choice (which spawn room holds Saboteur A, the keycard carrier), so the level designer sets it on the spawn point, and the spawner only checks that no slot is used twice.
-- **`AgentController.Update()`**: builds the context, calls `Tick`, applies the path semantics above, and stores `DebugState`. With no brain it logs one warning and does nothing, instead of throwing every frame.
+- **`AgentController.Update()`**: builds the context (with the real grid cell under the agent), calls `Tick`, applies the path semantics above, and stores `DebugState`. With no brain it logs one warning and does nothing, instead of throwing every frame.
+- **Path smoothing in the body**: when a brain sends a new route of three or more waypoints, `ApplyPath` runs `PathSmoother.StringPull` then `CatmullRom` before handing it to the follower (see Path smoothing under Search contracts). It runs once per new route, not per frame, into reused lists. Both stages keep the end points and never cross a cell the brain's route avoided, so the arrival rule still holds. The "Smooth Paths" Inspector toggle turns it off for side-by-side comparison.
+- **Grid changes reach the brain**: the controller subscribes to `GridGraph.Changed` and passes the changed cells to `IAgentBrain.OnGraphChanged`, also while the agent is knocked out, but not after it is scrapped. It unsubscribes on destroy, because the grid outlives the agents.
 
 **Why dependencies are injected at spawn:** no `FindObjectOfType` or `GetComponent` calls in `Update`, so there is no per-frame search cost and no hidden null references. EditMode tests can also create a brain without any scene.
 
@@ -92,9 +98,11 @@ A read-only struct built by `AgentController` every frame.
 
 **Why not `NavMeshAgent`:** the brains plan their own paths on the grid (GBFS, tactical A*, intercepts). A `NavMeshAgent` would replan on its own and fight those decisions, and the Captain's timing maths needs the agent to walk exactly the route it was given.
 
-**Not built yet:** switching path smoothing on in the body (the smoother itself is built; see Path smoothing under Search contracts), blending into a new path on replan, the path request scheduler, and grid cells in the context.
+**Not built yet:** blending into a new path on replan, and the path request scheduler.
 
-**Tests:** `MockPathProviderTests` (8 EditMode tests), and the `Scenes/Test/Test_PathFollower` scene (step, ramp and drop) and `Scenes/Test/Test_AgentSpawner` scene (all four types patrolling).
+**Tests:** `MockPathProviderTests` (8 EditMode tests), and two test scenes:
+- `Scenes/Test/Test_PathFollower`: step, ramp and drop.
+- `Scenes/Test/Test_AgentSpawner`: all four types patrolling, with the Saboteur squad A-D and a real level grid. `RuntimeNavMeshBake` bakes the floor's NavMesh in `Awake`, so no bake output is committed (bake commits are S1's), then "Spawn On Start" builds the grid. Checked in Play mode: a 60 x 60 grid with 3,364 walkable cells (the blocked 236 are the one-cell border the NavMesh leaves at the floor's edge), all seven agents receive it, and the console stays empty.
 
 ### 2.6 What other systems read: `IAgentState` (implemented)
 
@@ -265,6 +273,8 @@ All three live in `Scripts/Interfaces/`, so code in every scene can use them. Th
 | 2026-09-29 | Guard treads stay rigid assemblies under their pivots | Road wheels with individual pivots | The reference draws the treads as boxes and lists no tread animation; a scrolling tread material can suggest rolling later | S3 (S4 informed on 2026-09-30) |
 | 2026-09-30 | Accept the greybox model hierarchy as the animation contract, after checking every model node by node | Record clips first and fix broken paths later | A clip bound to a renamed or moved node silently stops animating it, so the paths must be fixed before the first clip. The check compared each `.blend` source and FBX export against the greybox model contract (see its acceptance check) | S4 |
 | 2026-10-02 | Accept the Unit 047 blockout hierarchy for the cutscene clips, after the same node-by-node check as the four robots | Wait for the final model before accepting | The clips (idle sway, head turn, key spin, eyes on/off) bind to node paths, and S3 can only finish the model safely once the paths are frozen. Accepting the blockout now lets both sides work in parallel | S4 |
+| 2026-10-03 | Hand brains their dependencies in one `BrainSetup` struct, with one `AStarSearch` shared by every brain | Add a `CreateBrain` parameter per dependency; one pathfinder per brain | New dependencies (the squad's shared claims next) stop changing every owner's `CreateBrain` case. A shared search keeps one set of per-cell arrays, and its fresh result lists make sharing safe | S4 |
+| 2026-10-03 | Test scenes bake their NavMesh at runtime instead of committing the bake | Commit a test-scene NavMesh asset | Bake output goes through Git LFS and is S1's to commit; a 30 x 30 m test floor bakes in milliseconds and can never go stale | S4 |
 | 2026-09-30 | Smooth paths in two stages: string pulling with a grid line check, then a centripetal Catmull-Rom spline that falls back to straight near walls | NavMesh raycasts for the line check; a uniform Catmull-Rom spline; Bézier corner rounding | The line check uses the same grid and corner rule as A*, so smoothing can never allow a move the brain's search forbade, and it is testable without a scene. Centripetal splines have no loops or cusps and pass through every waypoint; the straight fallback keeps the curve out of walls | S4 |
 | 2026-10-01 | Keep the `ResponseCurve` library in `Scripts/AI/Agents/Saboteur/`, although the v2 responsibilities matrix lists it under AI Core | Move it to `AI/Core` | Only the Saboteur uses it, so keeping it beside its users avoids a shared dependency and any change to AI Core. It moves only if another agent needs it and the team agrees | S3 |
 | 2026-10-01 | Propose, for S2's review, a Saboteur-owned `ICostModel` that returns infinity for a door's cells to cost a hypothetical closure, treating an infinite total as a lockout; the live grid is never mutated | Mutate and restore the live grid; clone the grid per door | `ICostModel` only requires at least the base cost, so infinity is allowed, and nothing shared changes. Status: proposed, awaiting S2 (including how `AStarSearch` handles an infinite step) | S3 (proposed) |

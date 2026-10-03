@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
+using ToyFactory.AI.Core.Grid;
 using ToyFactory.AI.Core.Perception;
+using ToyFactory.AI.Core.Search;
 using ToyFactory.Interfaces;
 using ToyFactory.Runtime.Movement;
 
@@ -17,9 +20,17 @@ namespace ToyFactory.Runtime.Agents
     [RequireComponent(typeof(AgentPathFollower))]
     public sealed class AgentController : MonoBehaviour, IAgentState
     {
+        [Tooltip("Smooth the brain's grid paths before walking them: drop the waypoints the agent does not need, then round the corners. Only works with a level grid; untick to compare with the raw path.")]
+        [SerializeField] bool smoothPaths = true;
+
+        // Reused for every new route, so smoothing allocates nothing once they have grown.
+        readonly List<Vector3> _pulledPath = new List<Vector3>();
+        readonly List<Vector3> _smoothedPath = new List<Vector3>();
+
         AgentPathFollower _follower;
         IAgentBrain _brain;
         WorldBlackboard _blackboard;
+        GridGraph _grid;
         bool _warnedNotInitialised;
         float _rebootAt;
 
@@ -59,11 +70,18 @@ namespace ToyFactory.Runtime.Agents
         /// Gives this agent its identity, its brain and the shared world blackboard. Called
         /// once by the spawner, so nothing has to be looked up at runtime.
         /// </summary>
-        public void Initialise(AgentIdentity identity, IAgentBrain brain, WorldBlackboard blackboard)
+        public void Initialise(AgentIdentity identity, IAgentBrain brain, WorldBlackboard blackboard,
+            GridGraph grid = null)
         {
             Identity = identity;
             _brain = brain ?? throw new ArgumentNullException(nameof(brain));
             _blackboard = blackboard ?? throw new ArgumentNullException(nameof(blackboard));
+
+            if (_grid != null)
+                _grid.Changed -= HandleGridChanged;
+            _grid = grid;
+            if (_grid != null)
+                _grid.Changed += HandleGridChanged;
         }
 
         /// <summary>
@@ -137,8 +155,8 @@ namespace ToyFactory.Runtime.Agents
                 return;
             }
 
-            // The cell stays at zero until the grid exists; no brain uses it yet.
-            var context = new AgentContext(Vector2Int.zero, transform.position, transform.forward,
+            Vector3 position = transform.position;
+            var context = new AgentContext(CurrentCell(position), position, transform.forward,
                 Time.time, _blackboard, new SensorSnapshot());
 
             AgentIntent intent = _brain.Tick(context);
@@ -150,7 +168,20 @@ namespace ToyFactory.Runtime.Agents
 
         void OnDestroy()
         {
+            // The grid outlives this agent, so stop listening or it would keep calling a destroyed object.
+            if (_grid != null)
+                _grid.Changed -= HandleGridChanged;
             ReleaseBrain();
+        }
+
+        // A door opened or closed, or a box moved: tell the brain which cells changed so it can
+        // replan if its route crosses them. Also sent while knocked out, so the brain's next plan
+        // after the reboot already knows. A scrapped agent's brain has been released and hears nothing.
+        void HandleGridChanged(GridChange change)
+        {
+            if (_brain == null || IsDead)
+                return;
+            _brain.OnGraphChanged(change.ChangedCells);
         }
 
         void ReleaseBrain()
@@ -164,6 +195,12 @@ namespace ToyFactory.Runtime.Agents
             brain.OnDestroyed();
         }
 
+        // The grid cell under the agent, for brains to start searches from. Without a grid it
+        // stays (0, 0). A cell outside the grid is passed on as is; brains snap it to the
+        // nearest walkable cell, which also covers an agent standing on a box.
+        Vector2Int CurrentCell(Vector3 position) =>
+            _grid != null ? _grid.WorldToCell(position) : Vector2Int.zero;
+
         void ApplyPath(in AgentIntent intent)
         {
             // Null means "keep following the current path": nothing to do.
@@ -171,9 +208,21 @@ namespace ToyFactory.Runtime.Agents
                 return;
 
             if (intent.Path.Count == 0)
+            {
                 _follower.Stop();
+            }
+            else if (smoothPaths && _grid != null && intent.Path.Count > 2)
+            {
+                // Both stages keep the first and last waypoints and never cross a cell the
+                // brain's path avoided, so the brain's route is still respected.
+                PathSmoother.StringPull(_grid, intent.Path, _pulledPath);
+                PathSmoother.CatmullRom(_grid, _pulledPath, _smoothedPath);
+                _follower.SetPath(_smoothedPath, intent.DesiredSpeed);
+            }
             else
+            {
                 _follower.SetPath(intent.Path, intent.DesiredSpeed);
+            }
         }
     }
 }
