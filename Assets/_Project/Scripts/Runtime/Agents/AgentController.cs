@@ -18,7 +18,7 @@ namespace ToyFactory.Runtime.Agents
     /// Unity objects: the brain never touches a GameObject and the body never decides.
     /// </summary>
     [RequireComponent(typeof(AgentPathFollower))]
-    public sealed class AgentController : MonoBehaviour, IAgentState
+    public sealed class AgentController : MonoBehaviour, IAgentState, IGameStateListener
     {
         [Tooltip("Smooth the brain's grid paths before walking them: drop the waypoints the agent does not need, then round the corners. Only works with a level grid; untick to compare with the raw path.")]
         [SerializeField] bool smoothPaths = true;
@@ -33,6 +33,11 @@ namespace ToyFactory.Runtime.Agents
         GridGraph _grid;
         bool _warnedNotInitialised;
         float _rebootAt;
+        IGameClock _clock;
+
+        // Game time from the GameManager: it stops during cutscenes and the pause menu, so brain
+        // timers and stun reboots stop with it. Test scenes without a GameManager use Unity's clock.
+        static float Now => GameClock.Current != null ? GameClock.Current.GameTime : Time.time;
 
         /// <summary>True once a brain has been given to this agent.</summary>
         public bool IsInitialised => _brain != null;
@@ -82,6 +87,32 @@ namespace ToyFactory.Runtime.Agents
             _grid = grid;
             if (_grid != null)
                 _grid.Changed += HandleGridChanged;
+
+            // Follow the game state, so the agent freezes in cutscenes and the pause menu.
+            // Test scenes without a GameManager have no clock and simply always play.
+            if (_clock == null && GameClock.Current != null)
+            {
+                _clock = GameClock.Current;
+                _clock.AddListener(this);
+                SetFrozen(_clock.State != GameState.Playing);
+            }
+        }
+
+        /// <summary>True while the game is not in the Playing state: the brain is not ticked and the body holds still.</summary>
+        public bool IsFrozen { get; private set; }
+
+        /// <inheritdoc/>
+        public void OnGameStateChanged(GameState previous, GameState current)
+        {
+            SetFrozen(current != GameState.Playing);
+        }
+
+        // Pausing the follower component (rather than stopping it) keeps its route, so the agent
+        // carries on along the same path when play resumes, without asking the brain again.
+        void SetFrozen(bool frozen)
+        {
+            IsFrozen = frozen;
+            _follower.enabled = !frozen;
         }
 
         /// <summary>
@@ -116,11 +147,11 @@ namespace ToyFactory.Runtime.Agents
                 return;
 
             bool wasDisabled = IsDisabled;
-            _rebootAt = wasDisabled ? Mathf.Max(_rebootAt, Time.time + duration) : Time.time + duration;
+            _rebootAt = wasDisabled ? Mathf.Max(_rebootAt, Now + duration) : Now + duration;
             IsDisabled = true;
             IsAttacking = false;
             _follower.Stop();
-            _brain?.OnStunned(_rebootAt - Time.time);
+            _brain?.OnStunned(_rebootAt - Now);
 
             if (!wasDisabled)
                 AgentEvents.RaiseDisabled(this);
@@ -134,12 +165,12 @@ namespace ToyFactory.Runtime.Agents
 
         void Update()
         {
-            if (IsDead)
+            if (IsDead || IsFrozen)
                 return;
 
             if (IsDisabled)
             {
-                if (Time.time < _rebootAt)
+                if (Now < _rebootAt)
                     return;
                 Reboot();
             }
@@ -157,7 +188,7 @@ namespace ToyFactory.Runtime.Agents
 
             Vector3 position = transform.position;
             var context = new AgentContext(CurrentCell(position), position, transform.forward,
-                Time.time, _blackboard, new SensorSnapshot());
+                Now, _blackboard, new SensorSnapshot());
 
             AgentIntent intent = _brain.Tick(context);
 
@@ -168,6 +199,9 @@ namespace ToyFactory.Runtime.Agents
 
         void OnDestroy()
         {
+            // The game clock outlives agents too.
+            _clock?.RemoveListener(this);
+
             // The grid outlives this agent, so stop listening or it would keep calling a destroyed object.
             if (_grid != null)
                 _grid.Changed -= HandleGridChanged;

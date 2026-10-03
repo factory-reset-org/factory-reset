@@ -24,7 +24,10 @@ namespace ToyFactory.AI.Core
         /// <summary>The agent's current forward direction.</summary>
         public readonly Vector3 Forward;
 
-        /// <summary>Seconds since the game started, for cooldowns and timers.</summary>
+        /// <summary>
+        /// Game time in seconds, for cooldowns and timers. It stops during cutscenes and the
+        /// pause menu, so timers resume where they left off. Never use UnityEngine.Time in a brain.
+        /// </summary>
         public readonly float Time;
 
         /// <summary>Shared, read-only world state (player, noises, doors, batteries, reservations).</summary>
