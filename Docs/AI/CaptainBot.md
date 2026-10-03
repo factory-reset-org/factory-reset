@@ -49,7 +49,7 @@ The Captain is a finite-state machine built on the shared FSM framework: each st
 
 **Waking up:** the Chapter 3 cutscene fires a Critical signal. The runtime turns it into a wake flag on the blackboard, and the brain reads the flag. The signal fires even when the player skips the cutscene, so the Captain can never stay asleep by mistake.
 
-**Cutscenes and pause:** `AgentController` does not tick any brain while the game state is Cutscene or Paused. All Captain timers use game time, so the 5 s history window and the 2 Hz prediction resume where they stopped.
+**Cutscenes and pause:** `AgentController` does not tick any brain unless the game state is Playing (so not in Title, Cutscene, Paused or Results), and the body holds its route while frozen. All Captain timers use `AgentContext.Time`, which is game time from S2's `GameManager`, so the 5 s history window, the 2 Hz prediction and the stun reboot resume where they stopped.
 
 ### Transitions
 
