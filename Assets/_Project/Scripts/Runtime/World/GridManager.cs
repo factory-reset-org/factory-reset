@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Unity.AI.Navigation;
 using UnityEngine;
 using UnityEngine.AI;
@@ -29,6 +30,7 @@ namespace ToyFactory.Runtime.World
         static object s_session = new object();
         object _session;
         GridGraph _grid;
+        Dictionary<int, Vector2Int[]> _doorCells;
         bool _building;
 
         /// <summary>The active owner. Its existence does not imply that the grid is ready.</summary>
@@ -60,6 +62,7 @@ namespace ToyFactory.Runtime.World
                 Instance = null;
             }
             _grid = null;
+            _doorCells = null;
         }
 
         void EnsureSession()
@@ -69,6 +72,7 @@ namespace ToyFactory.Runtime.World
             if (ReferenceEquals(_session, s_session)) return;
             _session = s_session;
             _grid = null;
+            _doorCells = null;
             _building = false;
         }
 
@@ -79,6 +83,36 @@ namespace ToyFactory.Runtime.World
             Current = null;
             Ready = null;
             s_session = new object();
+        }
+
+        /// <summary>
+        /// Applies one logical state change to every cell owned by a door. Calls before a
+        /// successful build and unknown IDs warn and do nothing. Repeating the current state
+        /// is a no-op, so it does not increment the graph version or raise a graph change.
+        /// </summary>
+        public static void SetDoorClosed(int doorId, bool closed)
+        {
+            if (Current == null || Instance == null || Instance._doorCells == null)
+            {
+                Debug.LogWarning("Cannot update a door before the grid has been built.");
+                return;
+            }
+            if (!Instance._doorCells.TryGetValue(doorId, out Vector2Int[] cells))
+            {
+                Debug.LogWarning($"Door ID {doorId} is not registered with the grid.", Instance);
+                return;
+            }
+            bool changed = false;
+            foreach (Vector2Int cell in cells)
+                changed |= Current.GetNode(cell).IsDoorClosed != closed;
+            if (!changed) return;
+
+            using (GridGraph.Batch batch = Current.BeginBatch())
+            {
+                foreach (Vector2Int cell in cells)
+                    batch.SetDoor(cell, doorId, closed);
+                batch.Commit();
+            }
         }
 
         /// <summary>
@@ -102,6 +136,7 @@ namespace ToyFactory.Runtime.World
 
             _building = true;
             GridGraph graph;
+            Dictionary<int, Vector2Int[]> doorCells;
             try
             {
                 if (width <= 0 || height <= 0 || (long)width * height > int.MaxValue)
@@ -117,6 +152,9 @@ namespace ToyFactory.Runtime.World
                 var sampler = new NavMeshGridSampler(surface.agentTypeID, areaMask, sampleDistance,
                     horizontalTolerance, verticalTolerance);
                 graph = new GridGraph(width, height, origin);
+                DoorwayMarker[] markers = FindObjectsByType<DoorwayMarker>(FindObjectsInactive.Exclude);
+                Array.Sort(markers, (left, right) => left.DoorId.CompareTo(right.DoorId));
+                doorCells = MapDoorways(graph, markers);
                 int supportedCells = 0;
                 using (GridGraph.Batch batch = graph.BeginBatch())
                 {
@@ -127,6 +165,9 @@ namespace ToyFactory.Runtime.World
                         batch.SetWalkable(cell, walkable);
                         if (walkable) supportedCells++;
                     }
+                    foreach (DoorwayMarker marker in markers)
+                    foreach (Vector2Int cell in doorCells[marker.DoorId])
+                        batch.SetDoor(cell, marker.DoorId, marker.InitiallyClosed);
                     if (supportedCells == 0)
                         throw new InvalidOperationException("No grid cell is supported by the selected NavMesh and sampling settings.");
                     batch.Commit();
@@ -138,10 +179,57 @@ namespace ToyFactory.Runtime.World
             }
 
             _grid = graph;
+            _doorCells = doorCells;
             Current = graph;
             // Publication has succeeded even if a consumer's event handler throws.
             Ready?.Invoke(graph);
             return graph;
         }
+
+        static Dictionary<int, Vector2Int[]> MapDoorways(GridGraph graph, DoorwayMarker[] markers)
+        {
+            var result = new Dictionary<int, Vector2Int[]>(markers.Length);
+            var owners = new Dictionary<int, int>();
+            foreach (DoorwayMarker marker in markers)
+            {
+                ValidateMarker(marker);
+                if (result.ContainsKey(marker.DoorId))
+                    throw new InvalidOperationException($"Door ID {marker.DoorId} is used by more than one doorway marker.");
+
+                var cells = new List<Vector2Int>();
+                for (int index = 0; index < graph.CellCount; index++)
+                {
+                    Vector2Int cell = graph.FromIndex(index);
+                    if (!marker.Contains(graph.CellToWorld(cell))) continue;
+                    if (owners.TryGetValue(index, out int owner))
+                        throw new InvalidOperationException(
+                            $"Doorway markers {owner} and {marker.DoorId} both own cell {cell}.");
+                    owners.Add(index, marker.DoorId);
+                    cells.Add(cell);
+                }
+                if (cells.Count == 0)
+                    throw new InvalidOperationException($"Doorway marker {marker.DoorId} does not contain any grid cell centre.");
+                result.Add(marker.DoorId, cells.ToArray());
+            }
+            return result;
+        }
+
+        static void ValidateMarker(DoorwayMarker marker)
+        {
+            if (marker.DoorId < 0)
+                throw new InvalidOperationException($"Doorway marker {marker.name} has a negative door ID.");
+            BoxCollider volume = marker.Volume;
+            if (volume == null || !volume.enabled || !volume.isTrigger)
+                throw new InvalidOperationException(
+                    $"Doorway marker {marker.DoorId} requires an enabled trigger BoxCollider on the same object.");
+            Vector3 size = volume.size;
+            Vector3 scale = marker.transform.lossyScale;
+            if (!IsPositiveFinite(size.x) || !IsPositiveFinite(size.y) || !IsPositiveFinite(size.z) ||
+                !IsNonZeroFinite(scale.x) || !IsNonZeroFinite(scale.y) || !IsNonZeroFinite(scale.z))
+                throw new InvalidOperationException($"Doorway marker {marker.DoorId} must have a finite, non-zero volume.");
+        }
+
+        static bool IsPositiveFinite(float value) => NavMeshGridSampler.IsFinite(value) && value > 0f;
+        static bool IsNonZeroFinite(float value) => NavMeshGridSampler.IsFinite(value) && value != 0f;
     }
 }
