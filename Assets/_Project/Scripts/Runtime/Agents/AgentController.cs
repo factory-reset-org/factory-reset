@@ -76,7 +76,12 @@ namespace ToyFactory.Runtime.Agents
             Identity = identity;
             _brain = brain ?? throw new ArgumentNullException(nameof(brain));
             _blackboard = blackboard ?? throw new ArgumentNullException(nameof(blackboard));
+
+            if (_grid != null)
+                _grid.Changed -= HandleGridChanged;
             _grid = grid;
+            if (_grid != null)
+                _grid.Changed += HandleGridChanged;
         }
 
         /// <summary>
@@ -163,7 +168,20 @@ namespace ToyFactory.Runtime.Agents
 
         void OnDestroy()
         {
+            // The grid outlives this agent, so stop listening or it would keep calling a destroyed object.
+            if (_grid != null)
+                _grid.Changed -= HandleGridChanged;
             ReleaseBrain();
+        }
+
+        // A door opened or closed, or a box moved: tell the brain which cells changed so it can
+        // replan if its route crosses them. Also sent while knocked out, so the brain's next plan
+        // after the reboot already knows. A scrapped agent's brain has been released and hears nothing.
+        void HandleGridChanged(GridChange change)
+        {
+            if (_brain == null || IsDead)
+                return;
+            _brain.OnGraphChanged(change.ChangedCells);
         }
 
         void ReleaseBrain()
