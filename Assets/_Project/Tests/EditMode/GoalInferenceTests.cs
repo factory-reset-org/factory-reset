@@ -261,6 +261,24 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void GoalFieldIsSharedWithTheInterceptPlannerUntilTheGoalLeaves()
+        {
+            var grid = new GridGraph(20, 20, Vector3.zero);
+            var inference = new GoalInference(grid);
+            var goals = new List<CandidateGoal> { Task(1, 19, 10), Task(2, 0, 10) };
+            inference.Update(goals, new Vector2Int(10, 10), new Vector2Int(11, 10), false, FullAmmo);
+
+            Assert.IsTrue(inference.TryGetGoalField(1, out var field));
+            Assert.AreEqual(new Vector2Int(19, 10), field.Source);
+            Assert.AreEqual(0f, field.Cost(new Vector2Int(19, 10)));
+            Assert.IsFalse(inference.TryGetGoalField(3, out _), "An id that was never a goal has no field.");
+
+            goals.RemoveAt(0);
+            inference.Update(goals, new Vector2Int(10, 10), new Vector2Int(11, 10), false, FullAmmo);
+            Assert.IsFalse(inference.TryGetGoalField(1, out _), "A goal that left has no field.");
+        }
+
+        [Test]
         public void RepeatedUpdatesAllocateZeroBytes()
         {
             var grid = new GridGraph(30, 30, Vector3.zero);
