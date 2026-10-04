@@ -31,6 +31,15 @@ namespace ToyFactory.AI.Core.Blackboard
         /// <summary>Changes once for each effective replacement of <see cref="ObjectiveTargets"/>.</summary>
         public int ObjectivesVersion { get; private set; }
 
+        /// <summary>Number of chapters in the journey; the last one is the final chapter.</summary>
+        public const int FinalChapter = 4;
+
+        /// <summary>The active chapter, 1 to <see cref="FinalChapter"/>; 0 before the journey starts.</summary>
+        public int ChapterIndex { get; private set; }
+
+        /// <summary>True in the final chapter (the Control Room), where the console is the last goal.</summary>
+        public bool IsFinalChapter => ChapterIndex == FinalChapter;
+
         public WorldBlackboard()
         {
             _objectiveTargetView = _objectiveTargets.AsReadOnly();
@@ -56,6 +65,21 @@ namespace ToyFactory.AI.Core.Blackboard
             }
 
             ObjectivesVersion++;
+        }
+
+        /// <summary>
+        /// Sets the active chapter. Runtime only (S4's writer, from
+        /// <c>ChapterEvents.OnChapterStarted</c>); 0 means the journey has not started.
+        /// </summary>
+        public void SetChapterIndex(int chapter)
+        {
+            if (chapter < 0 || chapter > FinalChapter)
+            {
+                throw new ArgumentOutOfRangeException(nameof(chapter), chapter,
+                    $"Chapter must be 0 (not started) or 1 to {FinalChapter}.");
+            }
+
+            ChapterIndex = chapter;
         }
 
         bool MatchesCurrentSequence(IReadOnlyList<ObjectiveTarget> targets)
