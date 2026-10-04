@@ -6,7 +6,8 @@
         "UnityEditor.TestRunner",
         "ToyFactory.AI.Core",
         "ToyFactory.AI.Agents",
-        "ToyFactory.Interfaces"
+        "ToyFactory.Interfaces",
+        "ToyFactory.Journey"
     ],
     "includePlatforms": [
         "Editor"

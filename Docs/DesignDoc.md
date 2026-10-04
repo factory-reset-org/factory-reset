@@ -7,7 +7,7 @@ Architecture, decisions and justifications. Every decision needs a "because" you
 The AI is separated from everything Unity-specific, so it can be tested without a scene and shown to be decoupled from the visuals and the story.
 
 ```text
-Journey + UI       chapters, cutscenes, HUD, scoring      events and blackboard only (planned)
+Journey + UI       chapters, cutscenes, HUD, scoring      events and blackboard only
 Presentation       Animator, fall-apart, "!"/"?" icons    reads agent state
 Execution          AgentPathFollower                      walks a path
 Runtime adapters   AgentController, AgentSpawner          MonoBehaviours
