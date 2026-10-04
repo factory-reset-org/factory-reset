@@ -461,3 +461,19 @@ Unit047_Root                             origin, between the feet
 - **Details the clips rely on:** the eye centre is at 1.91 m; `Eyes` is one mesh on its own `Greybox_Eyes` material; each arm's inner face is 3.9 cm from the torso.
 - **Export:** `Assets/_Project/Models/Unit047/Unit047.fbx` contains exactly the same 33 node names.
 - **Facing:** in a front view the visor and eyes face forward, and the blaster is in the character's right hand.
+
+### 8.12 Keycard (task-prop kit, first prop)
+
+Status: delivered 2026-10-04. The keycard Saboteur A carries and drops when destroyed (see `Docs/AI/SaboteurBot.md`), and the mesh of S2's floor pickup. It has no moving parts, so it does not wait for the rest of the prop kit. Same conventions as section 8.1, exported with section 8.8.
+
+```text
+Keycard_Root                             origin, the centre of the card
+└─ Keycard                               one mesh, three material slots
+```
+
+- Size 0.30 x 0.19 x 0.02 m (W x H x D, credit-card ratio), measured on the imported prefab at identity; the bounds are centred on the origin, so the pivot is the centre of the card.
+- The card face (chip, header band and three lines of text) faces +Z. The back carries the magnetic stripe and a signature panel. S4 spins it about Y above Saboteur A (1.61 m tall).
+- Slots are the greybox ones: `Greybox_Light` for the card, `Greybox_Dark` for the header, text lines and stripe, `Greybox_Mid` for the chip and signature panel. They stay a placeholder until the prop atlas (B8) and the palette work (B6).
+- Rounded corners and a small chamfer on the card, details raised 2 mm. 320 triangles after import (budget under 600). One UV layout, laid out so it can be repacked onto the shared prop atlas.
+- `Prefabs/Props/Keycard.prefab` is a prefab variant of the FBX with no collider and no Rigidbody. S2 adds the pickup trigger once S2 answers the collider question S4 asked.
+- The importer settings are the same as the character models (the `.meta` differs only in its GUID).
