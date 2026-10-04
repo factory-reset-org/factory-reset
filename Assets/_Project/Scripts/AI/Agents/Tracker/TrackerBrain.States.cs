@@ -1,0 +1,285 @@
+using System.Collections.Generic;
+using UnityEngine;
+using ToyFactory.AI.Core;
+using ToyFactory.AI.Core.FSM;
+
+namespace ToyFactory.AI.Agents.Tracker
+{
+    // The leaf and interrupt states. Each one only writes this tick's output (route, speed,
+    // look target, action) and raises the flags the transition table reads; no state
+    // changes state itself.
+    public sealed partial class TrackerBrain
+    {
+        abstract class TrackerState : IState<TrackerBrain>
+        {
+            readonly string _name;
+
+            protected TrackerState(string name) { _name = name; }
+
+            public virtual void Enter(TrackerBrain b) { b._debugState = _name; }
+            public abstract void Tick(TrackerBrain b);
+            public virtual void Exit(TrackerBrain b) { }
+
+            public override string ToString() => _name;
+        }
+
+        /// <summary>Walks the patrol loop with GBFS, one point at a time.</summary>
+        sealed class PatrolState : TrackerState
+        {
+            public PatrolState() : base("Patrol") { }
+
+            public override void Enter(TrackerBrain b)
+            {
+                base.Enter(b);
+                b._routeCells = null;   // whatever the last state was doing, head back to the loop
+            }
+
+            public override void Tick(TrackerBrain b)
+            {
+                b._outSpeed = PatrolSpeed;
+                int count = b._patrolCells.Length;
+                bool arrived = b.Arrived();
+                if (b._routeCells != null && !arrived)
+                    return;
+                if (arrived)
+                {
+                    if (count == 1)
+                        return;   // a one-point "loop": stay put
+                    b._patrolIndex = (b._patrolIndex + 1) % count;
+                }
+                if (!b.MoveTo(b._patrolCells[b._patrolIndex]))
+                    b._patrolIndex = (b._patrolIndex + 1) % count;   // unreachable: try the next one
+            }
+        }
+
+        /// <summary>Goes to the best one-off noise, looks around for 2.4 s, then marks it handled.</summary>
+        sealed class InvestigateState : TrackerState
+        {
+            int _sourceId;
+            Vector3 _target;
+            float _arrivedAt;
+
+            public InvestigateState() : base("Investigate") { }
+
+            public override void Enter(TrackerBrain b)
+            {
+                base.Enter(b);
+                b._investigationDone = false;
+                _arrivedAt = float.NegativeInfinity;
+                b._noises.TryGetBest(b.Now, b._ctx.Position, out NoiseTarget best);
+                GoTo(b, best);
+            }
+
+            public override void Tick(TrackerBrain b)
+            {
+                b._outSpeed = InvestigateSpeed;
+
+                // A louder (or newer) noise elsewhere takes over before arrival.
+                if (float.IsNegativeInfinity(_arrivedAt) &&
+                    b._noises.TryGetBest(b.Now, b._ctx.Position, out NoiseTarget best) && !best.IsRepeating &&
+                    (best.SourceId != _sourceId || FlatDistance(best.Position, _target) > CircleRadius))
+                    GoTo(b, best);
+
+                if (float.IsNegativeInfinity(_arrivedAt))
+                {
+                    if (b._routeCells != null && !b.Arrived())
+                    {
+                        b._outLook = _target;
+                        return;
+                    }
+                    _arrivedAt = b.Now;   // arrived, or the spot is unreachable: look from here
+                    b.StopMoving();
+                }
+
+                // Sweep the head round at 150 deg/s while looking.
+                float angle = (b.Now - _arrivedAt) * 150f * Mathf.Deg2Rad;
+                b._outLook = b._ctx.Position + new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle)) * 2f;
+                if (b.Now - _arrivedAt >= InvestigateLookTime)
+                {
+                    b._noises.MarkHandled(_sourceId);
+                    b._investigationDone = true;
+                }
+            }
+
+            public override void Exit(TrackerBrain b) { b._investigationDone = false; }
+
+            void GoTo(TrackerBrain b, NoiseTarget noise)
+            {
+                _sourceId = noise.SourceId;
+                _target = noise.Position;
+                b.MoveTo(_target);
+            }
+        }
+
+        /// <summary>
+        /// Circles a repeating source (a thrown toy, the hack terminal) at 1.5 m, stepping to the
+        /// next of 8 points every 1.2 s, until it has been silent for 1.5 s.
+        /// </summary>
+        sealed class DistractedState : TrackerState
+        {
+            int _sourceId;
+            int _step;
+            float _nextStepAt;
+
+            public DistractedState() : base("Distracted") { }
+
+            public override void Enter(TrackerBrain b)
+            {
+                base.Enter(b);
+                b._distractionOver = false;
+                b._noises.TryGetBest(b.Now, b._ctx.Position, out NoiseTarget best);
+                _sourceId = best.SourceId;
+                _step = 0;
+                _nextStepAt = b.Now;
+            }
+
+            public override void Tick(TrackerBrain b)
+            {
+                b._outSpeed = DistractedSpeed;
+                if (!b._noises.IsStillRepeating(_sourceId, b.Now))
+                    b._distractionOver = true;
+                if (!b._noises.TryGetPosition(_sourceId, out Vector3 source))
+                    return;
+
+                b._outLook = source;
+                if (b.Now < _nextStepAt)
+                    return;
+                float angle = _step * 45f * Mathf.Deg2Rad;
+                b.MoveTo(source + new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle)) * CircleRadius);
+                _step = (_step + 1) % 8;
+                _nextStepAt = b.Now + CircleStepInterval;
+            }
+
+            public override void Exit(TrackerBrain b)
+            {
+                // The lure has gone quiet: don't then walk over to investigate it.
+                b._noises.MarkHandled(_sourceId);
+                b._distractionOver = false;
+            }
+        }
+
+        /// <summary>Runs at the player, replanning every 0.5 s to where it sees them (or last saw them).</summary>
+        sealed class ChaseState : TrackerState
+        {
+            float _nextRepathAt;
+
+            public ChaseState() : base("Chase") { }
+
+            public override void Enter(TrackerBrain b)
+            {
+                base.Enter(b);
+                b._inChase = true;
+                _nextRepathAt = b.Now;
+            }
+
+            public override void Tick(TrackerBrain b)
+            {
+                b._outSpeed = ChaseSpeed;
+                Vector3 target = b._seesPlayer ? b.Player.Position : b._lastKnown;
+                b._outLook = target;
+                if (b.Now < _nextRepathAt)
+                    return;
+                b.MoveTo(target);
+                _nextRepathAt = b.Now + ChaseRepathInterval;
+            }
+
+            public override void Exit(TrackerBrain b) { b._inChase = false; }
+        }
+
+        /// <summary>
+        /// Sweeps rings round the last known position (1.5, 3 and 4.5 m, 8 points each, starting
+        /// in the direction the player was heading) for 8 s, then gives up.
+        /// </summary>
+        sealed class SearchState : TrackerState
+        {
+            const int PointsPerRing = 8;
+            const int Rings = 3;
+            const int MaxPlansPerTick = 3;   // bounds the GBFS calls when points are unreachable
+
+            float _enteredAt;
+            int _point;
+            float _headingDeg;
+
+            public SearchState() : base("Search") { }
+
+            public override void Enter(TrackerBrain b)
+            {
+                base.Enter(b);
+                b._searchTimedOut = false;
+                _enteredAt = b.Now;
+                _point = -1;
+                Vector3 v = b._lastKnownVelocity;
+                _headingDeg = v.x * v.x + v.z * v.z > 0.01f ? Mathf.Atan2(v.x, v.z) * Mathf.Rad2Deg : 0f;
+                b.StopMoving();
+            }
+
+            public override void Tick(TrackerBrain b)
+            {
+                b._outSpeed = SearchSpeed;
+                if (b.Now - _enteredAt >= SearchDuration)
+                {
+                    b._searchTimedOut = true;
+                    return;
+                }
+                if (b._routeCells != null && !b.Arrived())
+                    return;
+
+                for (int tries = 0; tries < MaxPlansPerTick; tries++)
+                {
+                    _point = (_point + 1) % (PointsPerRing * Rings);
+                    if (b.MoveTo(PointAt(b, _point)))
+                        return;
+                }
+            }
+
+            public override void Exit(TrackerBrain b) { b._searchTimedOut = false; }
+
+            Vector3 PointAt(TrackerBrain b, int index)
+            {
+                int ring = index / PointsPerRing;
+                float radius = CircleRadius * (ring + 1);
+                float angle = (_headingDeg + (index % PointsPerRing) * 45f) * Mathf.Deg2Rad;
+                return b._lastKnown + new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle)) * radius;
+            }
+        }
+
+        /// <summary>Energy ran out: stand still and wind back up for 3 s. Hits count double meanwhile.</summary>
+        sealed class RewindState : TrackerState
+        {
+            public RewindState(string name) : base(name) { }
+
+            public override void Enter(TrackerBrain b)
+            {
+                base.Enter(b);
+                b.StopMoving();
+            }
+
+            public override void Tick(TrackerBrain b)
+            {
+                b._outSpeed = 0f;
+                b._outAction = AgentAction.Rewind;
+            }
+        }
+
+        /// <summary>
+        /// Pass-through state for the first tick after a stun's reboot. The controller held the
+        /// body for the whole stun and did not tick this brain, so all that is left is to clear
+        /// the stun and pick Calm or Hunting, which plan a fresh route on the same tick.
+        /// </summary>
+        sealed class StunnedState : TrackerState
+        {
+            public StunnedState() : base("Stunned") { }
+
+            public override void Enter(TrackerBrain b)
+            {
+                base.Enter(b);
+                b._stunPending = false;
+                b._routeCells = null;
+            }
+
+            public override void Tick(TrackerBrain b) { b._outSpeed = 0f; }
+
+            public override void Exit(TrackerBrain b) { b._huntingWhenStunned = false; }
+        }
+    }
+}
