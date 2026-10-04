@@ -415,6 +415,7 @@ Validated on all four models with Blender 5.2 and Unity 6000.6.2f1:
 
 - The models stay at neutral rotation, and the orthographic camera views them from the +Z side.
 - Framing is intended for 16:9. The visual order, left to right, is TrackerToy, SaboteurBot, GuardBot, CaptainBot, Unit047, at x = 4.85, 2.65, 0.2, -2.6 and -5.0 so all five fit the orthographic frame (size 3.3).
+- The keycard (`Keycard_Root` prefab, 0.30 x 0.19 x 0.02 m) hangs at x = -1.11, y = 1.0, in the gap between GuardBot and CaptainBot, so the whole line-up still fits the frame. Props are small, so they go in gaps like this one instead of in the line.
 - The scene is excluded from the build settings.
 
 ### 8.10 Open handoff items
