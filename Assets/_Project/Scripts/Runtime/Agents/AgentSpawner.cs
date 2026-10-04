@@ -18,7 +18,14 @@ namespace ToyFactory.Runtime.Agents
     /// hands both the brain and the shared <see cref="WorldBlackboard"/> to the agent's
     /// <see cref="AgentController"/>. The scene loader calls <see cref="SpawnAll"/> once
     /// the level and grid exist; test scenes can use "Spawn On Start" instead.
+    /// It also owns the Runtime writers that fill the blackboard (objectives, chapter,
+    /// player) and the hearing that fills each agent's senses.
     /// </summary>
+    /// <remarks>
+    /// Runs before the default execution order, so the player snapshot is written each
+    /// frame before any agent's brain reads it.
+    /// </remarks>
+    [DefaultExecutionOrder(-50)]
     public sealed class AgentSpawner : MonoBehaviour
     {
         /// <summary>The spawner in the loaded Agents scene, for the scene loader to call.</summary>
@@ -33,6 +40,9 @@ namespace ToyFactory.Runtime.Agents
         readonly List<AgentController> _spawned = new List<AgentController>();
         WorldBlackboard _blackboard;
         ObjectiveTargetWriter _objectiveWriter;
+        ChapterIndexWriter _chapterWriter;
+        PlayerStateWriter _playerWriter;
+        AgentHearing _hearing;
 
         /// <summary>Every agent spawned so far, for the debug overlay and tests.</summary>
         public IReadOnlyList<AgentController> SpawnedAgents => _spawned;
@@ -51,11 +61,21 @@ namespace ToyFactory.Runtime.Agents
             // Created with the blackboard, in Awake, so it is already listening when the
             // chapter manager publishes Chapter 1's targets after the agents spawn.
             _objectiveWriter = new ObjectiveTargetWriter(_blackboard);
+            _chapterWriter = new ChapterIndexWriter(_blackboard);
+            _playerWriter = new PlayerStateWriter(_blackboard);
+
+            // Reads the live agent list and the grid at each noise, so it works before and
+            // after spawning and picks up a grid built later.
+            _hearing = new AgentHearing(_spawned, () => GridManager.Current);
         }
+
+        void Update() => _playerWriter.Write(GridManager.Current);
 
         void OnDestroy()
         {
             _objectiveWriter?.Dispose();
+            _chapterWriter?.Dispose();
+            _hearing?.Dispose();
             if (Instance == this)
                 Instance = null;
         }
