@@ -12,8 +12,12 @@ namespace ToyFactory.AI.Agents.Saboteur
     /// One Saboteur instance's utility brain. This skeleton runs selection at 4 Hz through
     /// <see cref="ActionSelector"/> with Idle/Patrol as the only action, handles stun, graph
     /// changes and permanent destruction. Sabotage and combat actions are added on top of
-    /// the same selection loop as their world facts become available. Saboteur A reports the
-    /// chapter keycard through <see cref="IDropsItems"/> once it has been destroyed.
+    /// the same selection loop as their world facts become available: an
+    /// <see cref="ICandidateSource"/> supplies them, and the brain then applies the squad layer
+    /// (the "not claimed" veto and attack saturation), claims its target on commit and staggers its
+    /// decisions by letter, all through the <see cref="SquadCoordinator"/> shared by every brain
+    /// built over the same <see cref="TargetClaims"/>. Saboteur A reports the chapter keycard
+    /// through <see cref="IDropsItems"/> once it has been destroyed.
     /// </summary>
     /// <remarks>
     /// Every dependency is passed in at construction, so the brain never looks anything up
@@ -52,14 +56,20 @@ namespace ToyFactory.AI.Agents.Saboteur
         readonly SaboteurIdentity _identity;
         readonly GridGraph _grid;
         readonly IPathfinder _pathfinder;
-        readonly TargetClaims _claims;
+        readonly SquadCoordinator _squad;
+        readonly ICandidateSource _source;
         readonly ActionSelector _selector;
         readonly Vector2Int[] _patrolCells;
         readonly List<ActionCandidate> _candidates = new List<ActionCandidate>(8);
         readonly int _keycardItemId;
         readonly UtilityDecisionTrace _lastDecision = new UtilityDecisionTrace();
 
-        float _nextDecisionTime = float.NegativeInfinity;
+        // Decisions run on a fixed phase of the 4 Hz grid, offset by this instance's letter, so
+        // the four instances never decide in the same frame and never drift back together.
+        float _anchorTime;
+        float _nextDecisionTime;
+        bool _scheduleStarted;
+
         int _patrolIndex;
         List<Vector2Int> _routeCells;
         bool _needsRoute = true;
@@ -80,16 +90,23 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// <param name="identity">Claim owner id and letter for this instance.</param>
         /// <param name="grid">The shared navigation grid.</param>
         /// <param name="pathfinder">The shared search over <paramref name="grid"/>.</param>
-        /// <param name="claims">The squad's shared target claims.</param>
+        /// <param name="claims">
+        /// The squad's shared target claims. Brains built over the same instance form one squad
+        /// and must have different agent ids.
+        /// </param>
         /// <param name="patrolPoints">World positions to patrol in a loop; may be empty (the Saboteur holds).</param>
         /// <param name="selectorSettings">Stability tuning; the design defaults when null.</param>
         /// <param name="keycardItemId">
         /// The <see cref="ItemDrop.ItemId"/> of the keycard Saboteur A drops. Provisional until
         /// the controller and pickup owners agree what the id means.
         /// </param>
+        /// <param name="candidateSource">
+        /// Supplies the sabotage and combat candidates; null until those actions exist, in which
+        /// case Idle/Patrol is the only candidate.
+        /// </param>
         public SaboteurBrain(SaboteurIdentity identity, GridGraph grid, IPathfinder pathfinder,
             TargetClaims claims, IReadOnlyList<Vector3> patrolPoints, SelectorSettings selectorSettings = null,
-            int keycardItemId = 0)
+            int keycardItemId = 0, ICandidateSource candidateSource = null)
         {
             // default(SaboteurIdentity) would otherwise pass as "Saboteur A, the keycard carrier".
             if (!identity.IsAssigned)
@@ -98,9 +115,12 @@ namespace ToyFactory.AI.Agents.Saboteur
             _identity = identity;
             _grid = grid ?? throw new ArgumentNullException(nameof(grid));
             _pathfinder = pathfinder ?? throw new ArgumentNullException(nameof(pathfinder));
-            _claims = claims ?? throw new ArgumentNullException(nameof(claims));
+            if (claims == null)
+                throw new ArgumentNullException(nameof(claims));
+
             _selector = new ActionSelector(selectorSettings);
             _keycardItemId = keycardItemId;
+            _source = candidateSource;
 
             var cells = new List<Vector2Int>();
             if (patrolPoints != null)
@@ -113,6 +133,10 @@ namespace ToyFactory.AI.Agents.Saboteur
                 }
             }
             _patrolCells = cells.ToArray();
+
+            // Last, so a brain that fails validation never joins the squad.
+            _squad = SquadCoordinator.For(claims);
+            _squad.Register(identity);
         }
 
         /// <summary>This instance's identity.</summary>
@@ -139,10 +163,21 @@ namespace ToyFactory.AI.Agents.Saboteur
             _lastCell = ctx.Cell;
             _hasLastCell = true;
 
+            if (!_scheduleStarted)
+            {
+                _scheduleStarted = true;
+                _anchorTime = ctx.Time + SquadCoordinator.DecisionOffset(_identity.Letter);
+                _nextDecisionTime = _anchorTime;
+            }
+
+            // Another instance may have taken the target this one committed to.
+            if (_squad.CheckOutscored(_identity.AgentId))
+                _selector.CancelCurrent();
+
             if (ctx.Time >= _nextDecisionTime)
             {
-                _nextDecisionTime = ctx.Time + DecisionInterval;
-                Decide(ctx.Time);
+                Decide(ctx);
+                _nextDecisionTime = NextSlotAfter(ctx.Time);
             }
 
             // Only Idle/Patrol exists so far; later actions branch here on CurrentAction.
@@ -182,7 +217,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             // this brain until the reboot. So only drop the plan here; the first tick after
             // the reboot selects and routes afresh.
             _selector.CancelCurrent();
-            _claims.Release(_identity.AgentId);
+            _squad.EndPlan(_identity.AgentId);
             _needsRoute = true;
             _holdSent = false;
         }
@@ -194,7 +229,7 @@ namespace ToyFactory.AI.Agents.Saboteur
                 return;
 
             _destroyed = true;
-            _claims.Release(_identity.AgentId);
+            _squad.OnDestroyed(_identity.AgentId);
             _selector.CancelCurrent();
             _routeCells = null;
 
@@ -239,8 +274,14 @@ namespace ToyFactory.AI.Agents.Saboteur
             return new Vector2Int(Mathf.Clamp(start.x, 0, _grid.Width - 1), Mathf.Clamp(start.y, 0, _grid.Height - 1));
         }
 
-        void Decide(float now)
+        // The first decision slot after t on this instance's fixed phase.
+        float NextSlotAfter(float t) =>
+            _anchorTime + (Mathf.Floor((t - _anchorTime) / DecisionInterval) + 1f) * DecisionInterval;
+
+        void Decide(in AgentContext ctx)
         {
+            float now = ctx.Time;
+            int id = _identity.AgentId;
             _routeRetryWaiting = false;
             _candidates.Clear();
             _lastDecision.Begin(now);
@@ -250,7 +291,38 @@ namespace ToyFactory.AI.Agents.Saboteur
             _candidates.Add(new ActionCandidate(IdleKey, IdleScore));
             _lastDecision.AddConstant(IdleKey, new ActionScore(IdleScore, IdleScore));
 
-            _selector.Select(_candidates, now, _lastDecision);
+            if (_source != null)
+            {
+                _source.AddCandidates(ctx, _identity, _candidates);
+
+                // The squad layer: other instances' claims and attacks change this instance's
+                // scores. The trace keeps the source's score as the raw score and the adjusted
+                // one as the base score, so a veto shows up as a base score of 0.
+                for (int i = 1; i < _candidates.Count; i++)
+                {
+                    ActionCandidate candidate = _candidates[i];
+                    float raw = candidate.BaseScore;
+                    float adjusted = raw * _squad.NotClaimedFactor(id, candidate.Key);
+                    if (candidate.Key.Kind == SaboteurActionKind.AttackPlayer)
+                        adjusted *= _squad.AttackSaturation(id);
+
+                    _candidates[i] = new ActionCandidate(candidate.Key, adjusted);
+                    _lastDecision.AddConstant(candidate.Key, new ActionScore(raw, adjusted));
+                }
+            }
+
+            SelectionResult result = _selector.Select(_candidates, now, _lastDecision);
+            if (!result.HasSelection)
+            {
+                _squad.EndPlan(id);
+                return;
+            }
+
+            // Commit to the pair and claim its target. The "not claimed" veto already removed
+            // targets held by others, so a lost claim is rare (a same-frame race); drop the
+            // plan and let the next decision see the new holder.
+            if (!_squad.TryCommit(id, result.Key, result.BaseScore))
+                _selector.CancelCurrent();
         }
 
         AgentIntent Patrol(Vector2Int currentCell, Vector3 position)

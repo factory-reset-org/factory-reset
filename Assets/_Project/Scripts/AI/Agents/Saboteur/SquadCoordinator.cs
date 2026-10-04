@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using ToyFactory.AI.Core.Blackboard;
 
 namespace ToyFactory.AI.Agents.Saboteur
@@ -33,6 +34,11 @@ namespace ToyFactory.AI.Agents.Saboteur
             public ActionKey Action;
         }
 
+        // One coordinator per claims instance. The table holds its keys weakly, so a coordinator
+        // lives exactly as long as the claims it wraps and nothing is kept across levels or tests.
+        static readonly ConditionalWeakTable<TargetClaims, SquadCoordinator> Shared =
+            new ConditionalWeakTable<TargetClaims, SquadCoordinator>();
+
         readonly TargetClaims _claims;
         readonly Dictionary<int, Member> _members = new Dictionary<int, Member>(4);
 
@@ -40,6 +46,19 @@ namespace ToyFactory.AI.Agents.Saboteur
         public SquadCoordinator(TargetClaims claims)
         {
             _claims = claims ?? throw new ArgumentNullException(nameof(claims));
+        }
+
+        /// <summary>
+        /// The one coordinator for <paramref name="claims"/>. Every brain built over the same
+        /// claims instance gets the same coordinator, so the squad shares claims and the attacker
+        /// count without the spawner having to pass a coordinator around.
+        /// </summary>
+        public static SquadCoordinator For(TargetClaims claims)
+        {
+            if (claims == null)
+                throw new ArgumentNullException(nameof(claims));
+
+            return Shared.GetValue(claims, c => new SquadCoordinator(c));
         }
 
         /// <summary>

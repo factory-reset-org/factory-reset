@@ -79,7 +79,7 @@ An attack-count factor multiplies the AttackPlayer score by how many other live 
 
 ### Tick stagger
 
-Selection runs at 4 Hz (250 ms). Instances are offset by 62.5 ms (A = 0, B = 62.5, C = 125, D = 187.5 ms), so one frame never holds four selections. Timers use `AgentContext.Time` only; today that is `Time.time`, so cutscene and pause freezing depends on the controller supplying game time (**needed from S4**).
+Selection runs at 4 Hz (250 ms). Instances are offset by 62.5 ms (A = 0, B = 62.5, C = 125, D = 187.5 ms) from their first tick and keep that phase, so one frame never holds four selections. Timers use `AgentContext.Time` only; today that is `Time.time`, so cutscene and pause freezing depends on the controller supplying game time (**needed from S4**).
 
 ### DetourCache
 
@@ -220,7 +220,7 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | Brain skeleton: identity, 4 Hz selection, Idle/Patrol, stun, graph changes, destruction | Implemented | `SaboteurIdentity`, `SaboteurBrain`; `SaboteurBrainTests` |
 | Decision trace for the debug panel: each candidate's raw and base score, each consideration's input and score, ranking, and why a candidate lost | Implemented; filled by the brain and `ActionSelector`, no allocation per decision | `UtilityDecisionTrace`, `SaboteurBrain.LastDecision`; `UtilityDecisionTraceTests` |
 | CloseDoor, ArmTrap, StealBattery, AttackPlayer, Flee | Not started | Need the blackboard facts in the handoff table |
-| Squad layer: claim on commit, "not claimed" veto, displacement check, release, attack saturation, tick stagger | Implemented as a standalone class; not yet used by the brain | `SquadCoordinator`; `SquadClaimTests` |
+| Squad layer: claim on commit, "not claimed" veto, displacement check, release, attack saturation, tick stagger | Implemented in the brain: claims on commit, the veto and saturation applied to every candidate, stagger by letter, release on stun and destruction. The candidates themselves come from an `ICandidateSource`, which no action implements yet | `SquadCoordinator`, `ICandidateSource`, `SaboteurBrain`; `SquadClaimTests`, `SaboteurSquadTests` |
 | Keycard drop through `IDropsItems` | Implemented; the battery drop waits for StealBattery | `IDropsItems`, `SaboteurBrain.GetDrops`; `SaboteurDropTests` |
 | `DetourCache` | Not started | Build on the brain skeleton |
 
@@ -245,7 +245,20 @@ The skeleton's behaviour:
 - `AttackSaturation(agentId)` returns `1.0` for 0-1 other live attackers and `0.45` for 2 or more.
 - `DecisionOffset(letter)` returns 0, 62.5, 125 and 187.5 ms for A-D.
 
-The brain does not use it yet; wiring it into `SaboteurBrain` is the next squad step.
+- `For(claims)` returns the one coordinator for a `TargetClaims` instance (a weak table keyed by the claims), so every brain built over the same claims shares claims and the attacker count without the spawner passing a coordinator around.
+
+**In the brain.** `SaboteurBrain` registers its identity with `SquadCoordinator.For(claims)` as the last step of its constructor, so two brains in one squad must have different agent ids and a brain that fails validation never joins. Each decision pass then:
+
+1. calls `CheckOutscored` on every tick, and drops its plan if another instance took the target;
+2. asks its `ICandidateSource` for the eligible sabotage and combat candidates (Idle is always added by the brain). A source reports an instance's own scores and never looks at the squad;
+3. multiplies each candidate by `NotClaimedFactor` (a target another instance holds becomes 0, so it is vetoed) and, for AttackPlayer, by `AttackSaturation`. The decision trace keeps the source's score as the raw score and the adjusted score as the base score, so a veto is a base score of 0 with the rejection reason `Vetoed`;
+4. selects through `ActionSelector`, then calls `TryCommit` with the selected pair's base score. If the claim is lost (a same-frame race, which the veto makes rare) the plan is dropped and the next decision sees the new holder; if nothing is selected, `EndPlan` runs.
+
+Stun calls `EndPlan` and destruction calls `OnDestroyed`, so a stunned or destroyed instance frees its targets at once.
+
+**Stagger.** The first decision of an instance is `DecisionOffset(letter)` after its own first tick, and every later decision stays on that phase of the 250 ms grid (the next slot after the current time), so the four instances neither share a frame nor drift back together. A needs no offset, so it decides on its first tick. This assumes the squad's brains start ticking in the same frame, as the spawner does.
+
+**Limits.** No action implements `ICandidateSource` yet, so in the level the candidate list is still Idle only and no claim is ever made; the squad behaviour is exercised in `SaboteurSquadTests` with fake sources. A claim is released when the plan changes, on stun, on destruction and when the claim is lost, but action end and invalidation (door closed first, battery collected, trap armed) need the runtime's completion feedback, which does not exist yet.
 
 ### Spawn hookup
 
