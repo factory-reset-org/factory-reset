@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b03c39cbf68039f4284e683e4aa305e0, type: 3}
+  m_Name: Chapter3
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Chapters.ChapterDefinition
+  index: 3
+  title: Storage Vault
+  subtitle: Wake the relays
+  area: Storage Area
+  tasks:
+  - {fileID: 11400000, guid: ded0e764572f56c46bf59f8edc7a8f14, type: 2}
+  - {fileID: 11400000, guid: 21f484bad470be944af2fff86b6459d5, type: 2}
+  switchNumber: 3
+  cutsceneId: ch4
