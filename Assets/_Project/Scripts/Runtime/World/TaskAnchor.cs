@@ -1,4 +1,5 @@
 using UnityEngine;
+using ToyFactory.Interfaces;
 
 namespace ToyFactory.Runtime.World
 {
@@ -8,7 +9,7 @@ namespace ToyFactory.Runtime.World
     /// place by <see cref="AnchorId"/> instead of by a scene reference.
     /// </summary>
     [DisallowMultipleComponent]
-    public sealed class TaskAnchor : MonoBehaviour
+    public sealed class TaskAnchor : MonoBehaviour, ITaskAnchor
     {
         [Tooltip("Stable id, e.g. \"ch1.lever\". Chapter data and props refer to the anchor by this id.")]
         [SerializeField] string anchorId;
