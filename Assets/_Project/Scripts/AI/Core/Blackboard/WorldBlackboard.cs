@@ -10,14 +10,20 @@ namespace ToyFactory.AI.Core.Blackboard
     /// battery positions and cell reservations.
     /// </summary>
     /// <remarks>
-    /// Stub: fields are added here as the systems that produce them land (player state,
-    /// noise propagation, doors, batteries). Brains only ever read this; only Runtime
+    /// Stub: fields are added here as the systems that produce them land (noise
+    /// propagation, doors, batteries). Brains only ever read this; only Runtime
     /// code writes to it.
     /// </remarks>
     public sealed class WorldBlackboard
     {
         readonly List<ObjectiveTarget> _objectiveTargets = new List<ObjectiveTarget>();
         readonly ReadOnlyCollection<ObjectiveTarget> _objectiveTargetView;
+
+        /// <summary>The player as of this frame. <see cref="PlayerSnapshot.IsKnown"/> is false when there is no player.</summary>
+        public PlayerSnapshot Player { get; private set; }
+
+        /// <summary>Replaces the player snapshot. Runtime only.</summary>
+        public void SetPlayer(in PlayerSnapshot snapshot) => Player = snapshot;
 
         /// <summary>Currently active objectives in their published order.</summary>
         public IReadOnlyList<ObjectiveTarget> ObjectiveTargets => _objectiveTargetView;
