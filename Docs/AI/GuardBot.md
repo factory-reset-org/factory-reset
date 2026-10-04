@@ -17,7 +17,7 @@ The Guard is a defensive shooter that holds cover, peeks out to shoot, and reloc
 **The Guard's solution: it treats the physics world as part of its own decision space, not just an obstacle to route around.**
 
 1. **Player-built barricades become its cover.** Any pushable box the player settles into place is a new cover candidate the instant it stops moving. A player who builds a wall to slow the Guard down may unintentionally hand it a fortified position instead.
-2. **It adapts to the player's weapon state.** The Guard reads the player's battery fraction off the blackboard and changes its ideal engagement distance and peek rhythm accordingly, so a player who is winning the ammo war finds the Guard turtling up, while a player who is running low finds it pressing the advantage.
+2. **It adapts to the player's weapon state.** The Guard reads the player's battery off the blackboard (the blaster's charge, `AmmoFraction` on the player snapshot) and changes its ideal engagement distance and peek rhythm accordingly, so a player who is winning the ammo war finds the Guard turtling up, while a player who is running low finds it pressing the advantage.
 
 | Player battery / state | Guard tactic |
 | --- | --- |
@@ -133,7 +133,7 @@ Protection (`P`) is weighted highest because a Guard standing in the open fails 
 
 ### Tactical A* cost model
 
-`lambda = 3` in a ScriptableObject:
+`lambda = 3`, passed to the model as a constructor parameter today. The ScriptableObject that exposes it in the Inspector is planned:
 
 ```text
 stepCost(n -> m) = base(n, m) * (1 + lambda * exposure(m))
@@ -191,36 +191,44 @@ Octile distance assumes every step costs its base cost. The exposure penalty onl
 
 EditMode tests run without a scene, which also proves the brain is decoupled from Unity objects. Each one uses a small hand-made grid or a fake `ICoverVisibility`.
 
-**AStarSearch**
+Status says whether a test exists in the repo today (**Built**) or is still to be written (**Planned**). Test names are the real ones in the test files.
 
-| Test | What it proves |
-| --- | --- |
-| `AStar_KnownGrid_ReturnsOptimalPath` | Matches a hand-worked answer on a small grid |
-| `AStar_UnreachableGoal_ReturnsNotFound` | `Found = false` rather than an infinite search |
-| `AStar_CostMatchesDijkstra_OnRandomGrids` | Optimality holds generally, not just on one example |
+**AStarSearch** (`AStarSearchTests`, built)
 
-**TacticalCostModel**
+| Test | Status | What it proves |
+| --- | --- | --- |
+| `StraightLineOnOpenGridIsOptimal`, `RoutesAroundAWallWithoutCuttingCorners` | Built | Matches hand-worked optimal paths |
+| `WalledOffGoalIsNotFound` | Built | `Found = false` rather than an infinite search |
+| `CostMatchesReferenceDijkstraOnFiftyRandomGrids` | Built | Optimality holds generally, not just on one example |
 
-| Test | What it proves |
-| --- | --- |
-| `TacticalCost_HiddenRouteWithinLambdaBound_IsPreferred` | The exposure penalty actually changes route choice |
-| `TacticalCost_NeverBelowBaseOctileStep_StaysAdmissible` | The admissibility argument holds in code, not just on paper |
+**TacticalCostModel** (`TacticalCostModelTests`)
 
-**Cover scoring**
+| Test | Status | What it proves |
+| --- | --- | --- |
+| `HiddenStepCostsTheSameAsTheBaseModel`, `ExposedStepCostsBaseTimesOnePlusLambda`, `DefaultLambdaIsThree`, `CustomLambdaIsRespected` | Built | The cost formula matches `base · (1 + lambda · exposure)` |
+| `ExposureIsQueriedWithTheDestinationCell`, `NullExposureDelegateThrows` | Built | Exposure is read for the step's destination, and a missing exposure source is rejected |
+| `TacticalCost_HiddenRouteWithinLambdaBound_IsPreferred` | Planned | The exposure penalty actually changes route choice |
+| `TacticalCost_NeverBelowBaseOctileStep_StaysAdmissible` | Planned | The admissibility argument holds in code, not just on paper |
 
-| Test | What it proves |
-| --- | --- |
-| `FullCoverScoresHigherThanHalfCoverAtEqualRange` | Protection weighting behaves as designed (implemented in `CoverEvaluatorTests`) |
-| `Cover_BoxSettles_BecomesNewCandidate` | The player-built-cover creative hook actually works |
+**Cover scoring** (`CoverEvaluatorTests`, built unless marked)
 
-**Brain and states**
+| Test | Status | What it proves |
+| --- | --- | --- |
+| `CellBehindAnObstacleIsFullCoverWhenBothHeightsAreBlocked`, `CellIsHalfCoverWhenOnlyTheLowHeightIsBlocked`, `CellIsDiscardedWhenOnlyTheChestHeightIsBlocked` | Built | Protection tiers follow the plan's rule |
+| `OpenGridWithNoObstacleHasNoCandidates`, `ObstacleBeyondFifteenMetresProducesNoCandidates` | Built | Candidates need an obstacle next to them and must be within 15 m |
+| `CanPeekWhenANeighbourSeesTheChest`, `CannotPeekWhenEveryNeighbourIsHiddenAtChestHeight` | Built | Peek ability follows chest visibility from neighbouring cells |
+| `ScoreIsOneForFullCoverAtDesiredRangeWithNoTravelCostAndPeekable`, `FullCoverScoresHigherThanHalfCoverAtEqualRange`, `HigherPathCostLowersTheScore` | Built | The weights from the cover formula behave as designed |
+| `NullGridIsRejected`, `NonPositiveDesiredRangeIsRejected` | Built | Bad inputs are rejected |
+| `Cover_BoxSettles_BecomesNewCandidate` | Planned | The player-built-cover creative hook actually works |
 
-| Test | What it proves |
-| --- | --- |
-| `Guard_Transitions_PickHighestPriorityValidOne` | The FSM is data-driven, not if/else |
-| `Guard_BatteryBelow25_ReducesIdealDistanceAndAdvances` | The battery-adaptive creative hook actually works |
+**Brain and states** (`GuardBrain`, all planned, since the brain is not written yet)
 
-Edge-case tests are listed in the table above.
+| Test | Status | What it proves |
+| --- | --- | --- |
+| `Guard_Transitions_PickHighestPriorityValidOne` | Planned | The FSM is data-driven, not if/else |
+| `Guard_BatteryBelow25_ReducesIdealDistanceAndAdvances` | Planned | The battery-adaptive creative hook actually works |
+
+Edge-case tests are listed in the table above, and all of them are planned until `GuardBrain` exists.
 
 ## Measured results
 <!-- Numbers from AIPerformanceLog.md: lambda tuning notes, A* vs Dijkstra verification, replans-per-box-push counts. -->
