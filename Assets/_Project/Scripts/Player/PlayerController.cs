@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using ToyFactory.Interaction;
+using ToyFactory.Interfaces;
 
 namespace ToyFactory.Player
 {
@@ -12,7 +13,7 @@ namespace ToyFactory.Player
     /// components; this one only moves and looks.
     /// </summary>
     [RequireComponent(typeof(CharacterController))]
-    public sealed class PlayerController : MonoBehaviour
+    public sealed class PlayerController : MonoBehaviour, IPlayerState
     {
         [Header("Input")]
         [Tooltip("Shared Input Actions asset. Must contain a 'Player' map with Move, Look and Sprint actions.")]
@@ -55,6 +56,23 @@ namespace ToyFactory.Player
         /// <summary>Velocity applied this frame (horizontal plus vertical), for the blackboard.</summary>
         public Vector3 Velocity { get; private set; }
 
+        public Vector3 Forward => Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
+
+        public float SprintSpeed => sprintSpeed;
+
+        // No health, ammo, reload, overcharge or shooting exists yet, so these report
+        // their defaults and TakeDamage is a no-op until those systems land.
+        public bool IsAlive => true;
+        public float HealthFraction => 1f;
+        public float AmmoFraction => 1f;
+        public bool IsReloading => false;
+        public float OverchargeTimeLeft => 0f;
+        public float LastShotTime => -1f;
+
+        public void TakeDamage(float amount, int sourceAgentId)
+        {
+        }
+
         /// <summary>Current grid cell, computed from position using the shared cell size.</summary>
         public Vector2Int Cell => new Vector2Int(
             Mathf.FloorToInt(transform.position.x / cellSize),
@@ -71,6 +89,13 @@ namespace ToyFactory.Player
             map.Enable();
 
             SetCursorLocked(true);
+            PlayerState.Publish(this);
+        }
+
+        void OnDestroy()
+        {
+            if (ReferenceEquals(PlayerState.Current, this))
+                PlayerState.Publish(null);
         }
 
         void Update()
