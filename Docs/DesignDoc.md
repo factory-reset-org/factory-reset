@@ -368,6 +368,8 @@ GuardBot_Root                            origin, centre of the tread footprint
 
 The treads are deliberately rigid; there are no road wheels.
 
+Final model (2026-10-04): detail was added inside the existing meshes only, using the same shared parts as the other robots: a bevelled `Torso` with a recessed chest plate, back vent and shoulder sockets, a bevelled `Head` with a visor frame and ear plates, a recessed lens in `Visor`, grousers, hub caps and a trim block with a recessed top on each tread, banded `Neck`, `Cannon_Arm`, `Shield_Arm` and `Antenna_Stem`, an equator band on the shoulder balls and the antenna bulb, ringed `Cannon_Barrel` with a recessed muzzle, and a `Shield` with a recessed face and four rivets. No node was added, renamed, reparented or moved, and every part stays inside its greybox bounds (the barrel and neck are slightly narrower than before), so the tree above, the pivots, the tread footprint and the 15 prefab-variant colliders are unchanged. 2,812 triangles.
+
 ### 8.6 CaptainBot
 
 ```text
@@ -387,6 +389,8 @@ CaptainBot_Root                          origin, between the boots
 ```
 
 The `UpperLeg_*` and `LowerLeg_*` names replace the earlier `Leg_L`/`Leg_R` meshes. S4 acknowledged these names on 2026-09-30. Positive local X rotation on a knee pivot bends the knee (boot moves backward).
+
+Final model (2026-10-04): detail was added inside the existing meshes only, using the same shared parts as the other robots: `Torso` with a separate gold belt band, a star badge, two buttons and a recessed back panel, `Head` with a visor frame and ear plates, a recessed lens in `Visor`, a badge on `Hat_Band`, a recessed top on `Hat_Crown`, five fringe tassels on each `Epaulette_*`, banded arms and neck, ringed `Cannon_*` with a recessed muzzle, `Boot_*` as sole plus upper with toe and instep plates, side stripes on `UpperLeg_*`, and end caps on the knee hinge in `LowerLeg_*`. No node was added, renamed, reparented or moved, and every part stays inside its greybox bounds (the cannons and neck are slightly narrower than before), so the tree above, the pivots, the boot footprint and the 21 prefab-variant colliders are unchanged. 3,188 triangles. The chest buttons share the dark slot with the hat band, so they stay dark until the palette work gives them a colour.
 
 ### 8.7 Approximate greybox motion limits
 
