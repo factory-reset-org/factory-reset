@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b03c39cbf68039f4284e683e4aa305e0, type: 3}
+  m_Name: Chapter1
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Chapters.ChapterDefinition
+  index: 1
+  title: Assembly Line
+  subtitle: Get the belts moving again
+  area: Assembly Floor
+  tasks:
+  - {fileID: 11400000, guid: 3a9e269879541434ab6af38d210b16ad, type: 2}
+  - {fileID: 11400000, guid: e3913fe109ac25f44aa4d0e0ae7d4b0c, type: 2}
+  - {fileID: 11400000, guid: 09c9709c4a618794bb441db37c543200, type: 2}
+  - {fileID: 11400000, guid: 1765de07f7853c742b3489d8738bde03, type: 2}
+  - {fileID: 11400000, guid: 69189f9937d64c74dbb231e2e8cf10da, type: 2}
+  switchNumber: 1
+  cutsceneId: ch2
