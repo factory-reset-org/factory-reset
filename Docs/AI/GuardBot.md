@@ -17,10 +17,11 @@ The Guard is a defensive shooter that holds cover, peeks out to shoot, and reloc
 **The Guard's solution: it treats the physics world as part of its own decision space, not just an obstacle to route around.**
 
 1. **Player-built barricades become its cover.** Any pushable box the player settles into place is a new cover candidate the instant it stops moving. A player who builds a wall to slow the Guard down may unintentionally hand it a fortified position instead.
-2. **It adapts to the player's weapon state.** The Guard reads the player's battery fraction off the blackboard and changes its ideal engagement distance and peek rhythm accordingly, so a player who is winning the ammo war finds the Guard turtling up, while a player who is running low finds it pressing the advantage.
+2. **It adapts to the player's weapon state.** The Guard reads the player's battery off the blackboard (the blaster's charge, `AmmoFraction` on the player snapshot) and changes its ideal engagement distance and peek rhythm accordingly, so a player who is winning the ammo war finds the Guard turtling up, while a player who is running low finds it pressing the advantage.
 
 | Player battery / state | Guard tactic |
 | --- | --- |
+| Overcharge active | `d_ideal = 12 m`, full cover only (`P = 1.0`), no peeking until it ends. Reads `OverchargeTimeLeft` from the blackboard player |
 | > 50% | `d_ideal = 10 m`, hold cover, peek only after the player stops firing for 1.5 s |
 | 25 to 50% | `d_ideal = 7 m`, normal peek rhythm |
 | < 25% or reloading | `d_ideal = 4 m`, advance to closer cover, shorter peek interval |
@@ -36,10 +37,24 @@ The Guard is a finite-state machine built on the shared FSM framework: each stat
 Cover candidate generation runs every 1 s, or immediately when the player's cell changes by more than 2 m, or when a box settles nearby:
 
 1. Collect traversable cells within 15 m that are adjacent to a static obstacle or a settled pushable box.
-2. Protection test: Linecast from the player's eye to the candidate at 0.5 m and 1.2 m height. Full cover if both are blocked, half cover if only the low one is, otherwise discard the candidate.
+2. Protection test: a line-of-sight query from the player's eye to the candidate at 0.5 m and 1.2 m height, answered through `ICoverVisibility`, which Runtime implements with a physics linecast. Full cover if both are blocked, half cover if only the low one is, otherwise discard the candidate.
 3. Peek test: at least one neighbour cell from which the player is visible.
 
 Selection ranks all candidates by score using octile distance as a cheap estimate of path cost, runs tactical A* on the top 3, recomputes the score with the true path cost, picks the best, and reserves that cell on the blackboard.
+
+### Runtime contract
+
+These rules come from the shared brain and body contract in `Docs/DesignDoc.md`. The brain reads the world through `AgentContext` and returns an `AgentIntent`, and it never touches a GameObject.
+
+- **Stun:** the controller stops the body and does not tick the brain until it reboots. `OnStunned(duration)` is information only, so the Guard has no stun timer of its own. On the first tick after reboot it plans a fresh route. It releases its cover reservation at the moment of the stun.
+- **Arrival:** a waypoint counts as reached when the distance to the last waypoint is under 0.5 m. Never compare `ctx.Cell` with the last cell, because the body stops within 0.3 m of a waypoint, which is more than half a cell.
+- **Time:** use `ctx.Time`, which is game time and stops during cutscenes and pause. Never use `UnityEngine.Time`.
+- **Destruction:** `OnDestroyed()` releases the cover reservation, so a dead Guard never blocks another agent.
+- **Spawning:** the Guard's case in `AgentSpawner.CreateBrain(point, in BrainSetup setup)` receives the grid, the shared A* pathfinder, its identity id, the blackboard and the patrol points through `setup`. Only that case is edited, and it is edited by S2.
+- **Shooting:** the Guard outputs `AgentAction.Shoot` with `LookTarget` set. The controller applies the 0.3 s telegraph, the hitscan and the damage through `PlayerState.Current.TakeDamage`.
+- **Player:** read the player from `setup.Blackboard.Player`. If `IsKnown` is false or `IsAlive` is false, patrol or hold position. Never throw.
+- **Replanning:** replan only when `OnGraphChanged` touches the current path or the reserved cover cell.
+- **Journey:** the home region is the Painting Room during Chapter 2. The Guard follows the player out of the room when alerted. The controller does not tick it during cutscenes or pause.
 
 ### States
 
@@ -47,11 +62,11 @@ Selection ranks all candidates by score using octile distance as a cheap estimat
 | --- | --- |
 | **TakeCover** | Walking to the reserved cover cell via tactical A*. Fires opportunistically if the player is visible along the way. |
 | **InCover** | Settled at cover, facing the player's last known position, waiting out a short hold timer before peeking. |
-| **PeekAndShoot** | Moved to the cover's peek cell, fires hitscan shots with a 0.3 s wind-up telegraph while the peek timer runs. |
+| **PeekAndShoot** | Moved to the cover's peek cell. Requests hitscan shots while the peek timer runs; the controller adds the 0.3 s wind-up telegraph. Does not peek while overcharge is active. |
 | **Relocate** | Current cover is exposed or flanked. Immediately re-runs cover scoring and moves to the next best candidate. |
 | **Advance** | No valid cover exists, or the player's battery is below 25%. Presses toward the player's last known position. |
 | **Retreat** | No valid cover and advancing is not safe either. Falls back to the reachable cell that maximises distance from the player with zero exposure. |
-| **Stunned** | Hit points reached 0. Falls apart for the stun duration and releases its cover reservation. |
+| **Stunned** | Hit points reached 0. The body falls apart, and the controller stops ticking the brain until it reboots (the Guard reassembles after 8 s, plan section 9.5). The cover reservation was released at the moment of the stun. |
 
 ### Transitions
 
@@ -60,10 +75,11 @@ Higher priority wins when several conditions are true on the same tick.
 | From | To | Condition | Priority |
 | --- | --- | --- | --- |
 | Any | Stunned | Hit points reach 0 | 100 |
-| Stunned | TakeCover | Stun timer ends | 90 |
+| Stunned | TakeCover | The controller reboots the body; the first tick after reboot plans a fresh route | 90 |
 | TakeCover | InCover | Reaches the reserved cover cell | 80 |
 | InCover | PeekAndShoot | Hold timer elapses (1.3 s, or later once the player stops firing, per the battery table) | 70 |
 | InCover, PeekAndShoot | Relocate | Current cover becomes exposed (player gains line of sight to it) | 60 |
+| PeekAndShoot | InCover | Overcharge becomes active; no peeking until it ends | 65 |
 | PeekAndShoot | InCover | Peek timer elapses | 50 |
 | Relocate | TakeCover | A new cover cell is chosen | 40 |
 | TakeCover, InCover, PeekAndShoot, Relocate | Advance | No valid cover exists, or the player's battery drops below 25% / they are reloading | 30 |
@@ -117,7 +133,7 @@ Protection (`P`) is weighted highest because a Guard standing in the open fails 
 
 ### Tactical A* cost model
 
-`lambda = 3` in a ScriptableObject:
+`lambda = 3`, passed to the model as a constructor parameter today. The ScriptableObject that exposes it in the Inspector is planned:
 
 ```text
 stepCost(n -> m) = base(n, m) * (1 + lambda * exposure(m))
@@ -163,42 +179,56 @@ Octile distance assumes every step costs its base cost. The exposure penalty onl
 | Chosen cover already reserved by another agent | Take the next-best candidate | `Cover_ReservedByOtherAgent_SkipsToNextBest` |
 | Target cover becomes blocked by a box | Take the next-best candidate; the box is added as a new cover candidate | `Cover_TargetBlockedByBox_ReselectsAndAddsBoxAsCandidate` |
 | Player unreachable | Hold current cover, keep peeking | `Guard_PlayerUnreachable_HoldsCoverWithoutFreezing` |
-| Stunned | Releases its cover reservation so another agent can use it | `Guard_OnStunned_ReleasesCoverReservation` |
+| Stunned | Releases its cover reservation so another agent can use it; the brain is not ticked until reboot | `Guard_OnStunned_ReleasesCoverReservation` |
+| Stun ends (reboot) | Plans a fresh route on the first tick after reboot; no stun timer of its own | `Guard_AfterReboot_PlansFreshRoute` |
+| Destroyed for good | Releases the cover reservation in `OnDestroyed` | `Guard_OnDestroyed_ReleasesCoverReservation` |
+| Waypoint arrival | Counts as reached within 0.5 m of the last waypoint, never by comparing cells | `Guard_ArrivalUsesDistanceNotCell` |
+| Cutscene or pause mid-route | Brain is not ticked; game time (`ctx.Time`) resumes from the same value | `Guard_CutsceneFreezesGameTime` |
+| Overcharge ends mid-wait | Re-evaluates the cover with the battery row now in effect | `Guard_OverchargeEndsMidWait_ReevaluatesWithBatteryRow` |
+| No player, or player dead | Patrols or holds position, never throws | `Guard_NoPlayer_PatrolsOrHolds` |
 
 ## Tests
 
-EditMode tests run without a scene, which also proves the brain is decoupled from Unity objects. Each one uses a small hand-made grid or a fake `IVisibility`.
+EditMode tests run without a scene, which also proves the brain is decoupled from Unity objects. Each one uses a small hand-made grid or a fake `ICoverVisibility`.
 
-**AStarSearch**
+Status says whether a test exists in the repo today (**Built**) or is still to be written (**Planned**). Test names are the real ones in the test files.
 
-| Test | What it proves |
-| --- | --- |
-| `AStar_KnownGrid_ReturnsOptimalPath` | Matches a hand-worked answer on a small grid |
-| `AStar_UnreachableGoal_ReturnsNotFound` | `Found = false` rather than an infinite search |
-| `AStar_CostMatchesDijkstra_OnRandomGrids` | Optimality holds generally, not just on one example |
+**AStarSearch** (`AStarSearchTests`, built)
 
-**TacticalCostModel**
+| Test | Status | What it proves |
+| --- | --- | --- |
+| `StraightLineOnOpenGridIsOptimal`, `RoutesAroundAWallWithoutCuttingCorners` | Built | Matches hand-worked optimal paths |
+| `WalledOffGoalIsNotFound` | Built | `Found = false` rather than an infinite search |
+| `CostMatchesReferenceDijkstraOnFiftyRandomGrids` | Built | Optimality holds generally, not just on one example |
 
-| Test | What it proves |
-| --- | --- |
-| `TacticalCost_HiddenRouteWithinLambdaBound_IsPreferred` | The exposure penalty actually changes route choice |
-| `TacticalCost_NeverBelowBaseOctileStep_StaysAdmissible` | The admissibility argument holds in code, not just on paper |
+**TacticalCostModel** (`TacticalCostModelTests`)
 
-**Cover scoring**
+| Test | Status | What it proves |
+| --- | --- | --- |
+| `HiddenStepCostsTheSameAsTheBaseModel`, `ExposedStepCostsBaseTimesOnePlusLambda`, `DefaultLambdaIsThree`, `CustomLambdaIsRespected` | Built | The cost formula matches `base · (1 + lambda · exposure)` |
+| `ExposureIsQueriedWithTheDestinationCell`, `NullExposureDelegateThrows` | Built | Exposure is read for the step's destination, and a missing exposure source is rejected |
+| `TacticalCost_HiddenRouteWithinLambdaBound_IsPreferred` | Planned | The exposure penalty actually changes route choice |
+| `TacticalCost_NeverBelowBaseOctileStep_StaysAdmissible` | Planned | The admissibility argument holds in code, not just on paper |
 
-| Test | What it proves |
-| --- | --- |
-| `Cover_FullCoverRanksAboveHalfCover_AtEqualRange` | Protection weighting behaves as designed |
-| `Cover_BoxSettles_BecomesNewCandidate` | The player-built-cover creative hook actually works |
+**Cover scoring** (`CoverEvaluatorTests`, built unless marked)
 
-**Brain and states**
+| Test | Status | What it proves |
+| --- | --- | --- |
+| `CellBehindAnObstacleIsFullCoverWhenBothHeightsAreBlocked`, `CellIsHalfCoverWhenOnlyTheLowHeightIsBlocked`, `CellIsDiscardedWhenOnlyTheChestHeightIsBlocked` | Built | Protection tiers follow the plan's rule |
+| `OpenGridWithNoObstacleHasNoCandidates`, `ObstacleBeyondFifteenMetresProducesNoCandidates` | Built | Candidates need an obstacle next to them and must be within 15 m |
+| `CanPeekWhenANeighbourSeesTheChest`, `CannotPeekWhenEveryNeighbourIsHiddenAtChestHeight` | Built | Peek ability follows chest visibility from neighbouring cells |
+| `ScoreIsOneForFullCoverAtDesiredRangeWithNoTravelCostAndPeekable`, `FullCoverScoresHigherThanHalfCoverAtEqualRange`, `HigherPathCostLowersTheScore` | Built | The weights from the cover formula behave as designed |
+| `NullGridIsRejected`, `NonPositiveDesiredRangeIsRejected` | Built | Bad inputs are rejected |
+| `Cover_BoxSettles_BecomesNewCandidate` | Planned | The player-built-cover creative hook actually works |
 
-| Test | What it proves |
-| --- | --- |
-| `Guard_Transitions_PickHighestPriorityValidOne` | The FSM is data-driven, not if/else |
-| `Guard_BatteryBelow25_ReducesIdealDistanceAndAdvances` | The battery-adaptive creative hook actually works |
+**Brain and states** (`GuardBrain`, all planned, since the brain is not written yet)
 
-Edge-case tests are listed in the table above.
+| Test | Status | What it proves |
+| --- | --- | --- |
+| `Guard_Transitions_PickHighestPriorityValidOne` | Planned | The FSM is data-driven, not if/else |
+| `Guard_BatteryBelow25_ReducesIdealDistanceAndAdvances` | Planned | The battery-adaptive creative hook actually works |
+
+Edge-case tests are listed in the table above, and all of them are planned until `GuardBrain` exists.
 
 ## Measured results
 <!-- Numbers from AIPerformanceLog.md: lambda tuning notes, A* vs Dijkstra verification, replans-per-box-push counts. -->
