@@ -181,7 +181,7 @@ The weights are computed in log space: `log w(g) = log P(g) − β·D(g)`. Befor
 
 Once confidence ≥ 0.5, the Captain picks where to wait.
 
-1. **Predict the player's route.** Starting at the player's cell `x`, repeatedly step to the neighbour with the lowest `C(· → g*)`. Because the field holds true shortest-path costs, this walks the player's optimal route to `g*`. Call the cells on it `r_1, r_2, …, g*`.
+1. **Predict the player's route.** Starting at the player's cell `x`, repeatedly step to the neighbour `n` with the smallest `step(x, n) + C(n → g*)`. On a shortest-path field that sum equals `C(x → g*)` exactly for the next cell of a shortest route (picking the neighbour with the lowest `C` alone can take a diagonal that is not on one), so this walks the player's optimal route to `g*`. Ties keep the first neighbour in grid order, so the route is deterministic. Call the cells on it `r_1, r_2, …, g*`.
 2. **Player arrival time** at each route cell:
    ```text
    t_player(i) = [C(x → g*) − C(r_i → g*)] / v_player
@@ -217,20 +217,22 @@ Once confidence ≥ 0.5, the Captain picks where to wait.
 
 **Cost:** each field is a bounded Dijkstra run, O(V log V) with the binary heap. Fields are only recomputed when `OnGraphChanged` reports a changed cell inside them, not every tick. Choosing the intercept cell is then O(L) for a route of L cells, because every step is a field lookup.
 
+**Bounding the Captain's field:** a cell can only qualify if `t_captain(i) ≤ t_player(i) − 1 s`, and no route cell is further for the player than `g*` itself. So the Captain's field stops spreading at `(t_player(g*) − 1 s) · v_captain`. Cells beyond that bound could never be chosen, so the search skips them. If no cell qualifies, the planner runs one unbounded field so it can still time the walk to `g*` for defending it.
+
 ## Edge cases
 
 | Case | Handling | Test |
 | --- | --- | --- |
-| Two goals nearly equally likely (top two within 0.1) | Look for a chokepoint shared by both predicted routes and ambush there. If none exists, stay in Observe. | `Intercept_TwoCloseGoals_PicksSharedChokepoint` |
+| Two goals nearly equally likely (top two within 0.1) | Look for a chokepoint shared by both predicted routes and ambush there. If none exists, stay in Observe. | `InterceptPlannerTests.TwoCloseGoalsBehindTheSameDoorwayShareTheChokepoint`, `TwoCloseGoalsWithNoSharedChokepointGiveNoPlan` |
 | Player standing still | Every detour is 0, so the posterior equals the prior. The Captain keeps its current plan and does not replan. | `GoalInferenceTests.StandingStillGivesThePrior` |
-| Player too close to `g*` (no cell passes the 1 s margin) | Go straight to `g*` and defend it. | `Intercept_NoQualifyingCell_DefendsGoal` |
+| Player too close to `g*` (no cell passes the 1 s margin) | Go straight to `g*` and defend it. | `InterceptPlannerTests.NoQualifyingCellDefendsTheGoal` |
 | Player reaches `g*` | Remove `g*` from the candidate set and re-predict (Reassess). | `Inference_GoalReached_RemovedFromCandidates` |
 | Route blocked by a pushed box or closed door | Recompute only the fields containing a changed cell, then re-run the prediction. If the intercept cell is blocked, Reassess. | `Field_AfterBlock_MatchesFreshCompute` |
 | Goal unreachable (walled off) | Its field cost is infinite, so it is left out of the candidate set. | `GoalInferenceTests.UnreachableGoalIsLeftOut` |
 | All goals unreachable, or no active goals | No prediction: stay in Observe and keep distance from the player. | `GoalInferenceTests.NoGoalsGivesNoPrediction` |
 | Player's cell 5 s ago not available yet (game start, respawn) | Use the oldest recorded cell. With fewer than 2 samples, stay in Observe. | `PlayerTrackTests.ShortHistoryFallsBackToTheOldestSample`, `PlayerTrackTests.FewerThanTwoSamplesGivesNoPast` |
 | Player off the grid (jumping, standing on a box) | Snap to the nearest traversable cell before looking up field costs. | `GoalInferenceTests.PlayerOnABlockedCellIsSnappedToANearbyWalkableCell` |
-| Chosen ambush cell reserved by another agent | Take the next qualifying chokepoint on the route. | `Intercept_ReservedCell_SkipsToNext` |
+| Chosen ambush cell reserved by another agent | Take the next qualifying chokepoint on the route. | `InterceptPlannerTests.ReservedCellIsSkippedForTheNextChokepoint` |
 | Captain stunned mid-intercept | Release the reserved cell. On recovery, go to Reassess, because the old prediction is stale. | PlayMode check in `Test_FourAgentsStress` |
 | Player missing or dead | No inference; the brain returns an empty intent and waits. | `Brain_NoPlayer_ReturnsIdleIntent` |
 | Task completes and its target leaves `ObjectiveTargets` mid-intercept | Drop that goal's field, renormalise the remaining goals, and re-predict on the next tick (Reassess if it was `g*`). | `GoalInferenceTests.RemovingAGoalDropsItsFieldAndRenormalises` |
@@ -272,9 +274,15 @@ EditMode tests run without a scene, which also proves the brain is decoupled fro
 
 | Test | What it proves |
 | --- | --- |
-| Chosen cell satisfies `t_captain + 1 s ≤ t_player` | The arrival-time inequality holds |
-| First qualifying chokepoint is chosen over later ones | The "earliest ambush" rule is implemented |
-| Predicted route descends the goal field to `g*` | Route prediction follows shortest paths |
+| `ChosenCellSatisfiesTheArrivalTimeInequality` | `t_captain + 1 s ≤ t_player` holds, and both times match fresh, unbounded fields |
+| `FirstQualifyingChokepointIsChosenOverEarlierCellsAndLaterChokepoints` | The "earliest ambush" rule: an earlier ordinary cell and a later doorway also qualify, but the first doorway wins |
+| `OpenRoomWithoutChokepointsUsesTheFirstQualifyingRouteCell` | With no chokepoint on the route, the first qualifying cell is used |
+| `InequalityHoldsAndNoEarlierCellWasSkippedOnRandomGrids` | On 50 random grids the inequality holds and no earlier cell that should have won was skipped |
+| `PredictedRouteDescendsTheGoalFieldToTheGoal` | Each route step lowers the remaining cost by exactly its own length, so the route is a shortest one |
+| `UnreachableGoalGivesNoPlan` | A walled-off goal gives no plan |
+| `CaptainFieldIsBoundedByThePlayersWalk` | The Captain's field stays local instead of covering the level |
+| `RepeatedPlansAllocateZeroBytes` | A 2 Hz plan allocates nothing once warm |
+| `GoalInferenceTests.GoalFieldIsSharedWithTheInterceptPlannerUntilTheGoalLeaves` | The planner reuses the goal's cached field; no second search |
 
 **Brain and states**
 
@@ -293,12 +301,12 @@ Edge-case tests are listed in the table above.
 | Distance fields | `AI/Core/Search/DijkstraField` | Implemented, 20 tests |
 | Candidate goals and priors | `Captain/CandidateGoal`, `GoalCategory`, `GoalPriors` | Implemented, 9 tests |
 | Player history (5 s window) | `Captain/PlayerTrack` | Implemented, 9 tests |
-| Goal inference | `Captain/GoalInference` | Implemented, 13 tests |
-| Intercept planner | | Planned |
+| Goal inference | `Captain/GoalInference` | Implemented, 14 tests |
+| Intercept planner | `Captain/InterceptPlanner`, `InterceptPlan` | Implemented, 14 tests |
 | `CaptainBrain` states and transitions | | Planned |
 | `PredictedGoal` on the blackboard | | Planned (with the brain) |
 
-**How the implemented parts fit together:** each 2 Hz decision tick, the brain records the player's cell in `PlayerTrack`, takes the cell from about 5 s ago with `TryGetPast`, and calls `GoalInference.Update` with the current candidate goals. `Update` computes the category priors, looks up each goal's cached field and returns the posteriors, the most likely goal and the confidence.
+**How the implemented parts fit together:** each 2 Hz decision tick, the brain records the player's cell in `PlayerTrack`, takes the cell from about 5 s ago with `TryGetPast`, and calls `GoalInference.Update` with the current candidate goals. `Update` computes the category priors, looks up each goal's cached field and returns the posteriors, the most likely goal and the confidence. When the confidence reaches 0.5, the brain takes `g*`'s cached field with `TryGetGoalField` and calls `InterceptPlanner.Plan` with the player's and its own cell. When the top two goals are within 0.1 it calls `PlanShared` with both fields instead.
 
 ## Measured results
 <!-- Numbers from AIPerformanceLog.md -->
@@ -311,3 +319,18 @@ Edge-case tests are listed in the table above.
 | 1.0 s | 0.855 | 0.102 | 0.043 | Above the 0.8 test target |
 
 The prediction is confident after 1.0 s, well inside the 3 s requirement. The north goal keeps more probability than the west goal because walking east costs less detour towards north than towards west. These values match the formula worked by hand to two decimal places. In-game accuracy runs replace them once the level exists.
+
+**Intercept choice (EditMode scenario, 2026-10-04):** a 45 × 10 m level (90 × 20 cells) with walls at x = 15 m and x = 30 m, each with a one-cell doorway, and `g*` at the far east end. Captain speed 4.6 m/s (the prototype's value). Printed by `InterceptPlanner.Plan` through the Unity editor:
+
+| Player | Captain | Player speed | Chosen | Player arrives | Captain arrives | Lead | Captain field cells (bounded / full) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| west end | just past the first doorway | 7 m/s (sprint) | Second doorway | 3.93 s | 2.88 s | 1.05 s | 1468 / 1762 |
+| west end | just past the first doorway | 3 m/s (walk) | First doorway | 4.17 s | 0.99 s | 3.18 s | 1762 / 1762 |
+| west end | past the second doorway | 7 m/s | Second doorway | 3.93 s | 1.36 s | 2.57 s | 1143 / 1762 |
+| middle room | past the second doorway | 7 m/s | Route cell 1.5 m past the doorway | 1.64 s | 0.57 s | 1.07 s | 665 / 1762 |
+| 2.5 m from `g*` | west end | 7 m/s | Defend `g*` | 0.36 s | 8.15 s | −7.80 s | full (unbounded fallback) |
+
+What this shows:
+- **Planning against the sprint speed changes the choice.** Against a walking player the Captain takes the first doorway with 3 s to spare. Against a sprinting one it would only arrive 0.80 s early there (1.79 s against 0.99 s), inside the 1 s margin, so it waits at the second doorway instead. It never over-promises.
+- **The bound saves work in proportion to how close the player is to `g*`:** 665 cells instead of 1762 when the player has 1.6 s left to walk. When the player is far away the bound covers most of the level, as it should.
+- **At sprint speed the Captain has to be ahead of the player already.** With 7 m/s against 4.6 m/s it cannot overtake the player along the same corridor, which is exactly why it predicts and waits instead of chasing.
