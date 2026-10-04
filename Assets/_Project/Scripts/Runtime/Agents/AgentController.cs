@@ -18,7 +18,7 @@ namespace ToyFactory.Runtime.Agents
     /// Unity objects: the brain never touches a GameObject and the body never decides.
     /// </summary>
     [RequireComponent(typeof(AgentPathFollower))]
-    public sealed class AgentController : MonoBehaviour, IAgentState, IGameStateListener
+    public sealed class AgentController : MonoBehaviour, IAgentState, IGameStateListener, INoiseListener
     {
         [Tooltip("Smooth the brain's grid paths before walking them: drop the waypoints the agent does not need, then round the corners. Only works with a level grid; untick to compare with the raw path.")]
         [SerializeField] bool smoothPaths = true;
@@ -33,6 +33,9 @@ namespace ToyFactory.Runtime.Agents
         GridGraph _grid;
         bool _warnedNotInitialised;
         float _rebootAt;
+
+        // The loudest noise heard since the brain's last tick; passed in ctx.Senses, then cleared.
+        SensorSnapshot _heard;
         IGameClock _clock;
 
         // Game time from the GameManager: it stops during cutscenes and the pause menu, so brain
@@ -65,6 +68,19 @@ namespace ToyFactory.Runtime.Agents
 
         /// <summary>True while knocked out by <see cref="Disable"/>, until it reboots.</summary>
         public bool IsDisabled { get; private set; }
+
+        /// <inheritdoc/>
+        public Vector3 HearingPosition => transform.position;
+
+        /// <inheritdoc/>
+        public bool CanHear => !IsDead && !IsDisabled;
+
+        /// <summary>
+        /// A noise reached this agent. Several noises between two brain ticks keep the loudest
+        /// (<see cref="SensorSnapshot.Loudest"/>); the brain receives it in
+        /// <see cref="AgentContext.Senses"/> on its next tick, once.
+        /// </summary>
+        public void Hear(in SensorSnapshot heard) => _heard = SensorSnapshot.Loudest(_heard, heard);
 
         void Awake()
         {
@@ -150,6 +166,7 @@ namespace ToyFactory.Runtime.Agents
             _rebootAt = wasDisabled ? Mathf.Max(_rebootAt, Now + duration) : Now + duration;
             IsDisabled = true;
             IsAttacking = false;
+            _heard = default; // a noise from before the knock-out is stale by the reboot
             _follower.Stop();
             _brain?.OnStunned(_rebootAt - Now);
 
@@ -188,7 +205,8 @@ namespace ToyFactory.Runtime.Agents
 
             Vector3 position = transform.position;
             var context = new AgentContext(CurrentCell(position), position, transform.forward,
-                Now, _blackboard, new SensorSnapshot());
+                Now, _blackboard, _heard);
+            _heard = default; // each noise reaches the brain once
 
             AgentIntent intent = _brain.Tick(context);
 
