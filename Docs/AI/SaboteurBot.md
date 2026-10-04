@@ -95,10 +95,19 @@ The live grid is never changed to test a closure. Proposal: a Saboteur-owned `IC
 
 - calls `TargetClaims.Release(agentId)` and releases any reservation;
 - drops a carried battery;
-- for Saboteur A, drops the keycard on the nearest traversable cell using `GridGraph.TryFindNearestTraversable`, never on a blocked cell or inside a box;
+- for Saboteur A, works out where the keycard lands and reports it through `IDropsItems.GetDrops` (see below), never on a blocked cell or inside a box;
 - stops emitting intents.
 
-The squad stops counting a destroyed instance for saturation, and `DetourCache` stops when none remain. Despawning or fading the body belongs to S4, and the keycard pickup prop to S2; the brain only emits the drop request.
+The squad stops counting a destroyed instance for saturation, and `DetourCache` stops when none remain. Despawning or fading the body belongs to S4, and the keycard pickup prop to S2; the brain only reports the drop.
+
+**Keycard drop (`IDropsItems`).** A brain cannot spawn objects, so `SaboteurBrain` implements the AI.Core contract `IDropsItems { int GetDrops(List<ItemDrop> buffer); }`. `ItemDrop` holds a `Kind` (`Keycard`, `Battery`), an `ItemId` and the `Cell`. The runtime calls `GetDrops` after `OnDestroyed` and creates the pickup; before destruction, and for Saboteurs B-D, it returns 0. The caller owns the buffer: drops are appended, existing entries are kept, nothing is allocated, and repeated calls return the same drop.
+
+- **Where it lands.** `OnDestroyed` fixes the cell once. It starts from the cell of the last tick (the controller passes the cell under the body, which can be a blocked cell or one inside a box) and takes the nearest traversable cell within `DropSearchRadius` (8 cells, 4 m) using `GridGraph.TryFindNearestTraversable`.
+- **Nothing walkable nearby.** The search widens to the whole grid, so the keycard is never dropped on a blocked cell and never lost. If the grid has no traversable cell at all, the start cell clamped onto the grid is reported anyway, because a missing keycard would be worse than an unreachable one.
+- **Destroyed before its first tick.** The brain has no cell yet, so it starts from its first patrol cell, or from the middle of the grid when it has no patrol.
+- **Later grid changes.** The cell is fixed at destruction; a box that lands there afterwards is not tracked.
+- **`ItemId`.** Reported as given to the constructor (default 0). What the id means for the keycard (one fixed id, or the chapter task's id) is still to be agreed with S4 and S2.
+- **Battery.** The brain carries no battery until StealBattery exists, so `ItemDropKind.Battery` is only in the contract for now.
 
 ### Flee and the keycard carrier
 
@@ -212,7 +221,8 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | Decision trace for the debug panel: each candidate's raw and base score, each consideration's input and score, ranking, and why a candidate lost | Implemented; filled by the brain and `ActionSelector`, no allocation per decision | `UtilityDecisionTrace`, `SaboteurBrain.LastDecision`; `UtilityDecisionTraceTests` |
 | CloseDoor, ArmTrap, StealBattery, AttackPlayer, Flee | Not started | Need the blackboard facts in the handoff table |
 | Squad layer: claim on commit, "not claimed" veto, displacement check, release, attack saturation, tick stagger | Implemented as a standalone class; not yet used by the brain | `SquadCoordinator`; `SquadClaimTests` |
-| `DetourCache`, keycard drop | Not started | Build on the brain skeleton |
+| Keycard drop through `IDropsItems` | Implemented; the battery drop waits for StealBattery | `IDropsItems`, `SaboteurBrain.GetDrops`; `SaboteurDropTests` |
+| `DetourCache` | Not started | Build on the brain skeleton |
 
 The skeleton's behaviour:
 

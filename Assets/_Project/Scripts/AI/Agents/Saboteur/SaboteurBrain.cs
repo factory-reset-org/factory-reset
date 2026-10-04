@@ -12,14 +12,15 @@ namespace ToyFactory.AI.Agents.Saboteur
     /// One Saboteur instance's utility brain. This skeleton runs selection at 4 Hz through
     /// <see cref="ActionSelector"/> with Idle/Patrol as the only action, handles stun, graph
     /// changes and permanent destruction. Sabotage and combat actions are added on top of
-    /// the same selection loop as their world facts become available.
+    /// the same selection loop as their world facts become available. Saboteur A reports the
+    /// chapter keycard through <see cref="IDropsItems"/> once it has been destroyed.
     /// </summary>
     /// <remarks>
     /// Every dependency is passed in at construction, so the brain never looks anything up
     /// and can be tested on a plain <see cref="GridGraph"/>. Movement routes come from the
     /// shared <see cref="IPathfinder"/> (S2's A*); the brain never searches by itself.
     /// </remarks>
-    public sealed class SaboteurBrain : IAgentBrain
+    public sealed class SaboteurBrain : IAgentBrain, IDropsItems
     {
         /// <summary>Starting move speed in metres per second (plan Appendix A).</summary>
         public const float MoveSpeed = 4.3f;
@@ -39,6 +40,13 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// </summary>
         public const float ArrivalRadius = 0.5f;
 
+        /// <summary>
+        /// How far, in cells (4 m), the keycard may be moved from where Saboteur A fell to land
+        /// on a traversable cell. If nothing walkable is that close, the search widens to the
+        /// whole grid, so the keycard is never dropped on a blocked cell or lost.
+        /// </summary>
+        public const int DropSearchRadius = 8;
+
         static readonly ActionKey IdleKey = new ActionKey(SaboteurActionKind.Idle);
 
         readonly SaboteurIdentity _identity;
@@ -48,6 +56,7 @@ namespace ToyFactory.AI.Agents.Saboteur
         readonly ActionSelector _selector;
         readonly Vector2Int[] _patrolCells;
         readonly List<ActionCandidate> _candidates = new List<ActionCandidate>(8);
+        readonly int _keycardItemId;
         readonly UtilityDecisionTrace _lastDecision = new UtilityDecisionTrace();
 
         float _nextDecisionTime = float.NegativeInfinity;
@@ -62,6 +71,11 @@ namespace ToyFactory.AI.Agents.Saboteur
 
         bool _destroyed;
 
+        // The cell of the latest tick, the starting point for placing the keycard on destruction.
+        Vector2Int _lastCell;
+        bool _hasLastCell;
+        ItemDrop _keycardDrop;
+
         /// <summary>Creates a brain for one Saboteur instance.</summary>
         /// <param name="identity">Claim owner id and letter for this instance.</param>
         /// <param name="grid">The shared navigation grid.</param>
@@ -69,8 +83,13 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// <param name="claims">The squad's shared target claims.</param>
         /// <param name="patrolPoints">World positions to patrol in a loop; may be empty (the Saboteur holds).</param>
         /// <param name="selectorSettings">Stability tuning; the design defaults when null.</param>
+        /// <param name="keycardItemId">
+        /// The <see cref="ItemDrop.ItemId"/> of the keycard Saboteur A drops. Provisional until
+        /// the controller and pickup owners agree what the id means.
+        /// </param>
         public SaboteurBrain(SaboteurIdentity identity, GridGraph grid, IPathfinder pathfinder,
-            TargetClaims claims, IReadOnlyList<Vector3> patrolPoints, SelectorSettings selectorSettings = null)
+            TargetClaims claims, IReadOnlyList<Vector3> patrolPoints, SelectorSettings selectorSettings = null,
+            int keycardItemId = 0)
         {
             // default(SaboteurIdentity) would otherwise pass as "Saboteur A, the keycard carrier".
             if (!identity.IsAssigned)
@@ -81,6 +100,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             _pathfinder = pathfinder ?? throw new ArgumentNullException(nameof(pathfinder));
             _claims = claims ?? throw new ArgumentNullException(nameof(claims));
             _selector = new ActionSelector(selectorSettings);
+            _keycardItemId = keycardItemId;
 
             var cells = new List<Vector2Int>();
             if (patrolPoints != null)
@@ -115,6 +135,9 @@ namespace ToyFactory.AI.Agents.Saboteur
         {
             if (_destroyed)
                 return Stop("Destroyed");
+
+            _lastCell = ctx.Cell;
+            _hasLastCell = true;
 
             if (ctx.Time >= _nextDecisionTime)
             {
@@ -174,6 +197,46 @@ namespace ToyFactory.AI.Agents.Saboteur
             _claims.Release(_identity.AgentId);
             _selector.CancelCurrent();
             _routeCells = null;
+
+            if (_identity.CarriesKeycard)
+                _keycardDrop = new ItemDrop(ItemDropKind.Keycard, _keycardItemId, FindKeycardCell());
+        }
+
+        /// <inheritdoc />
+        public int GetDrops(List<ItemDrop> buffer)
+        {
+            if (buffer == null)
+                throw new ArgumentNullException(nameof(buffer));
+
+            if (!_destroyed || !_identity.CarriesKeycard)
+                return 0;
+
+            buffer.Add(_keycardDrop);
+            return 1;
+        }
+
+        // The nearest traversable cell to where the Saboteur fell. The controller passes the
+        // cell under the body, which can be a blocked cell or one inside a box, so it is only
+        // a starting point. The keycard is the Chapter 3 task item, so it must always land
+        // somewhere reachable: widen to the whole grid before giving up, and if there is no
+        // traversable cell at all, report the start clamped onto the grid rather than lose it.
+        Vector2Int FindKeycardCell()
+        {
+            Vector2Int start = _hasLastCell
+                ? _lastCell
+                : _patrolCells.Length > 0 ? _patrolCells[0] : new Vector2Int(_grid.Width / 2, _grid.Height / 2);
+
+            if (_grid.TryFindNearestTraversable(start, DropSearchRadius, out Vector2Int cell))
+                return cell;
+
+            // Far enough to reach every cell from a start that may lie outside the grid.
+            long reachX = Math.Max(Math.Abs((long)start.x), Math.Abs((long)start.x - (_grid.Width - 1)));
+            long reachY = Math.Max(Math.Abs((long)start.y), Math.Abs((long)start.y - (_grid.Height - 1)));
+            int wholeGrid = (int)Math.Min(Math.Max(reachX, reachY) * 2 + 1, int.MaxValue / 4);
+            if (_grid.TryFindNearestTraversable(start, wholeGrid, out cell))
+                return cell;
+
+            return new Vector2Int(Mathf.Clamp(start.x, 0, _grid.Width - 1), Mathf.Clamp(start.y, 0, _grid.Height - 1));
         }
 
         void Decide(float now)
