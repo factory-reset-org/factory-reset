@@ -5,7 +5,8 @@
         "ToyFactory.Interfaces",
         "ToyFactory.AI.Core",
         "Unity.Timeline",
-        "Unity.Cinemachine"
+        "Unity.Cinemachine",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
