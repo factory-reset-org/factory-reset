@@ -467,13 +467,13 @@ Unit047_Root                             origin, between the feet
 Status: delivered 2026-10-04. The keycard Saboteur A carries and drops when destroyed (see `Docs/AI/SaboteurBot.md`), and the mesh of S2's floor pickup. It has no moving parts, so it does not wait for the rest of the prop kit. Same conventions as section 8.1, exported with section 8.8.
 
 ```text
-Keycard_Root                             origin, the centre of the card
-└─ Keycard                               one mesh, three material slots
+Keycard_Root                             prefab root, origin = the centre of the card
+└─ Keycard                               the mesh, three material slots
 ```
 
 - Size 0.30 x 0.19 x 0.02 m (W x H x D, credit-card ratio), measured on the imported prefab at identity; the bounds are centred on the origin, so the pivot is the centre of the card.
 - The card face (chip, header band and three lines of text) faces +Z. The back carries the magnetic stripe and a signature panel. S4 spins it about Y above Saboteur A (1.61 m tall).
 - Slots are the greybox ones: `Greybox_Light` for the card, `Greybox_Dark` for the header, text lines and stripe, `Greybox_Mid` for the chip and signature panel. They stay a placeholder until the prop atlas (B8) and the palette work (B6).
 - Rounded corners and a small chamfer on the card, details raised 2 mm. 320 triangles after import (budget under 600). One UV layout, laid out so it can be repacked onto the shared prop atlas.
-- `Prefabs/Props/Keycard.prefab` is a prefab variant of the FBX with no collider and no Rigidbody. S2 adds the pickup trigger once S2 answers the collider question S4 asked.
-- The importer settings are the same as the character models (the `.meta` differs only in its GUID).
+- The FBX holds just the `Keycard` mesh (Unity wraps it in a root named after the file, `Keycard`). Unity names a prefab's root after the prefab file, so the prefab is `Prefabs/Props/Keycard_Root.prefab`: a prefab variant of the FBX whose root is `Keycard_Root` with the `Keycard` mesh as its only child, so no parent and child share a name. It has no collider and no Rigidbody. S2 adds the pickup trigger once S2 answers the collider question S4 asked. S4 parents the prefab to a socket on Saboteur A and spins it about Y in code; no attachment point is needed.
+- Rig is None, because the keycard plays no clip (S4 spins it in code) and a rig would only add an unused Avatar and Animator. The rest of the prop kit uses None too; only the characters need Generic. Every other importer setting is the same as the character models (the `.meta` differs from `GuardBot.fbx.meta` only in its GUID and the Rig line).
