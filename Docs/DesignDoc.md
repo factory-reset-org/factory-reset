@@ -213,7 +213,7 @@ Both write into a caller-owned list and allocate nothing once it has capacity.
 | `Bootstrap` | S2 | Scene loader and game manager. Build index 0 | Empty scene (light and camera); scene loader and game manager not written yet |
 | `Env` | S1 | Static geometry, lighting, NavMesh, grid, chapter manager | Empty scene (light and camera) |
 | `Interactables` | S2 | Doors, boxes, belts, switches, task props, pickups. All non-static | Empty scene (light and camera) |
-| `Agents` | S4 | Agent spawner and spawn points, debug overlays, cutscene director, Timelines, cutscene cameras | Spawner in place; the rest planned |
+| `Agents` | S4 | Agent spawner and spawn points, debug overlays, cutscene director, Timelines, cutscene cameras | Spawner and cutscene director in place; Timelines and cameras planned |
 | `UI` | S3 | HUD, subtitles, chapter card, results screen, leaderboard | Planned |
 | `ModelShowcase` | S3 | Model turntable. Not in the build | In use |
 
@@ -233,9 +233,9 @@ Systems talk through events and the blackboard, not direct references. The journ
 | Player state (`PlayerState.Current`) | Player (S2) | `PlayerStateWriter` → blackboard `Player` every frame, then every brain | Implemented |
 | Task progress and completion | Task props (`ITask`) | Chapter manager (`ChapterEvents.OnTaskCompleted`), HUD, scoring | Chapter manager implemented; the props are planned |
 | Objective changed (`ObjectiveEvents`) | Chapter manager (S1) | `ObjectiveTargetWriter` → blackboard `ObjectiveTargets`, then Captain, Saboteurs, beacon and HUD | Implemented: the chapter manager publishes after every change |
-| Switch unsealed, switch restored, chapter started (`ChapterEvents`) | Chapter manager | Switch cage (opens on unseal), cutscene director (next cutscene 1.3 s after a restore), blackboard writer (`ChapterIndex`), HUD, scoring | Raised by the chapter manager; `ChapterIndex` writer implemented, other listeners planned |
-| Cutscene started, ended (`CutsceneEvents`) | Cutscene director | Game manager (Cutscene state), HUD | Events implemented; the director is planned |
-| Critical cutscene signal (`CutsceneEvents.OnCriticalSignal`) | Cutscene Timeline | Captain wake, Control Room door unlock, core shields drop. Also fired when a cutscene is skipped | Events and signal ids implemented; the director is planned |
+| Switch unsealed, switch restored, chapter started (`ChapterEvents`) | Chapter manager | Switch cage (opens on unseal), cutscene director (next cutscene 1.3 s after a restore), blackboard writer (`ChapterIndex`), HUD, scoring | Raised by the chapter manager; cutscene director and `ChapterIndex` writer implemented, other listeners planned |
+| Cutscene started, ended (`CutsceneEvents`) | Cutscene director | Chapter manager (starts the next chapter on ended), HUD | Implemented. The director itself sets the Cutscene state through `IGameClock.RequestState` |
+| Critical cutscene signal (`CutsceneEvents.OnCriticalSignal`) | Cutscene Timeline (`CriticalSignalMarker`), through the director | Captain wake, Control Room door unlock, core shields drop. Also fired when a cutscene is skipped | Implemented in the director; listeners planned |
 | Agent disabled, destroyed, rebooted (`AgentEvents`) | `AgentController` | Scoring, Saboteur squad, HUD | Events and raising implemented; nothing calls `Disable` or `Scrap` yet |
 | Game state changed (Title, Playing, Cutscene, Paused, Results) | Game manager (`IGameClock`, published as `GameClock.Current`) | `AgentController` (freezes brain and body outside Playing), player input, timers, HUD | Game clock and agent freezing implemented |
 
@@ -262,6 +262,35 @@ All three live in `Scripts/Interfaces/`, so code in every scene can use them. Th
 **Why a skip fires the missed signals:** if the player skips the Chapter 3 cutscene before the wake marker, the Captain would otherwise stay Dormant and the Control Room doors would stay locked. Firing every Critical signal not yet reached leaves the game in the same state as watching the whole cutscene.
 
 **Why the static data is cleared on play:** domain reload is off in this project, so the binding registry and the event listeners would otherwise keep entries from the last play session. Both are cleared with `[RuntimeInitializeOnLoadMethod(SubsystemRegistration)]`, as in `AgentEvents`.
+
+#### Cutscene director (S4, implemented)
+
+`CutsceneDirector` sits in the `Agents` scene on the same object as a `PlayableDirector`. Its rules live in a plain C# `CutsceneRunner`, so they are tested without Unity.
+
+| Cutscene | Plays when | Critical signals | Afterwards |
+| --- | --- | --- | --- |
+| `intro` | Something calls `CutsceneDirector.Play("intro")` (the scene loader, once it exists) | none | Playing |
+| `ch2` | Switch 1 is restored | none | Playing |
+| `ch3` | Switch 2 is restored | `CaptainWake`, `ControlRoomUnlock` | Playing |
+| `ch4` | Switch 3 is restored | `CoreShieldsDown` | Playing |
+| `ending` | The console hold completes | none | Results |
+
+The ids `ch2` to `ch4` are the ones S1's chapter data waits for. The table is the director's default list and can be edited in the Inspector.
+
+**One cutscene, step by step:**
+
+1. A restored switch (or the console) queues its cutscene. The start delay (1.3 s) only counts while the game is Playing, so the pause menu cannot shorten it.
+2. The director asks for the Cutscene state (`IGameClock.RequestState`), so agents and the game clock stop, then raises `OnCutsceneStarted`.
+3. It plays the cutscene's Timeline. A `CriticalSignalMarker` on the Timeline raises its signal when the playhead passes it, once per cutscene.
+4. The cutscene ends when the Timeline reaches its end, or when the player presses Escape. Every listed Critical signal not yet raised fires first. Then `OnCutsceneEnded` is raised, and the state returns to Playing (Results after the ending).
+
+**Pause:** while the game is Paused, the Timeline is held and a skip is ignored. S2's `GameManager.Resume` returns to the Cutscene state, and the Timeline carries on.
+
+**Before the real Timelines exist:** a cutscene with no Timeline holds for a placeholder time (2 s) and still fires its signals and ends. The journey can be played from chapter 1 to the ending today.
+
+**Why ended comes before Playing:** the chapter manager starts the next chapter on `OnCutsceneEnded`. Raising it while still in the Cutscene state means the next chapter's objectives are on the blackboard before any agent unfreezes and plans.
+
+**Why a missing cutscene still ends:** an unknown id logs a warning but still raises started and ended. A missing or misnamed cutscene then costs a cutscene, not the whole journey.
 
 ### 6.2 Chapter contracts (S1, implemented)
 
@@ -300,6 +329,7 @@ The journey's rules live in the plain C# `ChapterFlow` (Journey assembly); `Chap
 | 2026-10-04 | Chapter contracts added after the 1 October interface freeze: `ITaskAnchor`, `TaskEvents.OnTaskSpawned`, and `ChapterEvents.OnSwitchUnsealed` / `OnSequenceChosen`. Fuses and power cores are one task each (one objective per prop) | Reference `TaskAnchor` from Journey; give the switch cage a direct reference to the chapter manager; one counted task for the three fuses and one for the three cores | Journey cannot reference Runtime, and the cage, relay prop and HUD live in other assemblies and scenes, so events are the only clean link. The keycard does not exist until Saboteur A drops it. One task per fuse or core gives the Captain and the Saboteurs a real position for every target instead of one point for three props. Needs all four reviewers | S1 |
 | 2026-10-04 | The spawner owns the Runtime pieces that feed brains: a per-frame `PlayerStateWriter`, a `ChapterIndexWriter`, and `AgentHearing`, which propagates each noise once and hands every agent the level at its cell | Each brain reads `PlayerState` or listens to `NoiseEvents` itself; propagate a noise once per agent; the player writes the blackboard | Brains stay pure C# and never see Unity objects or events. One propagation gives every cell's level, so the cost does not grow with the number of agents. Only Runtime writes the blackboard, and the spawner already owns it. Running the spawner first each frame keeps the player snapshot one frame fresh for every brain | S4 |
 | 2026-10-04 | Saboteur brains over one `TargetClaims` share one `SquadCoordinator`, found through `SquadCoordinator.For(claims)`, and get their sabotage and combat candidates from an `ICandidateSource`; the brain applies the squad layer to every candidate and staggers its decisions on a fixed phase per letter | A coordinator passed in by the spawner; each brain with its own coordinator; a static registry; the candidate list hard-coded in the brain; stagger by a fixed delay after each decision | The spawner's `CreateBrain` call keeps its current arguments (S4's file), the squad state still lives only in `TargetClaims`, and the weak table cannot outlive a level. A source keeps each action's scoring separate from squad rules, so the squad layer is testable now, before any action exists. A fixed phase cannot drift, so decisions never bunch into one frame | S3 |
+| 2026-10-05 | The cutscene director keeps its rules in a plain C# runner behind a small playback interface; cutscenes without a Timeline hold for a placeholder time; every listed Critical signal fires at the end as well as on skip | Put the logic in the MonoBehaviour; block the journey until each Timeline exists; fire missed signals only on skip | The runner is tested without Unity (EditMode) and the PlayableDirector part with one real Timeline (PlayMode). Placeholders let the team play the whole journey now. Firing missed signals at the end too means a Timeline with a forgotten marker still wakes the Captain | S4 |
 
 ## 8. Greybox character model contract (S3)
 
