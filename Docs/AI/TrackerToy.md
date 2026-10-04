@@ -16,15 +16,15 @@ The current repository contains the shared `GridGraph`, `BinaryHeap`, `BaseCostM
 
 Implemented: wind-down energy (`WindUpEnergy`), the Tracker's search (`GreedyBestFirstSearch`, measured against A* below), and the brain itself (`TrackerBrain`): all seven states in a hierarchical FSM built on the new shared `CompositeState`, grid-traced vision, and a `NoiseMemory` that scores what it hears. `AgentSpawner` now builds a `TrackerBrain` for the Tracker spawn point whenever a grid exists.
 
-Not yet implemented: noise propagation (task G). The brain reads hearing from `SensorSnapshot`'s new noise fields, which S4's runtime fills once `NoisePropagation` exists; until then `default(SensorSnapshot)` means "heard nothing", so in play the Tracker patrols, sees and chases but does not investigate.
+Noise propagation (`NoisePropagation`, task G) is implemented and measured on the level grid. What is left is S4's runtime hook: listen to `NoiseEvents`, run `Propagate` once per noise and fill each agent's `SensorSnapshot`. Until that lands, `default(SensorSnapshot)` means "heard nothing", so in play the Tracker patrols, sees and chases but does not investigate.
 
 ## Creative hook
 
 ### Sound propagation
 
-Tracker will read the propagated sound level `L(cell)` at its own cell. Hearing will use a Dijkstra propagation through the grid rather than a Physics sphere or straight-line distance test. Sound can travel around corners and through closed doors, losing level with path distance and door crossings.
+The Tracker reads the propagated sound level `L(cell)` at its own cell. Hearing is a Dijkstra propagation through the grid rather than a Physics sphere or straight-line distance test: sound travels around corners and through closed doors, losing level with path distance and door crossings, and walls and boxes stop it.
 
-The five source levels, attenuation formula, hearing threshold and noise-selection rule are specified under Maths to defend. Door closure must remain distinguishable from ordinary blockers so the future noise system can apply attenuation without treating the door as acoustically impassable.
+The source levels, attenuation formula, hearing threshold and noise-selection rule are under Maths to defend. Task noises are part of the hook: the Chapter 2 terminal beeps every 0.8 s (a repeating source that pulls the Tracker into Distracted), the relay alarm and core explosions are loud enough to be heard two rooms away, and the pressure plate click gives the player away nearby.
 
 ### Wind-down energy
 
@@ -155,7 +155,7 @@ GBFS does not include accumulated cost `g(n)` in its selection priority. It must
 
 ### Propagated sound level
 
-The planned Dijkstra noise propagation uses:
+`NoisePropagation` (`AI/Core/Perception`, pure C#) computes:
 
 ```text
 L(cell) = L0 - alpha * pathDistance(source, cell)
@@ -168,15 +168,25 @@ hearingThreshold  = 10
 
 `pathDistance` is distance along the grid route in **metres**, not straight-line distance. Stop expanding when **`L(cell) <= hearingThreshold`**. Tracker hears an eligible noise by reading its propagated value at Tracker's own cell, above the threshold.
 
-| Noise source | Initial level L0 |
-| --- | ---: |
-| Blaster shot | 100 |
-| Thrown wind-up toy landing | 70 |
-| Box pushed / impact | 50 |
-| Door slam | 60 |
-| Running footsteps | 25 |
+The loudness table is in `Interfaces/NoiseLoudness.cs` so every emitter uses the same numbers. Audible radius in the open is `(L0 - 10) / 4` metres.
 
-Closed doors transmit sound with the specified penalty even though they block movement. GridGraph already exposes `DoorId` and `IsDoorClosed`, and its sound-aware neighbour mode allows closed doors. Applying the 35-point penalty is planned NoisePropagation work, not an implemented GridGraph calculation.
+| Noise source (`NoiseLoudness`) | L0 | Heard up to |
+| --- | ---: | ---: |
+| Blaster shot | 100 | 22.5 m |
+| Relay alarm (Ch3) | 90 | 20 m |
+| Power core explosion (Ch4) | 90 | 20 m |
+| Thrown wind-up toy landing (every 1 s for 5 s) | 70 | 15 m |
+| Door slam | 60 | 12.5 m |
+| Terminal beep (Ch2, every 0.8 s) | 60 | 12.5 m |
+| Box pushed / impact | 50 | 10 m |
+| Pressure plate click (Ch1) | 40 | 7.5 m |
+| Running footsteps | 25 | 3.75 m |
+
+**Implementation.** A bounded Dijkstra over the *sound* graph (`GetNeighboursNonAlloc(..., allowClosedDoors: true)`, so closed doors connect but walls and box blockers do not). The path cost is the level lost: 2 per orthogonal 0.5 m step, 2.83 per diagonal, plus 35 when a step enters a closed door from outside it. Charging on entry means a door two cells deep still costs 35 once, and a door slam made *on* the door is heard on both sides without the penalty. Dijkstra pops cells in increasing loss, so each cell gets the loudest level any route can bring, which is the shortest sound path. A cell whose level would be at or below 10 is never queued, so the work is bounded by the audible area. A source inside a wall or box spreads from the nearest open cell within 2 cells. Arrays are reused with a stamp (as in `DijkstraField`): 0 bytes per noise. `Level(cell)` returns 0 where the noise is not heard. Profiler marker `AI.NoisePropagation.Propagate`.
+
+**Hearing contract for S4.** For each `NoiseEvents.OnNoise`: `Propagate(grid.WorldToCell(e.Position), e.Loudness)`, then for each agent with `Level(agentCell) > 10`, merge `new SensorSnapshot(e.Position, level, e.SourceId, e.Time)` into its pending snapshot with `SensorSnapshot.Loudest`, so the loudest noise since the last tick wins.
+
+**On the level** (done-when check): a blaster shot 2 m in front of closed door 4 is heard at **47** 2.5 m behind it, which is `100 - 4 x 4.5 - 35` along the 4.5 m grid path. With the door open it is 82, exactly 35 more. Timings are in [AIPerformanceLog.md](../AIPerformanceLog.md).
 
 ### Selecting among heard noises
 
@@ -215,7 +225,7 @@ For an otherwise equivalent noise aged 5 seconds, the multiplier is `exp(-0.3 * 
 | Enclosed/unreachable region | GBFS returns `Found = false` when the goal cannot be reached. | Passing: `WalledOffGoalIsNotFound`, `ClosedDoorBlocksMovement`, `BlockedStartOrGoalIsNotFoundWithoutExpanding` |
 | Closed-set behaviour | GBFS never expands the same node twice. | Passing: `ExpandsEachReachableCellExactlyOnceWhenTheGoalIsUnreachable` (expanded count equals the reachable region's size exactly) |
 | Fewer expansions than A*; no allocation | GBFS expands fewer nodes than A* on open grids and allocates nothing on reuse. | Passing: `ExpandsFewerNodesThanAStarOnOpenGrids`, `ReusedSearchAllocatesNothing` |
-| Closed-door attenuation | Propagated noise through a closed door matches `L0 - 4 * pathDistance - sum(35 per closed door crossed)`. | Pending implementation and execution |
+| Closed-door attenuation | Propagated noise through a closed door matches `L0 - 4 * pathDistance - sum(35 per closed door crossed)`. | Passing: `AClosedDoorCostsThirtyFive`, `ADoorSeveralCellsDeepCostsThirtyFiveOnce`, `EachClosedDoorCrossedCostsThirtyFive`; checked on the level at door 4 |
 | Tracker edge cases | The five cases above follow the planned handling. | Partly: see Edge cases |
 | GBFS versus A* | Record nodes expanded and path length for both algorithms over the same 20 start/goal pairs. | Done: see Measured results |
 
@@ -232,9 +242,11 @@ For an otherwise equivalent noise aged 5 seconds, the multiplier is `exp(-0.3 * 
 
 `Tests/EditMode/NoiseMemoryTests.cs` (11): decay formula, a repeating beep beating an older louder shot, the 1.5 s repeat window, the closer-noise tie-break, handled noises, forgetting at the threshold, ignoring out-of-order noises, and replacing the weakest entry when full.
 
+`Tests/EditMode/NoisePropagationTests.cs` (25): full level at the source; 4 per metre along the grid, not the straight line; a closed door costs 35, an open one nothing, a deep door 35 once, two doors 70; a door slam is heard on both sides; walls and boxes block; sound goes round corners with exactly the A* route's loss; fades out at the threshold (footsteps 11 at 3.5 m, gone at 4 m) and exactly-10 is not heard; only audible cells are expanded; a source in a wall snaps out; off-grid sources are heard nowhere; 0 bytes on reuse; and `SensorSnapshot.Loudest`.
+
 `Tests/EditMode/CompositeStateTests.cs` (6): the child is entered and ticked inside the parent, child transitions run inside it, leaving exits the running child first, re-entry restarts at the initial child, and a child that never ran is never exited.
 
-Full suites after this change: EditMode 538/538, PlayMode 56/56.
+Full suites after the noise propagation change: EditMode 584/584, PlayMode 61/61.
 
 ### Planned S1 delivery schedule
 

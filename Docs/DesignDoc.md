@@ -226,7 +226,7 @@ Systems talk through events and the blackboard, not direct references. The journ
 | Event | Raised by | Consumed by | Status |
 | --- | --- | --- | --- |
 | Grid changed (`GridGraph.Version`, `IAgentBrain.OnGraphChanged`) | Grid, when a door opens or closes or a box settles | Every brain replans only if its path is affected | Grid and brain hook exist |
-| Noise (position, loudness, source) | Gunshots, thrown toys, doors, boxes, task props | Noise propagation, then the Tracker | Planned |
+| Noise (`NoiseEvents`, levels in `NoiseLoudness`) | Gunshots, thrown toys, doors, boxes, task props | `NoisePropagation` (S1: L0 - 4 per metre - 35 per closed door, heard above 10), then each agent's `SensorSnapshot`, then the Tracker | Propagation implemented; the runtime hook that fills the snapshots (S4) is planned |
 | Player state | Player | Blackboard, then Guard, Captain and Saboteurs | Planned |
 | Task progress and completion | Task props (`ITask`) | Chapter manager (`ChapterEvents.OnTaskCompleted`), HUD, scoring | Chapter manager implemented; the props are planned |
 | Objective changed (`ObjectiveEvents`) | Chapter manager (S1) | `ObjectiveTargetWriter` → blackboard `ObjectiveTargets`, then Captain, Saboteurs, beacon and HUD | Implemented: the chapter manager publishes after every change |

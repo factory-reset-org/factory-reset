@@ -41,6 +41,25 @@ Greybox level grid (`Env.unity`, 83 x 83 cells of 0.5 m, 5,318 walkable, Control
 - Its paths were **13.6% longer** in total: equal to A*'s on 10 of 20 pairs, longer on the other 10. The longest detours (pairs 8, 13, 15) are routes that must go round the central walls through a doorway: greedy heads straight for the goal, meets the wall, then follows it.
 - Worst case for A*, pair 1 (1,326 nodes, a cross-level route through two doorways): GBFS needed 146. For a chaser replanning every 0.5 s, that is the trade the Tracker is designed to make.
 
+### Noise propagation (Tracker hearing, S1)
+
+`NoisePropagation.Propagate` on the greybox level grid (83 x 83 cells), one noise from the middle of the Assembly Floor, doors 3 and 4 closed. Average of 50 runs after one warm-up, Unity editor (Mono), 2026-10-04.
+
+| Source | L0 | Audible radius | Cells reached | Time per noise |
+| --- | ---: | ---: | ---: | ---: |
+| Blaster shot | 100 | 22.5 m | 1,980 | 5.37 ms |
+| Relay alarm / core explosion | 90 | 20 m | 1,717 | 4.82 ms |
+| Wind-up toy landing | 70 | 15 m | 1,441 | 3.97 ms |
+| Door slam / terminal beep | 60 | 12.5 m | 1,353 | 3.71 ms |
+| Box impact | 50 | 10 m | 1,023 | 2.85 ms |
+| Pressure plate click | 40 | 7.5 m | 525 | 1.36 ms |
+| Running footsteps | 25 | 3.75 m | 128 | 0.33 ms |
+
+- The cost scales with the audible area, not the level size: the threshold bound stops the spread, so footsteps touch 128 cells while a shot touches 1,980 of the 5,318 walkable cells. Quiet noises (footsteps every few frames) stay cheap; loud ones are rare events.
+- **0 bytes** allocated over 100 blaster-shot propagations (stamped arrays and a reused heap).
+- Closed-door check at door 4: 47 behind the closed door, 82 with it open (difference exactly 35).
+- Lab-machine and player-build timings still to record; the editor's per-cell cost (about 2.7 µs) matches A*'s on the same grid (about 2.3 µs per expanded node).
+
 ## Stress test (`Test_FourAgentsStress`)
 
 | Date | Build | Avg FPS | Worst frame (ms) | AI ms / frame | GC Alloc in searches |
