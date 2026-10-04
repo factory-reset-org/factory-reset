@@ -37,6 +37,15 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// <summary>Number of considerations (0 for a constant action).</summary>
         public int ConsiderationCount => _considerations.Length;
 
+        /// <summary>The name of a consideration, for debug output.</summary>
+        public string ConsiderationName(int index)
+        {
+            if ((uint)index >= (uint)_considerations.Length)
+                throw new ArgumentOutOfRangeException(nameof(index));
+
+            return _considerations[index].Name;
+        }
+
         /// <summary>Creates an action scored by one or more considerations.</summary>
         public UtilityAction(SaboteurActionKind kind, params Consideration[] considerations)
         {

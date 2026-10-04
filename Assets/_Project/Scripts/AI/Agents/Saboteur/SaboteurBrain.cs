@@ -48,6 +48,7 @@ namespace ToyFactory.AI.Agents.Saboteur
         readonly ActionSelector _selector;
         readonly Vector2Int[] _patrolCells;
         readonly List<ActionCandidate> _candidates = new List<ActionCandidate>(8);
+        readonly UtilityDecisionTrace _lastDecision = new UtilityDecisionTrace();
 
         float _nextDecisionTime = float.NegativeInfinity;
         int _patrolIndex;
@@ -99,6 +100,12 @@ namespace ToyFactory.AI.Agents.Saboteur
 
         /// <summary>The action-target pair currently selected, for the debug panel.</summary>
         public ActionKey CurrentAction => _selector.Current;
+
+        /// <summary>
+        /// The scores and outcome of the latest selection pass, for the debug panel. It is one
+        /// instance overwritten at 4 Hz: read it, do not keep it.
+        /// </summary>
+        public UtilityDecisionTrace LastDecision => _lastDecision;
 
         /// <summary>True once <see cref="OnDestroyed"/> has run; the Saboteur never comes back.</summary>
         public bool IsDestroyed => _destroyed;
@@ -173,8 +180,14 @@ namespace ToyFactory.AI.Agents.Saboteur
         {
             _routeRetryWaiting = false;
             _candidates.Clear();
+            _lastDecision.Begin(now);
+
+            // Each action is added to the trace in the same order as the candidate list, so the
+            // selector can fill in the outcome of candidate i from index i.
             _candidates.Add(new ActionCandidate(IdleKey, IdleScore));
-            _selector.Select(_candidates, now);
+            _lastDecision.AddConstant(IdleKey, new ActionScore(IdleScore, IdleScore));
+
+            _selector.Select(_candidates, now, _lastDecision);
         }
 
         AgentIntent Patrol(Vector2Int currentCell, Vector3 position)
