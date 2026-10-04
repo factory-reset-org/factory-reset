@@ -5,6 +5,8 @@
         "UnityEngine.TestRunner",
         "ToyFactory.AI.Core",
         "ToyFactory.Runtime",
+        "ToyFactory.Interfaces",
+        "ToyFactory.Journey",
         "Unity.AI.Navigation"
     ],
     "includePlatforms": [],
