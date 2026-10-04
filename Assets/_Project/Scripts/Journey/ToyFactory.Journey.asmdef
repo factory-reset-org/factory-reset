@@ -1,11 +1,11 @@
 {
-    "name": "ToyFactory.UI",
-    "rootNamespace": "ToyFactory.UI",
+    "name": "ToyFactory.Journey",
+    "rootNamespace": "ToyFactory.Journey",
     "references": [
         "ToyFactory.Interfaces",
-        "ToyFactory.Journey",
-        "Unity.TextMeshPro",
-        "UnityEngine.UI"
+        "ToyFactory.AI.Core",
+        "Unity.Timeline",
+        "Unity.Cinemachine"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
