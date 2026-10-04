@@ -1,6 +1,6 @@
 # Factory Reset
 
-A low-poly, cartoon-styled 3D shooter set inside an abandoned toy factory whose AI has turned every toy against you. Fight your way through four chapters of the factory against four kinds of autonomous enemy (a Tracker, a Guard, a squad of four Saboteurs and a Captain), earn each of the three control switches by finishing that area's tasks, and force a factory reset.
+A cartoon 3D shooter in smooth, glossy toy plastic, set inside an abandoned toy factory whose AI has turned every toy against you. Fight your way through four chapters of the factory against four kinds of autonomous enemy (a Tracker, a Guard, a squad of four Saboteurs and a Captain), earn each of the three control switches by finishing that area's tasks, and force a factory reset.
 
 Joint project for SE3032 Graphics & Visualization and SE3062 Intelligent Systems.
 
