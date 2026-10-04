@@ -39,5 +39,18 @@ namespace ToyFactory.AI.Core.Perception
             NoiseSourceId = noiseSourceId;
             NoiseTime = noiseTime;
         }
+
+        /// <summary>
+        /// The louder of two snapshots' noises, for a runtime that collects every noise heard
+        /// between two ticks: <c>snapshot = SensorSnapshot.Loudest(snapshot, heard)</c>.
+        /// A snapshot that heard nothing always loses; a tie keeps the newer noise.
+        /// </summary>
+        public static SensorSnapshot Loudest(in SensorSnapshot a, in SensorSnapshot b)
+        {
+            if (!b.HasNoise) return a;
+            if (!a.HasNoise) return b;
+            if (b.NoiseLevel != a.NoiseLevel) return b.NoiseLevel > a.NoiseLevel ? b : a;
+            return b.NoiseTime >= a.NoiseTime ? b : a;
+        }
     }
 }
