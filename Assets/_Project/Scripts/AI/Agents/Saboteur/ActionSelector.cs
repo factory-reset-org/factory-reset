@@ -122,9 +122,11 @@ namespace ToyFactory.AI.Agents.Saboteur
 
         /// <summary>
         /// Picks the pair to run. <paramref name="now"/> must be game time (the context's
-        /// time), so commitment and cooldowns freeze with cutscenes and pause.
+        /// time), so commitment and cooldowns freeze with cutscenes and pause. When
+        /// <paramref name="trace"/> is given, it already holds the candidates in the same
+        /// order, and receives each one's ranking score and the reason it lost.
         /// </summary>
-        public SelectionResult Select(IReadOnlyList<ActionCandidate> candidates, float now)
+        public SelectionResult Select(IReadOnlyList<ActionCandidate> candidates, float now, UtilityDecisionTrace trace = null)
         {
             if (candidates == null)
                 throw new ArgumentNullException(nameof(candidates));
@@ -145,6 +147,7 @@ namespace ToyFactory.AI.Agents.Saboteur
                 && now - _committedAt < _settings.CommitmentSeconds;
 
             bool found = false;
+            int bestIndex = -1;
             ActionCandidate best = default;
             float bestRank = 0f;
             bool bestIsCurrent = false;
@@ -152,17 +155,26 @@ namespace ToyFactory.AI.Agents.Saboteur
             for (int i = 0; i < candidates.Count; i++)
             {
                 ActionCandidate candidate = candidates[i];
-                if (!IsUsable(candidate, now))
-                    continue;
-
                 bool isCurrent = _hasCurrent && candidate.Key.Equals(_current);
-                if (committed && !isCurrent && !(candidate.BaseScore > _settings.EmergencyThreshold))
+                if (!IsUsable(candidate, now))
+                {
+                    trace?.SetOutcome(i, candidate.BaseScore, isCurrent,
+                        candidate.BaseScore > 0f ? CandidateRejection.OnCooldown : CandidateRejection.Vetoed);
                     continue;
+                }
+
+                if (committed && !isCurrent && !(candidate.BaseScore > _settings.EmergencyThreshold))
+                {
+                    trace?.SetOutcome(i, candidate.BaseScore, isCurrent, CandidateRejection.CommitmentHeld);
+                    continue;
+                }
 
                 float rank = Math.Min(1f, candidate.BaseScore + (isCurrent ? _settings.Momentum : 0f));
+                trace?.SetOutcome(i, rank, isCurrent, CandidateRejection.Outranked);
                 if (!found || IsBetter(candidate.Key, rank, isCurrent, best.Key, bestRank, bestIsCurrent))
                 {
                     found = true;
+                    bestIndex = i;
                     best = candidate;
                     bestRank = rank;
                     bestIsCurrent = isCurrent;
@@ -170,7 +182,11 @@ namespace ToyFactory.AI.Agents.Saboteur
             }
 
             if (!found)
-                return new SelectionResult(false, default, 0f, 0f, false);
+            {
+                var none = new SelectionResult(false, default, 0f, 0f, false);
+                trace?.Complete(none, committed);
+                return none;
+            }
 
             bool switched = !_hasCurrent || !best.Key.Equals(_current);
             if (switched)
@@ -180,7 +196,14 @@ namespace ToyFactory.AI.Agents.Saboteur
                 _committedAt = now;
             }
 
-            return new SelectionResult(true, best.Key, best.BaseScore, bestRank, switched);
+            var selected = new SelectionResult(true, best.Key, best.BaseScore, bestRank, switched);
+            if (trace != null)
+            {
+                trace.SetOutcome(bestIndex, bestRank, bestIsCurrent, CandidateRejection.None);
+                trace.Complete(selected, committed);
+            }
+
+            return selected;
         }
 
         bool IsUsable(ActionCandidate candidate, float now)
