@@ -11,6 +11,7 @@ namespace ToyFactory.Tests.EditMode
             public float GameTime { get; set; }
             public void AddListener(IGameStateListener listener) { }
             public void RemoveListener(IGameStateListener listener) { }
+            public void RequestState(GameState state) { }
         }
 
         [TearDown]

@@ -17,6 +17,8 @@ namespace ToyFactory.Managers
 
         readonly List<IGameStateListener> _listeners = new List<IGameStateListener>();
 
+        GameState _stateBeforePause;
+
         /// <summary>The current game state.</summary>
         public GameState State { get; private set; }
 
@@ -55,10 +57,22 @@ namespace ToyFactory.Managers
                 return;
 
             GameState previous = State;
+            if (newState == GameState.Paused)
+                _stateBeforePause = previous;
             State = newState;
 
             for (int i = 0; i < _listeners.Count; i++)
                 _listeners[i].OnGameStateChanged(previous, newState);
+        }
+
+        /// <summary>Asks for a state change on behalf of another assembly.</summary>
+        public void RequestState(GameState state) => SetState(state);
+
+        /// <summary>Leaves Paused for the state that was active when the pause began.</summary>
+        public void Resume()
+        {
+            if (State == GameState.Paused)
+                SetState(_stateBeforePause);
         }
     }
 }
