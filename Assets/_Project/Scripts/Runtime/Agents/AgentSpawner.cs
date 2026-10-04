@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using ToyFactory.AI.Agents.Mock;
+using ToyFactory.AI.Agents.Tracker;
 using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
 using ToyFactory.AI.Core.Grid;
@@ -142,8 +143,13 @@ namespace ToyFactory.Runtime.Agents
         {
             switch (point.AgentType)
             {
-                case AgentType.Tracker:   // S1: replace with the Tracker brain when ready
-                case AgentType.Guard:     // S2: replace with the Guard brain when ready
+                case AgentType.Tracker:
+                    // The Tracker plans on the grid with its own GBFS; without a grid (or a
+                    // patrol route) it falls back to the mock, like the unfinished types.
+                    if (setup.HasGrid && setup.PatrolPoints != null && setup.PatrolPoints.Count > 0)
+                        return new TrackerBrain(setup.Grid, setup.Blackboard, setup.PatrolPoints);
+                    return new MockPathProvider(setup.PatrolPoints);
+                case AgentType.Guard:    // S2: replace with the Guard brain when ready
                 case AgentType.Saboteur:  // S3: replace with the Saboteur brain when ready
                 case AgentType.Captain:   // S4: replace with the Captain brain when ready
                 default:
