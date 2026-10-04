@@ -7,7 +7,8 @@
         "ToyFactory.Runtime",
         "ToyFactory.Interfaces",
         "ToyFactory.Journey",
-        "Unity.AI.Navigation"
+        "Unity.AI.Navigation",
+        "Unity.Timeline"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
