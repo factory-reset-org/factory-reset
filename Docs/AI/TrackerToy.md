@@ -14,7 +14,7 @@ Its eager movement toward a target is intentional: it does not need the shortest
 
 The current repository contains the shared `GridGraph`, `BinaryHeap`, `BaseCostModel`, `AStarSearch`, `IPathfinder` and `PathResult`, plus the brain/body contracts `IAgentBrain`, `AgentContext` and `AgentIntent`. The grid provides 0.5 m cells, eight-connected movement without diagonal corner cutting, explicit door identity/state, and nearest-traversable-cell lookup. `BaseCostModel.OctileDistance` supplies the shared heuristic calculation.
 
-Tracker-specific GBFS, the FSM framework and seven Tracker states, noise propagation, and wind-down energy are not implemented in this checkout. `WorldBlackboard` and `SensorSnapshot` are still stubs for the shared world/perception data. GridGraph exists as pure AI Core code; this does not mean the planned GridManager/NavMesh sampling integration or grid debug overlay is complete.
+Wind-down energy is implemented (`WindUpEnergy`, see below). Tracker-specific GBFS, the FSM framework and seven Tracker states, and noise propagation are not implemented in this checkout. `WorldBlackboard` and `SensorSnapshot` are still stubs for the shared world/perception data. GridGraph exists as pure AI Core code; this does not mean the planned GridManager/NavMesh sampling integration or grid debug overlay is complete.
 
 The sections below describe the planned Tracker design. Tracker test results and measured comparisons remain pending.
 
@@ -28,9 +28,22 @@ The five source levels, attenuation formula, hearing threshold and noise-selecti
 
 ### Wind-down energy
 
-Energy will drain at **10/s while Chase is active** and **2/s otherwise**. At zero energy, Tracker must enter **Rewind**. It stops and winds its key for **3 seconds**, taking **double hits** while vulnerable. Once energy is full, it returns to its previous state.
+Implemented in `AI/Agents/Tracker/WindUpEnergy.cs` (pure C#, game time only).
 
-This gives the player a planned counter-play loop: keep the Tracker chasing until it winds down, then attack during Rewind. The supplied specification does not assign a numeric energy capacity or a refill curve; those values are not assumed here.
+| Value | Number | Why |
+| --- | --- | --- |
+| Full spring | 100 | A round capacity; `Energy01 = Energy / 100` drives the key-spin animation. |
+| Drain while chasing | 10/s | A full spring lasts **10 s** of pursuit: long enough to be a threat, short enough that a player who kites it sees it wind down within one room. |
+| Drain otherwise | 2/s | A full spring lasts **50 s** of patrol or investigation, so it rarely winds down while calm and the hook stays tied to chasing. |
+| Rewind | 3 s, linear 0 to 100 | The vulnerable window: the toy stands still and takes double hits, long enough for the player to turn and land a few shots. |
+
+At zero energy the spring clamps to 0 (never negative) and `IsRewinding` becomes true. While rewinding there is no drain, whatever the state, and energy refills linearly. Rewind progress is stored as elapsed time rather than summed energy, so the spring is full after exactly 3 s of game time; at full it clamps to 100 and `IsRewinding` becomes false. Leftover time in the tick that completes the rewind is not drained.
+
+This gives the player a counter-play loop: keep the Tracker chasing until it winds down, then attack during Rewind.
+
+**Time rules.** `Tick(ctx.Time, chasing)` measures the gap since the previous tick. The first tick after construction only records the time, and a tick whose time did not move forward changes nothing. Cutscenes and pause need nothing special because game time stops. A stun does need handling: the runtime does not tick the brain while the body is fallen apart, but game time keeps running, so the first tick after the reboot would see a 7 s gap and drain 14 (70 if it had been chasing). The brain calls `Resume(ctx.Time)` on that tick to restart the clock without changing energy.
+
+**Tests** (`Tests/EditMode/WindUpEnergyTests.cs`): `StartsFullAndNotRewinding`, `FirstTickOnlyRecordsTheTime`, `FiveSecondsDrainsByState` (chasing 100 to 50, otherwise 100 to 90), `DrainingToZeroStartsRewindingAndNeverGoesNegative`, `RewindIgnoresChasingAndIsFullAfterExactlyThreeSeconds`, `Energy01StaysBetweenZeroAndOne`, `ResumeAfterStunGapDoesNotDrain`, `TimeGoingBackwardsDoesNotChangeEnergy`, `RepeatedTicksAllocateZeroBytes`.
 
 ## Architecture
 
