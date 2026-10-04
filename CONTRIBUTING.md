@@ -58,10 +58,11 @@ Check your weekly count: `git shortlog -sn --since="1 week ago"`.
   | `ToyFactory.AI.Agents` | AI.Core |
   | `ToyFactory.Interfaces` | nothing |
   | `ToyFactory.Runtime` | AI.Core, AI.Agents, Interfaces, AI Navigation |
-  | `ToyFactory.UI` | Interfaces, TextMeshPro, uGUI (never AI.Agents or Runtime) |
-  | `ToyFactory.Tests.EditMode` | AI.Core, AI.Agents, test framework |
+  | `ToyFactory.Journey` | Interfaces, AI.Core, Timeline, Cinemachine (never AI.Agents, Runtime or UI) |
+  | `ToyFactory.UI` | Interfaces, Journey (events only), TextMeshPro, uGUI (never AI.Agents or Runtime) |
+  | `ToyFactory.Tests.EditMode` | AI.Core, AI.Agents, Interfaces, Journey, test framework |
 
-- `ToyFactory.Journey` (chapters, cutscenes) is planned. It is created only once its owner is agreed, and it will never reference AI.Agents. The UI assembly reads Journey events only after that exists.
+- `ToyFactory.Journey` holds chapters (`Journey/Chapters/`, S1) and cutscenes (`Journey/Cutscenes/`, S4). It never references AI.Agents, Runtime or UI. The UI assembly reads Journey events only, and Runtime must not reference Journey or UI.
 - `Player/`, `Interaction/` and `Managers/` compile into Unity's default assembly. They can use every assembly above, but Runtime cannot see them, so Runtime talks to them only through `Interfaces/`.
 - Physics and NavMesh queries (Linecast, SamplePosition) belong in Runtime, behind an interface the brain receives. Tests use a fake.
 - Namespaces follow the assembly name. Use `ToyFactory.Runtime.Diagnostics` for code in `Runtime/Debug/`: a namespace ending in `.Debug` hides `UnityEngine.Debug`.
