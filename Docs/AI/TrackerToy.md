@@ -14,9 +14,9 @@ Its eager movement toward a target is intentional: it does not need the shortest
 
 The current repository contains the shared `GridGraph`, `BinaryHeap`, `BaseCostModel`, `AStarSearch`, `IPathfinder` and `PathResult`, plus the brain/body contracts `IAgentBrain`, `AgentContext` and `AgentIntent`. The grid provides 0.5 m cells, eight-connected movement without diagonal corner cutting, explicit door identity/state, and nearest-traversable-cell lookup. `BaseCostModel.OctileDistance` supplies the shared heuristic calculation.
 
-Implemented: wind-down energy (`WindUpEnergy`), the shared FSM framework, and the Tracker's search (`GreedyBestFirstSearch`, measured against A* below). Not yet implemented: the seven Tracker states and noise propagation. `WorldBlackboard` and `SensorSnapshot` are still stubs for the shared world/perception data. GridGraph exists as pure AI Core code; this does not mean the planned GridManager/NavMesh sampling integration or grid debug overlay is complete.
+Implemented: wind-down energy (`WindUpEnergy`), the Tracker's search (`GreedyBestFirstSearch`, measured against A* below), and the brain itself (`TrackerBrain`): all seven states in a hierarchical FSM built on the new shared `CompositeState`, grid-traced vision, and a `NoiseMemory` that scores what it hears. `AgentSpawner` now builds a `TrackerBrain` for the Tracker spawn point whenever a grid exists.
 
-The sections below describe the planned Tracker design. Tracker test results and measured comparisons remain pending.
+Not yet implemented: noise propagation (task G). The brain reads hearing from `SensorSnapshot`'s new noise fields, which S4's runtime fills once `NoisePropagation` exists; until then `default(SensorSnapshot)` means "heard nothing", so in play the Tracker patrols, sees and chases but does not investigate.
 
 ## Creative hook
 
@@ -49,29 +49,72 @@ This gives the player a counter-play loop: keep the Tracker chasing until it win
 
 ### Shared FSM and AI contracts
 
-The planned hierarchical FSM uses state objects with `Enter`, `Tick` and `Exit`. Transitions are data containing a **condition delegate**, **priority** and **target state**. It is not a switch-statement FSM. The supplied Tracker specification does not define a parent-state layout or numeric transition priorities.
+States are objects with `Enter`, `Tick` and `Exit`. Transitions are data: a `Transition<T>` holds a **from state** (null for "any state"), a **target state**, a **condition delegate** and a numeric **priority**; `StateMachine<T>` checks them highest priority first and takes the first that holds. It is not a switch-statement FSM.
 
-The planned brain will follow the existing `IAgentBrain` contract: read `AgentContext`, return an `AgentIntent` for Runtime to execute, respond to `OnGraphChanged`, and handle `OnStunned`. AI decision logic remains scene-independent; Physics and NavMesh queries belong in Runtime, as required by [CONTRIBUTING.md](../../CONTRIBUTING.md).
+`TrackerBrain` follows the `IAgentBrain` contract: it reads `AgentContext`, returns an `AgentIntent` for Runtime to execute, and handles `OnGraphChanged` and `OnStunned`. It is pure C# with no Physics or NavMesh calls, as required by [CONTRIBUTING.md](../../CONTRIBUTING.md); every timer uses `ctx.Time` (game time), so pause and cutscenes freeze it.
 
-`IPathfinder.FindPath` works with `Vector2Int` cells and returns a `PathResult`, including `Found`, `Cells`, `NodesExpanded`, `ElapsedMs` and `GraphVersion`. Planned GBFS should use the existing shared grid/search infrastructure. The graph's global version and affected-cell notifications support detecting routes that may need replanning.
+### Hierarchy
 
-### Planned states and exit conditions
+`CompositeState<T>` (`AI/Core/FSM/CompositeState.cs`, shared) is a state that owns a child `StateMachine<T>`. While the parent is current, each tick runs the child machine, so child transitions only compete with each other, and any parent transition beats every child. Re-entering a parent restarts it at its initial child; leaving it exits the running child first.
 
-LKP means **last known position** of the player.
+```text
+Top machine
+├── Calm            (composite, starts in Patrol)
+│   ├── Patrol
+│   ├── Investigate
+│   └── Distracted
+├── Hunting         (composite, starts in Chase)
+│   ├── Chase
+│   └── Search
+├── Rewind          (two instances: from Calm, from Hunting, so each knows where to return)
+└── Stunned         (pass-through on the first tick after the reboot)
+```
 
-| State | Planned behaviour | Exit condition / next action from the Full Plan |
-| --- | --- | --- |
-| **Patrol** | Use GBFS between patrol waypoints. | Hear noise above the hearing threshold, or see the player. |
-| **Investigate** | Use GBFS to the loudest recent noise cell, selected using the noise score below. | Arrive, hear a louder noise, or see the player. |
-| **Chase** | Use GBFS to the player's cell; repath every **0.5 s**. | Lose sight → **Search**; energy reaches zero → **Rewind**. |
-| **Search** | Sample cells on expanding rings around LKP and use GBFS to each. | **8 s** timeout → **Patrol**; see the player → **Chase**. |
-| **Distracted** | Use GBFS to a thrown toy and circle it. | The toy stops making noise. |
-| **Rewind** | Stop and wind the key for **3 s**; take double hits while vulnerable. | Energy full → return to the previous state. |
-| **Stunned** | Remain fallen apart. | The stun timer ends. |
+The hierarchy is what keeps the table short: "sees the player" is one Calm → Hunting row instead of one per calm state, and Rewind and Stunned interrupt whichever child is running.
 
-Noise investigation and visible-player pursuit correspond to Investigate and Chase respectively. When Investigate receives a louder noise, noise selection supplies the new target. A stun during Chase must preserve LKP for recovery; zero energy requires Rewind as described above.
+### States
 
-The excerpt does not specify the destination after Investigate arrives, after the Distracted toy becomes silent, or after the Stunned timer ends. It also does not supply the exact entry/arbitration rule for Distracted or numeric priorities when conditions compete. These transition details remain **TODO: confirm against the Full Plan**, rather than assigning new behaviour in this document.
+LKP means **last known position** of the player. Speeds are in m/s.
+
+| State | Behaviour | Speed |
+| --- | --- | ---: |
+| **Patrol** | GBFS to each patrol point in turn; an unreachable point is skipped. | 1.9 |
+| **Investigate** | GBFS to the best one-off noise; on arrival stand and sweep the head round for **2.4 s**, then mark the noise handled. A better noise heard on the way retargets it. | 3.2 |
+| **Distracted** | Circle a repeating source at **1.5 m**, stepping to the next of 8 points every **1.2 s**, looking at it. On leaving, the source is marked handled so it is not then investigated. | 3.6 |
+| **Chase** | GBFS to the player (or LKP if not currently seen), replanning every **0.5 s**; looks at the target. | 4.6 |
+| **Search** | GBFS round three rings about LKP (1.5, 3 and 4.5 m, 8 points each), starting in the direction the player was moving. Gives up after **8 s**. | 3.3 |
+| **Rewind** | Empty path (stop), `Action = Rewind` for **3 s**; `DamageMultiplier` is 2. | 0 |
+| **Stunned** | The controller holds the body for the whole stun and does not tick the brain. On the first tick after the reboot this state clears the stun and hands over on the same tick. | 0 |
+
+### Transition table
+
+`DescribeTransitions()` prints this table from the live transition objects, for the debug overlay and the viva.
+
+| Machine | Priority | From → To | When |
+| --- | ---: | --- | --- |
+| Top | 100 | any → Stunned | a stun is pending (first tick after the reboot) |
+| Top | 92 | Stunned → Rewind (from Hunting) | still rewinding, was hunting |
+| Top | 91 | Stunned → Rewind (from Calm) | still rewinding |
+| Top | 90 | Stunned → Hunting | was hunting, LKP known, player alive |
+| Top | 89 | Stunned → Calm | otherwise |
+| Top | 80 | Calm → Rewind, Hunting → Rewind | energy reached 0 |
+| Top | 70 | Rewind → Calm / Hunting | energy full again (back to the parent it left) |
+| Top | 50 | Calm → Hunting | sees the player |
+| Top | 40 | Hunting → Calm | Search timed out, or the player is gone or dead |
+| Calm | 30 | any → Distracted | the best noise is a repeating source, and not already Distracted |
+| Calm | 25 | Distracted → Patrol | the source has been silent for 1.5 s |
+| Calm | 20 | Patrol → Investigate | an unhandled one-off noise is remembered |
+| Calm | 15 | Investigate → Patrol | arrived and looked around for 2.4 s |
+| Hunting | 30 | Search → Chase | sees the player |
+| Hunting | 20 | Chase → Search | not seen for 0.7 s |
+
+Why these priorities: a stun outranks everything because the body has physically fallen apart; Rewind outranks sight because a spent spring cannot chase (that is the counter-play window); inside Calm a repeating lure outranks a one-off noise because that is the point of throwing a toy. Rewind does not look for the player, so a Tracker that is winding up stays vulnerable for the full 3 s.
+
+**Stun rules.** `OnStunned` sets a pending flag, records whether the Tracker was hunting, and drops the route; LKP is kept. On the first tick after the reboot the brain calls `WindUpEnergy.Resume` (so the stun costs no energy), the Stunned row fires, and the pass-through picks Rewind, Hunting or Calm and plans a fresh route on that same tick.
+
+**Senses.** Vision is S2's `VisionQuery` cone (12 m, 60° half-angle), widened to all round within 2.5 m, with line of sight traced on the grid by `GridLineCheck`. The trace stops 0.8 m short of the player: cells within the 0.55 m agent clearance of a wall are unwalkable, so a player standing against a wall would otherwise always count as hidden. Hearing goes through `NoiseMemory` (see Maths).
+
+**Graph changes.** `OnGraphChanged` replans only when a changed cell lies on the current route; other changes cost nothing.
 
 ## Why this architecture over the alternatives
 
@@ -146,17 +189,19 @@ lambda = 0.3/s
 
 For an otherwise equivalent noise aged 5 seconds, the multiplier is `exp(-0.3 * 5) ≈ 0.223`, about **22%** of its fresh score. This is a consequence of the formula, not an experimental measurement.
 
+**Implementation** (`AI/Agents/Tracker/NoiseMemory.cs`): one entry per source, so the hack terminal's beep every 0.8 s refreshes a single entry instead of piling up. An entry is forgotten once its score falls to the hearing threshold (10), e.g. a level-20 noise after 2.3 s. A source heard again within **1.5 s** of its previous noise is *repeating* (what sends the Tracker to Distracted) until it has been silent for 1.5 s. Investigated sources are marked handled and ignored until they make a new noise. Fixed capacity of 8 and no allocation after construction. Example: a 30-level beep 0.2 s old (score 28.3) beats an 80-level shot 5 s old (score 17.9).
+
+**Deviation:** the plan breaks ties by **path** distance; `NoiseMemory` uses flat (straight-line) distance, because the brain does not have a path distance to each source without running a search per noise. Exact ties are rare (same level, same age), so this was kept simple; it can switch to the propagation's distance once task G stores it.
+
 ## Edge cases
 
-These are planned behaviours from the Full Plan; the test descriptions are requirements, not passing-test claims.
-
-| Case | Handling | Test |
+| Case | Handling now | Status |
 | --- | --- | --- |
-| Noise source is in an unreachable/blocked cell | Search/ring outward to the nearest traversable cell. | A blocked source produces a traversable investigation target; pathfinding still reports failure if that target cannot be reached. |
-| LKP becomes blocked by a pushed box | Start Search from the nearest traversable cell. | Search uses a traversable replacement for blocked LKP. |
-| A closed door makes the goal unreachable | Treat the door cell as the target, wait/bump it, then Search. | Door obstruction leads to the planned wait/bump and Search behaviour. |
-| Two noises have equal scores | Prefer the one closer by path distance. | Equal-score selection uses path distance as its tie-break. |
-| Tracker is stunned during Chase | Preserve LKP in memory for recovery. | Stun and recovery do not erase the recorded LKP. |
+| Noise source is in an unreachable/blocked cell | Every goal is snapped to the nearest traversable cell within 6 cells (3 m). If no route exists, Investigate looks around from where it stands, then marks the noise handled. | Implemented; snapping covered indirectly by the Investigate tests |
+| LKP becomes blocked by a pushed box | Chase and Search goals are snapped the same way; Search skips ring points it cannot reach (at most 3 searches per tick). | Implemented; no dedicated test yet |
+| A closed door makes the goal unreachable | GBFS reports not found, the Tracker stops; Chase retries every 0.5 s and drops to Search after 0.7 s without sight. | **Partly:** the plan's wait/bump at the door is not implemented |
+| Two noises have equal scores | Prefer the closer one (flat distance, see the deviation above). | `EqualScoresPreferTheCloserNoise` |
+| Tracker is stunned during Chase | LKP is kept; the first tick after the reboot resumes the hunt towards it. | `AStunWhileHuntingResumesTheHunt` |
 
 `GridGraph.TryFindNearestTraversable` is an existing spatial helper, not a reachability test. A nearest traversable cell can still be in a disconnected region. Likewise, a closed door's cell is not a legal movement destination in the current graph: the plan's door target denotes the obstruction to wait/bump against. The exact approach-cell selection and wait duration are not specified in the supplied excerpt and remain integration details to confirm; the design does not require bypassing the grid's movement rules.
 
@@ -171,8 +216,25 @@ These are planned behaviours from the Full Plan; the test descriptions are requi
 | Closed-set behaviour | GBFS never expands the same node twice. | Passing: `ExpandsEachReachableCellExactlyOnceWhenTheGoalIsUnreachable` (expanded count equals the reachable region's size exactly) |
 | Fewer expansions than A*; no allocation | GBFS expands fewer nodes than A* on open grids and allocates nothing on reuse. | Passing: `ExpandsFewerNodesThanAStarOnOpenGrids`, `ReusedSearchAllocatesNothing` |
 | Closed-door attenuation | Propagated noise through a closed door matches `L0 - 4 * pathDistance - sum(35 per closed door crossed)`. | Pending implementation and execution |
-| Tracker edge cases | The five cases above follow the planned handling. | Pending implementation and execution |
+| Tracker edge cases | The five cases above follow the planned handling. | Partly: see Edge cases |
 | GBFS versus A* | Record nodes expanded and path length for both algorithms over the same 20 start/goal pairs. | Done: see Measured results |
+
+### Brain tests (EditMode, all passing)
+
+`Tests/EditMode/TrackerBrainTests.cs` (23), on a 20 m x 10 m open grid driven tick by tick with game time:
+- **Patrol:** `FirstTickPatrolsWithAGbfsRoute`, `PatrolKeepsItsRouteUntilArrivalThenGoesToTheNextPoint`.
+- **Hearing:** `ALoudNoiseStartsAnInvestigation`, `InvestigationLooksAroundThenReturnsToPatrolAndDoesNotRepeat`, `ARepeatingSourceDistractsUntilItGoesQuiet`.
+- **Vision and hunting:** `SeeingThePlayerStartsTheChase`, `APlayerBehindAWallIsNotSeen`, `APlayerBehindTheTrackerIsSeenOnlyUpClose`, `ChaseReplansEveryHalfSecond`, `LosingSightSwitchesToSearchAfterPointSevenSeconds`, `SearchGivesUpAfterEightSeconds`, `SeeingThePlayerAgainDuringSearchResumesTheChase`, `AMissingOrDeadPlayerEndsTheHunt`.
+- **Energy:** `RunningOutOfEnergyRewindsInPlaceThenCarriesOn` (empty path, `Action = Rewind`, double damage, back after 3 s), `ChasingDrainsEnergyFiveTimesFaster`, `ARewindFromTheHuntReturnsToTheHunt`.
+- **Stuns and priority:** `AStunDoesNotDrainEnergyAndAFreshRouteGoesOutOnTheFirstTickAfter`, `AStunWhileHuntingResumesTheHunt`, `AStunDuringARewindGoesBackToRewinding`, `TheStunInterruptHasTheHighestPriority` (every machine's rows are in descending priority and the stun is the top machine's first row).
+- **Graph changes:** `AGraphChangeOffTheRouteKeepsIt`, `AGraphChangeOnTheRouteReplansAroundIt`.
+- `ConstructorRejectsMissingInputs`.
+
+`Tests/EditMode/NoiseMemoryTests.cs` (11): decay formula, a repeating beep beating an older louder shot, the 1.5 s repeat window, the closer-noise tie-break, handled noises, forgetting at the threshold, ignoring out-of-order noises, and replacing the weakest entry when full.
+
+`Tests/EditMode/CompositeStateTests.cs` (6): the child is entered and ticked inside the parent, child transitions run inside it, leaving exits the running child first, re-entry restarts at the initial child, and a child that never ran is never exited.
+
+Full suites after this change: EditMode 538/538, PlayMode 56/56.
 
 ### Planned S1 delivery schedule
 
@@ -202,5 +264,5 @@ GBFS matched A*'s path length on 10 pairs and was longer on 10. The longest deto
 | Evidence | Status |
 | --- | --- |
 | Results for the same 20 GBFS/A* pairs | Done (above; lab-machine timing still to record) |
-| Tracker test execution results | Pending / TODO |
+| Tracker test execution results | Done: 40 brain, noise-memory and composite-state tests passing (see Tests) |
 | Tracker profiling and four-agent stress measurements | Pending / TODO |
