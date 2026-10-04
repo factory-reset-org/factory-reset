@@ -14,7 +14,7 @@ Its eager movement toward a target is intentional: it does not need the shortest
 
 The current repository contains the shared `GridGraph`, `BinaryHeap`, `BaseCostModel`, `AStarSearch`, `IPathfinder` and `PathResult`, plus the brain/body contracts `IAgentBrain`, `AgentContext` and `AgentIntent`. The grid provides 0.5 m cells, eight-connected movement without diagonal corner cutting, explicit door identity/state, and nearest-traversable-cell lookup. `BaseCostModel.OctileDistance` supplies the shared heuristic calculation.
 
-Wind-down energy is implemented (`WindUpEnergy`, see below). Tracker-specific GBFS, the FSM framework and seven Tracker states, and noise propagation are not implemented in this checkout. `WorldBlackboard` and `SensorSnapshot` are still stubs for the shared world/perception data. GridGraph exists as pure AI Core code; this does not mean the planned GridManager/NavMesh sampling integration or grid debug overlay is complete.
+Implemented: wind-down energy (`WindUpEnergy`), the shared FSM framework, and the Tracker's search (`GreedyBestFirstSearch`, measured against A* below). Not yet implemented: the seven Tracker states and noise propagation. `WorldBlackboard` and `SensorSnapshot` are still stubs for the shared world/perception data. GridGraph exists as pure AI Core code; this does not mean the planned GridManager/NavMesh sampling integration or grid debug overlay is complete.
 
 The sections below describe the planned Tracker design. Tracker test results and measured comparisons remain pending.
 
@@ -103,7 +103,12 @@ This is octile distance on the eight-connected grid. Cell Y is the grid coordina
 
 GBFS does not include accumulated cost `g(n)` in its selection priority. It must maintain a **closed set** so an expanded node is not expanded again. With that closed set and exploration of the available frontier, GBFS is **complete on the project's finite graph**: it finds a path if one exists, or exhausts the frontier and returns `Found = false`. It is **not optimal**; the octile heuristic does not turn heuristic-only selection into shortest-path search.
 
-Movement uses the shared grid's legal neighbours, including its no-corner-cutting rule. Existing non-allocating neighbour access and reusable `BinaryHeap` storage provide infrastructure for the planned search; they do not constitute a completed GBFS implementation.
+**Implementation** (`AI/Agents/Tracker/GreedyBestFirstSearch.cs`, an `IPathfinder`):
+- The open list is the shared `BinaryHeap`, keyed by `h(n)` only (`BaseCostModel.OctileDistance`).
+- **Closed set:** a cell is stamped when it is first pushed and never pushed again. Because `h(n)` of a cell never changes, its first priority is final, so there is nothing for `DecreaseKey` to improve (unlike A*, where a cheaper `g` can lower a cell's priority). Every cell is therefore expanded at most once, which bounds the search by the number of cells: this is the completeness argument.
+- Neighbours come from `GridGraph.GetNeighboursNonAlloc`, so the no-corner-cutting rule and closed doors apply exactly as for A*.
+- The `ICostModel` argument is required by `IPathfinder` but not used for ordering; ignoring `g(n)` is what makes the search greedy.
+- Arrays are reused between searches with a stamp (the same trick as `AStarSearch` and `DijkstraField`), so a search allocates nothing but the returned path list. Wrapped in the `AI.Tracker.GBFS` ProfilerMarker.
 
 ### Propagated sound level
 
@@ -161,12 +166,13 @@ These are planned behaviours from the Full Plan; the test descriptions are requi
 
 | Required test/evidence | What it must establish | Status |
 | --- | --- | --- |
-| GBFS finds a path when one exists | A reachable start/goal pair returns `Found = true` with a legal grid route. | Pending implementation and execution |
-| Enclosed/unreachable region | GBFS returns `Found = false` when the goal cannot be reached. | Pending implementation and execution |
-| Closed-set behaviour | GBFS never expands the same node twice. | Pending implementation and execution |
+| GBFS finds a path when one exists | A reachable start/goal pair returns `Found = true` with a legal grid route. | Passing: `FindsAStraightPathOnAnOpenGrid`, `RoutesAroundAWallWithoutCuttingCorners`, `FindsAPathWheneverAStarDoesOnFiftyRandomGrids` |
+| Enclosed/unreachable region | GBFS returns `Found = false` when the goal cannot be reached. | Passing: `WalledOffGoalIsNotFound`, `ClosedDoorBlocksMovement`, `BlockedStartOrGoalIsNotFoundWithoutExpanding` |
+| Closed-set behaviour | GBFS never expands the same node twice. | Passing: `ExpandsEachReachableCellExactlyOnceWhenTheGoalIsUnreachable` (expanded count equals the reachable region's size exactly) |
+| Fewer expansions than A*; no allocation | GBFS expands fewer nodes than A* on open grids and allocates nothing on reuse. | Passing: `ExpandsFewerNodesThanAStarOnOpenGrids`, `ReusedSearchAllocatesNothing` |
 | Closed-door attenuation | Propagated noise through a closed door matches `L0 - 4 * pathDistance - sum(35 per closed door crossed)`. | Pending implementation and execution |
 | Tracker edge cases | The five cases above follow the planned handling. | Pending implementation and execution |
-| GBFS versus A* | Record nodes expanded and path length for both algorithms over the same 20 start/goal pairs. | Pending experiment |
+| GBFS versus A* | Record nodes expanded and path length for both algorithms over the same 20 start/goal pairs. | Done: see Measured results |
 
 ### Planned S1 delivery schedule
 
@@ -181,14 +187,20 @@ These are the Full Plan's schedule entries, not a completion checklist. See Curr
 
 ## Measured results
 
-**Pending / TODO — no Tracker measurements or GBFS-versus-A* results are recorded yet.**
+### GBFS vs A* on the level grid
 
-Run GBFS and A* over the **same 20 start/goal pairs**, recording **nodes expanded** and **path length** for each algorithm. State the path-length units and use the same grid conditions so the comparison is meaningful. The expected qualitative trade-off is fewer GBFS expansions versus shorter A* paths; report the actual outcomes even when individual pairs differ from that expectation.
+Same 20 start/goal pairs on the greybox level grid (83 x 83 cells, 5,318 walkable), `BaseCostModel`, editor timing. Full per-pair table in [AIPerformanceLog.md](../AIPerformanceLog.md).
 
-Record the measured comparison in [AIPerformanceLog.md](../AIPerformanceLog.md). Its existing search-comparison table also includes elapsed milliseconds. The repository's performance-evidence format uses ProfilerMarkers such as `AI.Tracker.GBFS` on the lab machine, and its `Test_FourAgentsStress` table records average FPS, worst-frame milliseconds, AI milliseconds per frame and GC allocation in searches. These entries remain pending until the corresponding systems and experiments are available.
+| Total over 20 pairs | A* | GBFS | Difference |
+| --- | --- | --- | --- |
+| Nodes expanded | 5,426 | 1,270 | 77% fewer |
+| Search time | 12.27 ms | 2.62 ms | 4.7x faster |
+| Path length | 412.2 m | 468.2 m | 13.6% longer |
+
+GBFS matched A*'s path length on 10 pairs and was longer on 10. The longest detours are routes that must pass round a central wall: greedy heads straight for the goal, meets the wall and follows it to a doorway. That is the trade the design accepts: a chaser that replans every 0.5 s needs cheap searches more than shortest routes, and the slight detours read as sniffing.
 
 | Evidence | Status |
 | --- | --- |
-| Results for the same 20 GBFS/A* pairs | Pending / TODO |
+| Results for the same 20 GBFS/A* pairs | Done (above; lab-machine timing still to record) |
 | Tracker test execution results | Pending / TODO |
 | Tracker profiling and four-agent stress measurements | Pending / TODO |
