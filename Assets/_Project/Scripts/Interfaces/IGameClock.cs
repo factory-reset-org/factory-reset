@@ -19,5 +19,11 @@ namespace ToyFactory.Interfaces
 
         /// <summary>Removes a previously added listener.</summary>
         void RemoveListener(IGameStateListener listener);
+
+        /// <summary>
+        /// Asks the game to switch state (for example Playing to Cutscene and back).
+        /// Listeners are notified as with any change; no effect if already in that state.
+        /// </summary>
+        void RequestState(GameState state);
     }
 }
