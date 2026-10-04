@@ -90,6 +90,13 @@ namespace ToyFactory.AI.Agents.Captain
         }
 
         /// <summary>
+        /// The cached distance field of the goal with <paramref name="goalId"/> from the last
+        /// update, so the intercept planner can reuse it instead of searching again. False if
+        /// that goal was not in the last update.
+        /// </summary>
+        public bool TryGetGoalField(int goalId, out DijkstraField field) => _fields.TryGetValue(goalId, out field);
+
+        /// <summary>
         /// Re-runs the prediction. Returns false if there is no prediction: no goal is
         /// reachable or included, or the player is nowhere near a walkable cell. A goal that
         /// cannot be reached gets posterior 0 and is left out of the normalisation.
