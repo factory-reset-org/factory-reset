@@ -48,6 +48,8 @@ Obstacles: two 2.8 m presses (Assembly), four 1.2 m cover blocks (Painting; low 
 
 Only the `Level` hierarchy is Static (GI, occluder, occludee, batching, reflection probe). Doorway markers, area volumes and anchors are not geometry and are not static.
 
+**Smooth plastic style:** walls, lintels and obstacles use chamfered meshes from `BevelledBoxMesh` (0.06 m chamfer on walls, 0.08 m on obstacles; 44 triangles per box), saved per size in `Prefabs/Environment/Meshes` with lightmap UVs. Their box colliders keep the exact original size, so the NavMesh and grid are unchanged (still 5,318 walkable cells). Floors stay flat. One baked reflection probe per room (box projection, 128 px) gives the glossy materials something to reflect; it is re-baked after the lighting pass.
+
 ## NavMesh and grid
 
 - NavMesh agent type 0: **radius 0.55 m, height 3.25 m** (the largest measured capsules, decision D3). Slope 45, climb 0.75 unchanged.
@@ -115,5 +117,5 @@ Tracker: Assembly. Guard: Painting. Saboteur A: Storage. B: Assembly. C: Paintin
 
 ## Not done yet
 
-- Materials are provisional greybox tints; the Art Bible palette and lighting come in Task I.
+- Materials are greybox tints with the plastic smoothness values; the final Art Bible materials, lighting and the reflection-probe re-bake come in Task I.
 - Play from `Bootstrap.unity` needs S2's SceneLoader, which calls `GridManager.BuildGrid()`.
