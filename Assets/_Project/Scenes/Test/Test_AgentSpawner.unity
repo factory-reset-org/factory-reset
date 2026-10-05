@@ -179,6 +179,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bb32cda58e6535041817c7b65113e89a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Agents.AgentSpawner
+  bodies:
+  - type: 0
+    prefab: {fileID: 1179518136627775329, guid: 63aeb62dd0e0c614ab26e57651d71e8e, type: 3}
+  - type: 1
+    prefab: {fileID: 8290627080012992370, guid: 2e9fce4cd0c569b4d91f59181806fb7a, type: 3}
+  - type: 2
+    prefab: {fileID: 5172471769490426685, guid: 6331762473a24994c9cdfb1cc1b84e20, type: 3}
+  - type: 3
+    prefab: {fileID: 7075240395378938352, guid: 97f204249261e8641989d4db4eae902e, type: 3}
   agentPrefab: {fileID: 8232217391327910283, guid: 3880ca1d7d279264a9f6ad5ca99734c6, type: 3}
   spawnOnStart: 1
 --- !u!4 &104619461
@@ -254,6 +263,7 @@ MonoBehaviour:
   patrolWaypoints:
   - {fileID: 846581346}
   - {fileID: 1356204535}
+  startAwake: 0
 --- !u!1 &165870167
 GameObject:
   m_ObjectHideFlags: 0
@@ -484,6 +494,7 @@ MonoBehaviour:
   patrolWaypoints:
   - {fileID: 1607442446}
   - {fileID: 1006184702}
+  startAwake: 0
 --- !u!1 &316998063
 GameObject:
   m_ObjectHideFlags: 0
@@ -597,6 +608,7 @@ MonoBehaviour:
   patrolWaypoints:
   - {fileID: 705219746}
   - {fileID: 1902959193}
+  startAwake: 0
 --- !u!1 &705219745
 GameObject:
   m_ObjectHideFlags: 0
@@ -679,6 +691,7 @@ MonoBehaviour:
   patrolWaypoints:
   - {fileID: 318887493}
   - {fileID: 1640870977}
+  startAwake: 0
 --- !u!1 &846581345
 GameObject:
   m_ObjectHideFlags: 0
@@ -960,6 +973,7 @@ MonoBehaviour:
   patrolWaypoints:
   - {fileID: 316998064}
   - {fileID: 1256522882}
+  startAwake: 0
 --- !u!1 &1356204534
 GameObject:
   m_ObjectHideFlags: 0
@@ -1356,6 +1370,7 @@ MonoBehaviour:
   patrolWaypoints:
   - {fileID: 1589090856}
   - {fileID: 1620497072}
+  startAwake: 0
 --- !u!1 &1902959192
 GameObject:
   m_ObjectHideFlags: 0
@@ -1438,6 +1453,7 @@ MonoBehaviour:
   patrolWaypoints:
   - {fileID: 1706693429}
   - {fileID: 96678852}
+  startAwake: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
