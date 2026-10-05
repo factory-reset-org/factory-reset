@@ -20,11 +20,17 @@ namespace ToyFactory.Runtime.Agents
         [Tooltip("Optional patrol route markers, in walking order. Empty means the agent stays at the spawn point.")]
         [SerializeField] Transform[] patrolWaypoints = new Transform[0];
 
+        [Tooltip("Captain only: start awake instead of Dormant. For test scenes, which have no Chapter 3 cutscene to wake it.")]
+        [SerializeField] bool startAwake;
+
         /// <summary>Which agent appears here.</summary>
         public AgentType AgentType => agentType;
 
         /// <summary>Squad position of the agent spawned here, or <see cref="AgentIdentity.NoSquad"/>.</summary>
         public int SquadIndex => squadIndex;
+
+        /// <summary>Captain only: skip the Dormant state (test scenes).</summary>
+        public bool StartAwake => startAwake;
 
         /// <summary>
         /// World positions of the patrol waypoints, skipping any empty slots. If none are

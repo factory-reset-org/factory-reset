@@ -1,5 +1,9 @@
+using System.Collections;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
+using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
 using ToyFactory.AI.Core.Grid;
 using ToyFactory.Interfaces;
@@ -121,6 +125,69 @@ namespace ToyFactory.Tests
 
             ChapterEvents.RaiseChapterStarted(4);
             Assert.AreEqual(3, blackboard.ChapterIndex, "A disposed writer no longer listens.");
+        }
+        [Test]
+        public void CaptainWakeSignalWakesTheCaptainUntilDisposed()
+        {
+            var blackboard = new WorldBlackboard();
+            var writer = new CaptainWakeWriter(blackboard);
+            try
+            {
+                CutsceneEvents.RaiseCriticalSignal(CutsceneSignals.ControlRoomUnlock);
+                Assert.IsFalse(blackboard.CaptainAwake, "Other signals do not wake it.");
+
+                CutsceneEvents.RaiseCriticalSignal(CutsceneSignals.CaptainWake);
+                Assert.IsTrue(blackboard.CaptainAwake);
+            }
+            finally
+            {
+                writer.Dispose();
+            }
+
+            var later = new WorldBlackboard();
+            var disposed = new CaptainWakeWriter(later);
+            disposed.Dispose();
+            CutsceneEvents.RaiseCriticalSignal(CutsceneSignals.CaptainWake);
+            Assert.IsFalse(later.CaptainAwake, "A disposed writer no longer listens.");
+        }
+
+        sealed class PredictingBrain : IAgentBrain, IGoalPredictor
+        {
+            public PredictedGoal Prediction { get; set; }
+            public AgentIntent Tick(in AgentContext ctx) => default;
+            public void OnGraphChanged(IReadOnlyList<Vector2Int> changedCells) { }
+            public void OnStunned(float duration) => Prediction = default;
+            public void OnDestroyed() { }
+        }
+
+        [UnityTest]
+        public IEnumerator ControllerCopiesThePredictionToTheBlackboardUntilTheBrainGoes()
+        {
+            var body = new GameObject("Captain");
+            try
+            {
+                body.AddComponent<CharacterController>();
+                AgentController agent = body.AddComponent<AgentController>();
+                var blackboard = new WorldBlackboard();
+                var brain = new PredictingBrain { Prediction = new PredictedGoal(7, new Vector2Int(3, 4), 0.8f, 1f) };
+                agent.Initialise(new AgentIdentity(AgentType.Captain, 0), brain, blackboard);
+
+                yield return null;
+                Assert.IsTrue(blackboard.PredictedGoal.IsKnown);
+                Assert.AreEqual(7, blackboard.PredictedGoal.GoalId);
+                Assert.AreEqual(0.8f, blackboard.PredictedGoal.Confidence);
+
+                agent.Disable(5f);
+                Assert.IsFalse(blackboard.PredictedGoal.IsKnown, "Cleared at once when stunned, though the brain is not ticked.");
+
+                blackboard.SetPredictedGoal(new PredictedGoal(7, new Vector2Int(3, 4), 0.8f, 2f));
+                agent.Scrap();
+                Assert.IsFalse(blackboard.PredictedGoal.IsKnown, "A scrapped brain's prediction is cleared.");
+            }
+            finally
+            {
+                Object.Destroy(body);
+            }
         }
     }
 }

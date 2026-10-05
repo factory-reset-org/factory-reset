@@ -40,6 +40,21 @@ namespace ToyFactory.AI.Core.Blackboard
         /// <summary>True in the final chapter (the Control Room), where the console is the last goal.</summary>
         public bool IsFinalChapter => ChapterIndex == FinalChapter;
 
+        /// <summary>
+        /// True once the Chapter 3 cutscene has woken the Captain (its CaptainWake Critical
+        /// signal, which also fires when the cutscene is skipped). Never becomes false again.
+        /// </summary>
+        public bool CaptainAwake { get; private set; }
+
+        /// <summary>The Captain's latest goal prediction; not known until the Captain has one.</summary>
+        public PredictedGoal PredictedGoal { get; private set; }
+
+        /// <summary>Wakes the Captain. Runtime only (S4's writer, from the CaptainWake cutscene signal).</summary>
+        public void SetCaptainAwake() => CaptainAwake = true;
+
+        /// <summary>Replaces the goal prediction. Runtime only, copied from the Captain's brain after its tick.</summary>
+        public void SetPredictedGoal(in PredictedGoal prediction) => PredictedGoal = prediction;
+
         public WorldBlackboard()
         {
             _objectiveTargetView = _objectiveTargets.AsReadOnly();

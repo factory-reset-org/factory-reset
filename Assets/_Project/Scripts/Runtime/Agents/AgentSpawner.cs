@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using ToyFactory.AI.Agents.Captain;
 using ToyFactory.AI.Agents.Mock;
 using ToyFactory.AI.Agents.Tracker;
 using ToyFactory.AI.Core;
@@ -19,7 +20,7 @@ namespace ToyFactory.Runtime.Agents
     /// <see cref="AgentController"/>. The scene loader calls <see cref="SpawnAll"/> once
     /// the level and grid exist; test scenes can use "Spawn On Start" instead.
     /// It also owns the Runtime writers that fill the blackboard (objectives, chapter,
-    /// player) and the hearing that fills each agent's senses.
+    /// player, the Captain's wake) and the hearing that fills each agent's senses.
     /// </summary>
     /// <remarks>
     /// Runs before the default execution order, so the player snapshot is written each
@@ -41,6 +42,7 @@ namespace ToyFactory.Runtime.Agents
         WorldBlackboard _blackboard;
         ObjectiveTargetWriter _objectiveWriter;
         ChapterIndexWriter _chapterWriter;
+        CaptainWakeWriter _captainWakeWriter;
         PlayerStateWriter _playerWriter;
         AgentHearing _hearing;
 
@@ -62,6 +64,7 @@ namespace ToyFactory.Runtime.Agents
             // chapter manager publishes Chapter 1's targets after the agents spawn.
             _objectiveWriter = new ObjectiveTargetWriter(_blackboard);
             _chapterWriter = new ChapterIndexWriter(_blackboard);
+            _captainWakeWriter = new CaptainWakeWriter(_blackboard);
             _playerWriter = new PlayerStateWriter(_blackboard);
 
             // Reads the live agent list and the grid at each noise, so it works before and
@@ -75,6 +78,7 @@ namespace ToyFactory.Runtime.Agents
         {
             _objectiveWriter?.Dispose();
             _chapterWriter?.Dispose();
+            _captainWakeWriter?.Dispose();
             _hearing?.Dispose();
             if (Instance == this)
                 Instance = null;
@@ -169,9 +173,14 @@ namespace ToyFactory.Runtime.Agents
                     if (setup.HasGrid && setup.PatrolPoints != null && setup.PatrolPoints.Count > 0)
                         return new TrackerBrain(setup.Grid, setup.Blackboard, setup.PatrolPoints);
                     return new MockPathProvider(setup.PatrolPoints);
+                case AgentType.Captain:
+                    // The Captain predicts and intercepts on the grid; without one it has
+                    // nothing to reason about, so it falls back to the mock.
+                    if (setup.HasGrid)
+                        return new CaptainBrain(setup.Grid, setup.Pathfinder, setup.Blackboard, point.StartAwake);
+                    return new MockPathProvider(setup.PatrolPoints);
                 case AgentType.Guard:    // S2: replace with the Guard brain when ready
                 case AgentType.Saboteur:  // S3: replace with the Saboteur brain when ready
-                case AgentType.Captain:   // S4: replace with the Captain brain when ready
                 default:
                     return new MockPathProvider(setup.PatrolPoints);
             }

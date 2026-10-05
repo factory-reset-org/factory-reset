@@ -40,14 +40,14 @@ The Captain is a finite-state machine built on the shared FSM framework: each st
 | State | What the Captain does |
 | --- | --- |
 | **Dormant** | Start state. Stands powered down in the Control Room and ignores the player. The brain skips goal inference and returns an empty intent. Leaves only when the Chapter 3 wake signal arrives. |
-| **Observe** | Prediction is too uncertain to commit. Keeps its distance from the player and stays out of sight while the prediction updates. |
+| **Observe** | Prediction is too uncertain to commit. Watches the player and backs off 4 m whenever they come within 8 m, so it never simply chases while the prediction settles. |
 | **Intercept** | Confident about `g*`. Picks the first chokepoint on the player's predicted route it can reach at least 1 s before them, and walks there with A*. If no cell qualifies, it heads to `g*` itself to defend it. |
-| **Ambush** | At the intercept cell. Stands still, facing the direction the player will arrive from. |
-| **Engage** | Player is in view within 10 m. Faces the player and fires hitscan shots, each with a 0.3 s wind-up telegraph. |
+| **Ambush** | At the intercept cell. Stands still, facing the route cell the player will arrive from. Holds its ground while the cell is still ahead of the player on their predicted route. |
+| **Engage** | Player is in view within 10 m (a 70° half-angle cone, or anywhere within 2.5 m, with line of sight traced on the grid). Faces the player and fires a shot every 1.2 s, each after a 0.3 s aim telegraph. |
 | **Reassess** | Something invalidated the plan. Discards the current intercept cell, re-runs goal inference immediately, then hands over to Observe or Intercept. Lasts one decision tick. |
-| **Stunned** | Hit points reached 0. Falls apart, releases its reserved cell, reassembles after 6 s, then goes to Reassess. |
+| **Stunned** | Knocked out. The controller owns the 6 s reboot and does not tick the brain meanwhile; the brain drops its plan and prediction at once. On the first tick after the reboot it passes straight through to Reassess. |
 
-**Waking up:** the Chapter 3 cutscene fires a Critical signal. The runtime turns it into a wake flag on the blackboard, and the brain reads the flag. The signal fires even when the player skips the cutscene, so the Captain can never stay asleep by mistake.
+**Waking up:** the Chapter 3 cutscene fires the `CaptainWake` Critical signal. The runtime's `CaptainWakeWriter` turns it into `WorldBlackboard.CaptainAwake`, and the brain reads the flag. The signal fires even when the player skips the cutscene. As a second safety net the Captain also wakes once Chapter 3 has started (`ChapterIndex ≥ 3`), so it can never stay asleep for the chapters it guards. Test scenes have no cutscene, so a spawn point can start it awake.
 
 **Cutscenes and pause:** `AgentController` does not tick any brain unless the game state is Playing (so not in Title, Cutscene, Paused or Results), and the body holds its route while frozen. All Captain timers use `AgentContext.Time`, which is game time from S2's `GameManager`, so the 5 s history window, the 2 Hz prediction and the stun reboot resume where they stopped.
 
@@ -62,7 +62,7 @@ Higher priority wins when several conditions are true on the same tick.
 | Stunned | Reassess | Stun timer ends | 90 |
 | Observe, Intercept, Ambush | Engage | Player visible within 10 m | 80 |
 | Engage | Reassess | Player no longer visible | 70 |
-| Intercept, Ambush | Reassess | `g*` changes, confidence drops below 0.5, the player reaches `g*`, or the intercept cell becomes blocked or no longer satisfies the 1 s margin | 60 |
+| Intercept, Ambush | Reassess | `g*` changes, confidence drops below 0.5 (so there is no plan), the player reaches `g*`, the intercept cell becomes blocked, or (Ambush) the player has passed the cell | 60 |
 | Intercept | Ambush | Captain reaches the intercept cell | 50 |
 | Reassess | Intercept | Confidence ≥ 0.5 | 40 |
 | Reassess | Observe | Confidence < 0.5 | 30 |
@@ -226,7 +226,7 @@ Once confidence ≥ 0.5, the Captain picks where to wait.
 | Two goals nearly equally likely (top two within 0.1) | Look for a chokepoint shared by both predicted routes and ambush there. If none exists, stay in Observe. | `InterceptPlannerTests.TwoCloseGoalsBehindTheSameDoorwayShareTheChokepoint`, `TwoCloseGoalsWithNoSharedChokepointGiveNoPlan` |
 | Player standing still | Every detour is 0, so the posterior equals the prior. The Captain keeps its current plan and does not replan. | `GoalInferenceTests.StandingStillGivesThePrior` |
 | Player too close to `g*` (no cell passes the 1 s margin) | Go straight to `g*` and defend it. | `InterceptPlannerTests.NoQualifyingCellDefendsTheGoal` |
-| Player reaches `g*` | Remove `g*` from the candidate set and re-predict (Reassess). | `Inference_GoalReached_RemovedFromCandidates` |
+| Player reaches `g*` (within 1 m) | Remove `g*` from the candidate set and re-predict (Reassess). It counts again once the player is 4 m away or its task completes. | `CaptainBrainTests.GoalThePlayerHasReachedIsLeftOutUntilTheyLeave` |
 | Route blocked by a pushed box or closed door | Recompute only the fields containing a changed cell, then re-run the prediction. If the intercept cell is blocked, Reassess. | `Field_AfterBlock_MatchesFreshCompute` |
 | Goal unreachable (walled off) | Its field cost is infinite, so it is left out of the candidate set. | `GoalInferenceTests.UnreachableGoalIsLeftOut` |
 | All goals unreachable, or no active goals | No prediction: stay in Observe and keep distance from the player. | `GoalInferenceTests.NoGoalsGivesNoPrediction` |
@@ -234,10 +234,10 @@ Once confidence ≥ 0.5, the Captain picks where to wait.
 | Player off the grid (jumping, standing on a box) | Snap to the nearest traversable cell before looking up field costs. | `GoalInferenceTests.PlayerOnABlockedCellIsSnappedToANearbyWalkableCell` |
 | Chosen ambush cell reserved by another agent | Take the next qualifying chokepoint on the route. | `InterceptPlannerTests.ReservedCellIsSkippedForTheNextChokepoint` |
 | Captain stunned mid-intercept | Release the reserved cell. On recovery, go to Reassess, because the old prediction is stale. | PlayMode check in `Test_FourAgentsStress` |
-| Player missing or dead | No inference; the brain returns an empty intent and waits. | `Brain_NoPlayer_ReturnsIdleIntent` |
+| Player missing or dead | No inference; the brain stands and waits in Observe. | `CaptainBrainTests.NoPlayerMeansNoPredictionAndTheCaptainWaits` |
 | Task completes and its target leaves `ObjectiveTargets` mid-intercept | Drop that goal's field, renormalise the remaining goals, and re-predict on the next tick (Reassess if it was `g*`). | `GoalInferenceTests.RemovingAGoalDropsItsFieldAndRenormalises` |
 | New chapter adds new task targets | Build their fields lazily, add them to the candidate set with the task share, and renormalise. | `GoalInferenceTests.EachGoalFieldIsBuiltOnceUntilTheGridChanges` |
-| Still Dormant | Ignore every stimulus and return an empty intent until the wake signal. | `Brain_Dormant_IgnoresPlayerUntilWake` |
+| Still Dormant | Ignore every stimulus and stand still until the wake signal. | `CaptainBrainTests.DormantIgnoresThePlayerUntilTheWakeSignal` |
 | Chapter 3 cutscene skipped | The skip fires every Critical signal not yet reached, so the wake signal still arrives. | PlayMode check in `Test_CutsceneSkip` |
 | Cutscene or pause starts mid-intercept | The brain is not ticked. Game-time timers resume from the same values afterwards. | PlayMode check in `Test_CutsceneSkip` |
 
@@ -286,11 +286,26 @@ EditMode tests run without a scene, which also proves the brain is decoupled fro
 
 **Brain and states**
 
+Implemented: `CaptainBrainTests` (16 tests), on a three-room level with two goals.
+
 | Test | What it proves |
 | --- | --- |
-| Transition table picks the highest-priority valid transition | The FSM is data-driven, not if/else |
-| Dormant stays Dormant until the wake flag is set, then moves to Observe | The Chapter 3 wake works and nothing else wakes the Captain |
-| Confidence crossing 0.5 moves Observe → Intercept and back via Reassess | State changes follow the table |
+| `TransitionTableIsDataInPriorityOrder` | The FSM is a data table, printed by `DescribeTransitions` |
+| `DormantIgnoresThePlayerUntilTheWakeSignal` | Nothing but the wake flag wakes the Captain, not even the player next to it |
+| `ChapterThreeWakesTheCaptainEvenIfTheSignalWasMissed` | The chapter safety net |
+| `WalkingTowardsAGoalCommitsToTheFirstChokepointItCanBeat` | Observe → Intercept at confidence ≥ 0.5; the first doorway is skipped because the player would beat it, the second qualifies, and `t_captain + 1 s ≤ t_player` holds; A* walks to it |
+| `ReachingTheCellTurnsToAmbushFacingTheWayThePlayerComes` | Intercept → Ambush, facing the approach |
+| `AmbushHoldsWhileTheCellIsStillAheadOfThePlayer` | No creeping towards the player while waiting |
+| `TaskCompletedMidInterceptDropsThePlanAndRepredicts` | A goal leaving the objectives sends the Captain to Reassess and onto the other goal |
+| `PlayerInViewWithinTenMetresIsEngagedAfterTheAimTelegraph` | Engage, then a shot only after 0.3 s, then the 1.2 s interval |
+| `PlayerOutOfRangeOrBehindAWallIsNotEngaged` | The 10 m range and grid line of sight |
+| `LosingSightForLongerThanTheDelayEndsTheEngagement` | Engage → Reassess after 0.7 s out of sight |
+| `StunDropsThePredictionAndReassessesAfterTheReboot` | Stunned and Reassess pass straight through after the reboot |
+| `DormantCaptainIsNotStunnedAwake` | A stun cannot replace the wake |
+| `BlockedInterceptCellMakesTheCaptainReplan` | A box in the chosen doorway invalidates the plan |
+| `GoalThePlayerHasReachedIsLeftOutUntilTheyLeave` | The player at `g*` removes it from the candidates |
+| `PredictionIsOfferedToTheRuntimeThroughIGoalPredictor` | The prediction the Saboteurs will read |
+| `NoPlayerMeansNoPredictionAndTheCaptainWaits` | Missing or dead player |
 
 Edge-case tests are listed in the table above.
 
@@ -303,8 +318,9 @@ Edge-case tests are listed in the table above.
 | Player history (5 s window) | `Captain/PlayerTrack` | Implemented, 9 tests |
 | Goal inference | `Captain/GoalInference` | Implemented, 14 tests |
 | Intercept planner | `Captain/InterceptPlanner`, `InterceptPlan` | Implemented, 14 tests |
-| `CaptainBrain` states and transitions | | Planned |
-| `PredictedGoal` on the blackboard | | Planned (with the brain) |
+| `CaptainBrain` states and transitions | `Captain/CaptainBrain`, `CaptainBrain.States` | Implemented, 16 tests |
+| `PredictedGoal` on the blackboard | `Core/IGoalPredictor`, `Blackboard/PredictedGoal`, copied by `AgentController` | Implemented |
+| Wake flag | `Blackboard.CaptainAwake`, `Runtime/CaptainWakeWriter` | Implemented |
 
 **How the implemented parts fit together:** each 2 Hz decision tick, the brain records the player's cell in `PlayerTrack`, takes the cell from about 5 s ago with `TryGetPast`, and calls `GoalInference.Update` with the current candidate goals. `Update` computes the category priors, looks up each goal's cached field and returns the posteriors, the most likely goal and the confidence. When the confidence reaches 0.5, the brain takes `g*`'s cached field with `TryGetGoalField` and calls `InterceptPlanner.Plan` with the player's and its own cell. When the top two goals are within 0.1 it calls `PlanShared` with both fields instead.
 
