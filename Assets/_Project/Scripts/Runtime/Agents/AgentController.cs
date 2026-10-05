@@ -29,6 +29,7 @@ namespace ToyFactory.Runtime.Agents
 
         AgentPathFollower _follower;
         IAgentBrain _brain;
+        IGoalPredictor _predictor;
         WorldBlackboard _blackboard;
         GridGraph _grid;
         bool _warnedNotInitialised;
@@ -97,6 +98,7 @@ namespace ToyFactory.Runtime.Agents
             Identity = identity;
             _brain = brain ?? throw new ArgumentNullException(nameof(brain));
             _blackboard = blackboard ?? throw new ArgumentNullException(nameof(blackboard));
+            _predictor = brain as IGoalPredictor;
 
             if (_grid != null)
                 _grid.Changed -= HandleGridChanged;
@@ -169,6 +171,8 @@ namespace ToyFactory.Runtime.Agents
             _heard = default; // a noise from before the knock-out is stale by the reboot
             _follower.Stop();
             _brain?.OnStunned(_rebootAt - Now);
+            if (_predictor != null)
+                _blackboard.SetPredictedGoal(_predictor.Prediction);   // not ticked until the reboot
 
             if (!wasDisabled)
                 AgentEvents.RaiseDisabled(this);
@@ -210,6 +214,10 @@ namespace ToyFactory.Runtime.Agents
 
             AgentIntent intent = _brain.Tick(context);
 
+            // Brains never write the blackboard: copy the Captain's goal prediction for the others.
+            if (_predictor != null)
+                _blackboard.SetPredictedGoal(_predictor.Prediction);
+
             ApplyPath(intent);
             IsAttacking = intent.Action == AgentAction.Shoot;
             DebugState = intent.DebugState ?? string.Empty;
@@ -245,6 +253,13 @@ namespace ToyFactory.Runtime.Agents
             IAgentBrain brain = _brain;
             _brain = null;
             brain.OnDestroyed();
+
+            // A prediction from a brain that has gone must not outlive it.
+            if (_predictor != null)
+            {
+                _predictor = null;
+                _blackboard?.SetPredictedGoal(default);
+            }
         }
 
         // The grid cell under the agent, for brains to start searches from. Without a grid it
