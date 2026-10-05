@@ -40,7 +40,12 @@ Cover candidate generation runs every 1 s, or immediately when the player's cell
 2. Protection test: a line-of-sight query from the player's eye to the candidate at 0.5 m and 1.2 m height, answered through `ICoverVisibility`, which Runtime implements with a physics linecast. Full cover if both are blocked, half cover if only the low one is, otherwise discard the candidate.
 3. Peek test: at least one neighbour cell from which the player is visible.
 
-Selection ranks all candidates by score using octile distance as a cheap estimate of path cost, runs tactical A* on the top 3, recomputes the score with the true path cost, picks the best, and reserves that cell on the blackboard.
+Selection ranks all candidates by score using octile distance as a cheap estimate of path cost, runs tactical A* on the top 3, recomputes the score with the true path cost, picks the best, and reserves that cell on the blackboard (`WorldBlackboard.Reservations`).
+
+Two rules keep the behaviour stable:
+
+- **Hysteresis:** the Guard keeps its current cover unless that cover stopped being valid (exposed, blocked, or filtered out by the battery tier) or a new candidate scores more than 0.1 higher. Without this it would hop between two near-equal spots every second.
+- **Engagement range:** the Guard is alerted when a living player comes within 20 m and stays alerted until they are more than 30 m away, so it follows the player out of its room but does not cross the whole factory at the start of the game. Outside that range it patrols. These two distances are tuning values chosen for the greybox level.
 
 ### Runtime contract
 
@@ -60,42 +65,46 @@ These rules come from the shared brain and body contract in `Docs/DesignDoc.md`.
 
 | State | What the Guard does |
 | --- | --- |
+| **Patrol** | No living player within range. Walks its patrol points, or holds position if it has none. Holds no cover reservation. |
 | **TakeCover** | Walking to the reserved cover cell via tactical A*. Fires opportunistically if the player is visible along the way. |
-| **InCover** | Settled at cover, facing the player's last known position, waiting out a short hold timer before peeking. |
-| **PeekAndShoot** | Moved to the cover's peek cell. Requests hitscan shots while the peek timer runs; the controller adds the 0.3 s wind-up telegraph. Does not peek while overcharge is active. |
-| **Relocate** | Current cover is exposed or flanked. Immediately re-runs cover scoring and moves to the next best candidate. |
-| **Advance** | No valid cover exists, or the player's battery is below 25%. Presses toward the player's last known position. |
-| **Retreat** | No valid cover and advancing is not safe either. Falls back to the reachable cell that maximises distance from the player with zero exposure. |
-| **Stunned** | Hit points reached 0. The body falls apart, and the controller stops ticking the brain until it reboots (the Guard reassembles after 8 s, plan section 9.5). The cover reservation was released at the moment of the stun. |
+| **InCover** | Settled at cover, facing the player, waiting out the hold timer before peeking. |
+| **PeekAndShoot** | Steps to the cover's peek cell and requests hitscan shots while the peek timer runs; the controller adds the 0.3 s wind-up telegraph. Does not peek while overcharge is active. |
+| **Relocate** | The cover choice changed (exposed, blocked, lost, or beaten by a better one). Lasts one tick: the table then picks TakeCover, Advance or Retreat from the fresh choice. |
+| **Advance** | The player's battery is below 25% or they are reloading. Pushes to the closer cover chosen with `d_ideal = 4 m`, or straight at the player down to that range if no cover exists. |
+| **Retreat** | No valid cover. Falls back to the reachable hidden cell farthest from the player; if every nearby cell is exposed it fights from where it stands. |
+| **Stunned** | Hit points reached 0. The body falls apart, and the controller stops ticking the brain until it reboots (the Guard reassembles after 8 s, plan section 9.5). The cover reservation was released at the moment of the stun. The state itself lasts one tick after the reboot. |
 
 ### Transitions
 
-Higher priority wins when several conditions are true on the same tick.
+Higher priority wins when several conditions are true on the same tick. This is the table in `GuardBrain`'s constructor, and `GuardBrain.DescribeTransitions()` prints it at runtime.
 
-| From | To | Condition | Priority |
+| Priority | From | To | Condition |
 | --- | --- | --- | --- |
-| Any | Stunned | Hit points reach 0 | 100 |
-| Stunned | TakeCover | The controller reboots the body; the first tick after reboot plans a fresh route | 90 |
-| TakeCover | InCover | Reaches the reserved cover cell | 80 |
-| InCover | PeekAndShoot | Hold timer elapses (1.3 s, or later once the player stops firing, per the battery table) | 70 |
-| InCover, PeekAndShoot | Relocate | Current cover becomes exposed (player gains line of sight to it) | 60 |
-| PeekAndShoot | InCover | Overcharge becomes active; no peeking until it ends | 65 |
-| PeekAndShoot | InCover | Peek timer elapses | 50 |
-| Relocate | TakeCover | A new cover cell is chosen | 40 |
-| TakeCover, InCover, PeekAndShoot, Relocate | Advance | No valid cover exists, or the player's battery drops below 25% / they are reloading | 30 |
-| Advance, Relocate | Retreat | No valid cover and no safe advance position | 20 |
+| 100 | Any | Stunned | Stunned (seen on the first tick after the reboot) |
+| 95 | Any | Patrol | No player, player dead, or out of range |
+| 90 | Stunned | Relocate | Reboot: plan a fresh route |
+| 85 | Patrol | Relocate | A living player within alert range |
+| 80 | TakeCover, Advance | InCover | Reaches the reserved cover cell (within 0.5 m) |
+| 70 | InCover | PeekAndShoot | Hold timer elapses (1.3 s, or 0.7 s when aggressive) and peeking is allowed; above 50% battery that also needs the player to have stopped firing for 1.5 s |
+| 65 | PeekAndShoot | InCover | Overcharge becomes active; no peeking until it ends |
+| 60 | TakeCover, InCover, PeekAndShoot, Advance, Retreat | Relocate | The cover choice changed: exposed, blocked, lost, found, or beaten by a better one |
+| 50 | PeekAndShoot | InCover | Peek timer elapses (2 s) |
+| 40 | Relocate | TakeCover | A cover cell is reserved and the player is not low on battery |
+| 30 | Relocate | Advance | Player battery below 25% or reloading |
+| 20 | Relocate | Retreat | No valid cover |
 
 ```text
-                    reaches cover                 hold timer
-   TakeCover ─────────────────────▶ InCover ─────────────────────▶ PeekAndShoot
-      ▲   ▲                            │  ▲                              │
-      │   │ new cover chosen           │  │ peek timer elapses           │ cover exposed
-      │   └──────────── Relocate ◀─────┘  └──────────────────────────────┘
-      │                    │  ▲
-      │  no valid cover /  │  │ no valid cover / battery < 25%
-      │  low battery       ▼  │
-      └───────────────── Advance ──────────────────▶ Retreat
-                                  no safe advance position
+   Patrol --player in range--> Relocate <--cover changed-- (TakeCover, InCover, PeekAndShoot, Advance, Retreat)
+                                  |
+            +---------------------+----------------------+
+     cover reserved          low battery              no cover
+            v                     v                      v
+        TakeCover              Advance                Retreat
+            |                     |
+            +--reaches cover--> InCover <--peek timer / overcharge-- PeekAndShoot
+                                  +--------hold timer elapses------------^
+
+   Any --stunned--> Stunned --reboot--> Relocate        Any --player gone--> Patrol
 ```
 
 ## Why this architecture over the alternatives
@@ -172,20 +181,26 @@ Octile distance assumes every step costs its base cost. The exposure penalty onl
 
 ## Edge cases
 
-| Case | Handling | Test |
-| --- | --- | --- |
-| No valid cover found | Retreat to the reachable cell that maximises distance from the player with zero exposure; if none exists, engage from the current position | `Guard_NoCoverAvailable_FallsBackToRetreat` |
-| Player flanks the chosen cover | Immediate re-evaluation, not waiting for the hold timer | `Guard_ExposedMidCover_TransitionsToRelocate` |
-| Chosen cover already reserved by another agent | Take the next-best candidate | `Cover_ReservedByOtherAgent_SkipsToNextBest` |
-| Target cover becomes blocked by a box | Take the next-best candidate; the box is added as a new cover candidate | `Cover_TargetBlockedByBox_ReselectsAndAddsBoxAsCandidate` |
-| Player unreachable | Hold current cover, keep peeking | `Guard_PlayerUnreachable_HoldsCoverWithoutFreezing` |
-| Stunned | Releases its cover reservation so another agent can use it; the brain is not ticked until reboot | `Guard_OnStunned_ReleasesCoverReservation` |
-| Stun ends (reboot) | Plans a fresh route on the first tick after reboot; no stun timer of its own | `Guard_AfterReboot_PlansFreshRoute` |
-| Destroyed for good | Releases the cover reservation in `OnDestroyed` | `Guard_OnDestroyed_ReleasesCoverReservation` |
-| Waypoint arrival | Counts as reached within 0.5 m of the last waypoint, never by comparing cells | `Guard_ArrivalUsesDistanceNotCell` |
-| Cutscene or pause mid-route | Brain is not ticked; game time (`ctx.Time`) resumes from the same value | `Guard_CutsceneFreezesGameTime` |
-| Overcharge ends mid-wait | Re-evaluates the cover with the battery row now in effect | `Guard_OverchargeEndsMidWait_ReevaluatesWithBatteryRow` |
-| No player, or player dead | Patrols or holds position, never throws | `Guard_NoPlayer_PatrolsOrHolds` |
+All of these are in `GuardBrainTests` unless the status says otherwise.
+
+| Case | Handling | Test | Status |
+| --- | --- | --- | --- |
+| No valid cover found | Retreat to the reachable hidden cell farthest from the player; if none exists, engage from the current position | `Guard_NoCoverAvailable_FallsBackToRetreat` | Built |
+| Player flanks the chosen cover | Immediate re-evaluation, not waiting for the hold timer | `Guard_ExposedMidCover_TransitionsToRelocate` | Built |
+| Chosen cover already reserved by another agent | Take the next-best candidate | `Cover_ReservedByOtherAgent_SkipsToNextBest` | Built |
+| Target cover becomes blocked by a box | Take the next-best candidate | `Cover_TargetBlockedByBox_Reselects` | Built |
+| A box settles on the route | Replan only because the route crosses the changed cell; a change elsewhere keeps the path | `Guard_GraphChangeOnRoute_Replans`, `Guard_GraphChangeOffRoute_KeepsItsPath` | Built |
+| Stunned | Releases its cover reservation so another agent can use it; the brain is not ticked until reboot | `Guard_OnStunned_ReleasesCoverReservation` | Built |
+| Stun ends (reboot) | Plans a fresh route on the first tick after reboot; no stun timer of its own | `Guard_AfterReboot_PlansFreshRoute` | Built |
+| Destroyed for good | Releases the cover reservation in `OnDestroyed` | `Guard_OnDestroyed_ReleasesCoverReservation` | Built |
+| Waypoint arrival | Counts as reached within 0.5 m of the last waypoint, never by comparing cells | `Guard_ArrivalUsesDistanceNotCell` | Built |
+| Overcharge starts mid-peek | Returns to cover at once | `Guard_OverchargeStartsMidPeek_ReturnsToCover` | Built |
+| Overcharge ends mid-wait | Re-evaluates the cover with the battery row now in effect | `Guard_OverchargeEndsMidWait_ReevaluatesWithBatteryRow` | Built |
+| Overcharge with only half cover nearby | Full cover only, so it has no cover and retreats | `Guard_OverchargeWithOnlyHalfCover_HasNoCover` | Built |
+| No player, or player dead | Patrols or holds position, never throws | `Guard_NoPlayer_PatrolsOrHolds`, `Guard_DeadPlayer_PatrolsOrHolds` | Built |
+| Player leaves or dies mid-fight | Returns to Patrol and releases its cover | `Guard_PlayerLost_ReturnsToPatrolAndReleasesCover` | Built |
+| Player unreachable | Hold current cover, keep peeking | `Guard_PlayerUnreachable_HoldsCoverWithoutFreezing` | Planned |
+| Cutscene or pause mid-route | Brain is not ticked; game time (`ctx.Time`) resumes from the same value. This is the controller's behaviour, so it needs a Runtime test | `Guard_CutsceneFreezesGameTime` | Planned |
 
 ## Tests
 
@@ -221,14 +236,18 @@ Status says whether a test exists in the repo today (**Built**) or is still to b
 | `NullGridIsRejected`, `NonPositiveDesiredRangeIsRejected` | Built | Bad inputs are rejected |
 | `Cover_BoxSettles_BecomesNewCandidate` | Planned | The player-built-cover creative hook actually works |
 
-**Brain and states** (`GuardBrain`, all planned, since the brain is not written yet)
+**Brain and states** (`GuardBrainTests`, built)
 
 | Test | Status | What it proves |
 | --- | --- | --- |
-| `Guard_Transitions_PickHighestPriorityValidOne` | Planned | The FSM is data-driven, not if/else |
-| `Guard_BatteryBelow25_ReducesIdealDistanceAndAdvances` | Planned | The battery-adaptive creative hook actually works |
+| `Guard_Transitions_PickHighestPriorityValidOne`, `Guard_TransitionTable_IsDataAndPrintable` | Built | The FSM is data-driven, not if/else: the highest-priority valid rule wins, and the table can be printed |
+| `Guard_PlayerInRange_TakesCoverAndReservesIt`, `Guard_PlayerBeyondAlertRange_StaysOnPatrol` | Built | Engagement range and the cover reservation |
+| `Guard_HoldTimerElapses_PeeksAndShoots`, `Guard_PeekTimerElapses_ReturnsToCover` | Built | The peek-and-fire cycle, with shooting as an intent |
+| `Guard_BatteryBelow25_ReducesIdealDistanceAndAdvances`, `Guard_PlayerReloading_Advances`, `Guard_BatteryTiers_SetTheIdealDistance`, `Guard_OverchargeActive_UsesTwelveMetresAndDoesNotPeek` | Built | The battery-adaptive creative hook actually works |
 
-Edge-case tests are listed in the table above, and all of them are planned until `GuardBrain` exists.
+**Cell reservations** (`CellReservationsTests`, built): reserving, refusing a held cell, swapping cells, and release.
+
+Edge-case tests are listed in the table above.
 
 ## Measured results
 <!-- Numbers from AIPerformanceLog.md: lambda tuning notes, A* vs Dijkstra verification, replans-per-box-push counts. -->

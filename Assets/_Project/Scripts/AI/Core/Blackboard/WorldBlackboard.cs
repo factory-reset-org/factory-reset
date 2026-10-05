@@ -25,6 +25,12 @@ namespace ToyFactory.AI.Core.Blackboard
         /// <summary>Replaces the player snapshot. Runtime only.</summary>
         public void SetPlayer(in PlayerSnapshot snapshot) => Player = snapshot;
 
+        /// <summary>Cover and ambush cells held by agents, so two agents never pick the same one.</summary>
+        public CellReservations Reservations { get; } = new CellReservations();
+
+        /// <summary>Target claims, one shared instance so the Saboteur squad coordinates.</summary>
+        public TargetClaims Claims { get; } = new TargetClaims();
+
         /// <summary>Currently active objectives in their published order.</summary>
         public IReadOnlyList<ObjectiveTarget> ObjectiveTargets => _objectiveTargetView;
 
