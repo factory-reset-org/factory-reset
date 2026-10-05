@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using ToyFactory.AI.Agents.Captain;
+using ToyFactory.AI.Agents.Guard;
 using ToyFactory.AI.Agents.Mock;
 using ToyFactory.AI.Agents.Tracker;
 using ToyFactory.AI.Core;
@@ -179,7 +180,13 @@ namespace ToyFactory.Runtime.Agents
                     if (setup.HasGrid)
                         return new CaptainBrain(setup.Grid, setup.Pathfinder, setup.Blackboard, point.StartAwake);
                     return new MockPathProvider(setup.PatrolPoints);
-                case AgentType.Guard:    // S2: replace with the Guard brain when ready
+                case AgentType.Guard:
+                    // The Guard picks cover on the grid and checks sight lines with physics;
+                    // without a grid it falls back to the mock.
+                    if (setup.HasGrid)
+                        return new GuardBrain(setup.Grid, setup.Pathfinder, setup.Blackboard,
+                            new PhysicsCoverVisibility(setup.Grid), setup.Identity.Id, setup.PatrolPoints);
+                    return new MockPathProvider(setup.PatrolPoints);
                 case AgentType.Saboteur:  // S3: replace with the Saboteur brain when ready
                 default:
                     return new MockPathProvider(setup.PatrolPoints);
