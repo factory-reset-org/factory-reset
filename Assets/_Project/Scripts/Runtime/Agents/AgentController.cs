@@ -70,6 +70,12 @@ namespace ToyFactory.Runtime.Agents
         /// <summary>True while knocked out by <see cref="Disable"/>, until it reboots.</summary>
         public bool IsDisabled { get; private set; }
 
+        /// <summary>
+        /// The brain's wind-up energy, for the key animation, or null if the brain has no
+        /// key. Found once in <see cref="Initialise"/>, not looked up every frame.
+        /// </summary>
+        public IWindUpState WindUp { get; private set; }
+
         /// <inheritdoc/>
         public Vector3 HearingPosition => transform.position;
 
@@ -99,6 +105,7 @@ namespace ToyFactory.Runtime.Agents
             _brain = brain ?? throw new ArgumentNullException(nameof(brain));
             _blackboard = blackboard ?? throw new ArgumentNullException(nameof(blackboard));
             _predictor = brain as IGoalPredictor;
+            WindUp = brain as IWindUpState;
 
             if (_grid != null)
                 _grid.Changed -= HandleGridChanged;
@@ -252,6 +259,7 @@ namespace ToyFactory.Runtime.Agents
             // Clear the reference first so the brain is told exactly once and never ticked again.
             IAgentBrain brain = _brain;
             _brain = null;
+            WindUp = null;
             brain.OnDestroyed();
 
             // A prediction from a brain that has gone must not outlive it.
