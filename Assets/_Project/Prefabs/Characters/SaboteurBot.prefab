@@ -60,6 +60,9 @@ PrefabInstance:
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 5a428c905b217d14596e764b733c197e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 5552788795560798728}
     - targetCorrespondingSourceObject: {fileID: 9153821992352886555, guid: 5a428c905b217d14596e764b733c197e, type: 3}
       insertIndex: -1
       addedObject: {fileID: 7046751906266632601}
@@ -202,6 +205,11 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.089999974, y: 0.09000003, z: 0.39}
   m_Center: {x: 0.000000029802322, y: -0.000000059604645, z: 0}
+--- !u!23 &1959506643281531981 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 8379300997245243121, guid: 5a428c905b217d14596e764b733c197e, type: 3}
+  m_PrefabInstance: {fileID: 8032399958582844092}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &2275515084915455907 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: -1086333028837561057, guid: 5a428c905b217d14596e764b733c197e, type: 3}
@@ -516,6 +524,28 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.28000006, y: 0.73, z: 0.73}
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!1 &7185977976637122541 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 5a428c905b217d14596e764b733c197e, type: 3}
+  m_PrefabInstance: {fileID: 8032399958582844092}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &5552788795560798728
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7185977976637122541}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fb3d1574f985a5f43bf30fb1ca49bac5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Visuals.SaboteurTint
+  targets:
+  - renderer: {fileID: 1959506643281531981}
+    materialIndex: 0
+  useFallbackSquadIndex: 0
+  fallbackSquadIndex: 0
 --- !u!1 &7221825679116922641 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 811146034389431725, guid: 5a428c905b217d14596e764b733c197e, type: 3}
