@@ -4,6 +4,7 @@
     "references": [
         "UnityEngine.TestRunner",
         "ToyFactory.AI.Core",
+        "ToyFactory.AI.Agents",
         "ToyFactory.Runtime",
         "ToyFactory.Interfaces",
         "ToyFactory.Journey",
