@@ -71,7 +71,8 @@ namespace ToyFactory.Journey.Cutscenes
                 new[] { CutsceneSignals.CaptainWake, CutsceneSignals.ControlRoomUnlock }),
             new CutsceneDefinition("ch4", CutsceneTrigger.SwitchRestored, 3,
                 new[] { CutsceneSignals.CoreShieldsDown }),
-            new CutsceneDefinition("ending", CutsceneTrigger.ConsoleCompleted, stateAfter: GameState.Results),
+            new CutsceneDefinition("ending", CutsceneTrigger.ConsoleCompleted,
+                criticalSignals: new[] { CutsceneSignals.FactoryShutdown }, stateAfter: GameState.Results),
         };
     }
 }
