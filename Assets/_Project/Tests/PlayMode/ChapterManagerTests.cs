@@ -248,5 +248,133 @@ namespace ToyFactory.Tests
 
             CollectionAssert.AreEqual(new[] { 1 }, _started);
         }
+
+        // ---- Beacon target and the beacon ------------------------------------------------
+
+        sealed class FakeClock : IGameClock
+        {
+            public GameState State { get; set; } = GameState.Playing;
+            public float GameTime => 0f;
+            public void AddListener(IGameStateListener listener) { }
+            public void RemoveListener(IGameStateListener listener) { }
+            public void RequestState(GameState state) => State = state;
+        }
+
+        ObjectiveBeacon CreateBeacon()
+        {
+            var root = new GameObject("Beacon");
+            _created.Add(root);
+            root.SetActive(false);
+            var visuals = new GameObject("Visuals");
+            visuals.transform.SetParent(root.transform, false);
+            var ring = new GameObject("Ring");
+            ring.transform.SetParent(visuals.transform, false);
+            var arrow = new GameObject("Arrow");
+            arrow.transform.SetParent(visuals.transform, false);
+            ObjectiveBeacon beacon = root.AddComponent<ObjectiveBeacon>();
+            SetField(beacon, "visuals", visuals);
+            SetField(beacon, "ring", ring.transform);
+            SetField(beacon, "arrow", arrow.transform);
+            root.SetActive(true);
+            return beacon;
+        }
+
+        [UnityTest]
+        public IEnumerator TheBeaconTargetFollowsTheJourney()
+        {
+            BuildLevel();
+            FakeTaskProp a = Prop("a", Vector3.zero);
+            FakeTaskProp lever = Prop("switch.1", Vector3.zero);
+            Prop(ChapterEvents.ConsoleTaskId, Vector3.zero);
+            ChapterManager manager = CreateManager();
+            int changes = 0;
+            manager.BeaconTargetChanged += () => changes++;
+            Assert.IsNull(manager.CurrentBeaconTarget, "Nothing before Begin.");
+
+            manager.Begin();
+            Assert.AreEqual("a", manager.CurrentBeaconTarget.Value.TaskId);
+            Assert.AreEqual(new Vector3(1f, 0f, 0f), manager.CurrentBeaconTarget.Value.Position);
+            Assert.AreEqual("A", manager.CurrentBeaconTarget.Value.Label);
+
+            a.Complete();
+            Assert.IsNull(manager.CurrentBeaconTarget, "The pickup has not appeared yet, so there is nothing to mark.");
+
+            FakeTaskProp pickup = Prop("p", new Vector3(5f, 0f, 0f));
+            TaskEvents.RaiseTaskSpawned(pickup);
+            Assert.AreEqual("p", manager.CurrentBeaconTarget.Value.TaskId);
+
+            pickup.transform.position = new Vector3(7f, 0f, 0f);
+            yield return null;
+            Assert.AreEqual(new Vector3(7f, 0f, 0f), manager.CurrentBeaconTarget.Value.Position, "Follows a moving prop.");
+
+            pickup.Complete();
+            Assert.AreEqual("switch.1", manager.CurrentBeaconTarget.Value.TaskId);
+
+            lever.Complete();
+            Assert.IsNull(manager.CurrentBeaconTarget, "Hidden while the chapter cutscene plays.");
+
+            CutsceneEvents.RaiseCutsceneEnded("c");
+            Assert.AreEqual(ChapterEvents.ConsoleTaskId, manager.CurrentBeaconTarget.Value.TaskId);
+            Assert.AreEqual(7, changes, "One event per change, none for re-publishing the same target.");
+        }
+
+        [UnityTest]
+        public IEnumerator TheBeaconStandsOnTheTargetAndHidesForCutscenes()
+        {
+            BuildLevel();
+            Prop("a", Vector3.zero);
+            Prop("switch.1", Vector3.zero);
+            Prop(ChapterEvents.ConsoleTaskId, Vector3.zero);
+            ChapterManager manager = CreateManager();
+            ObjectiveBeacon beacon = CreateBeacon();
+            beacon.transform.position = new Vector3(0f, 0.25f, 0f);
+
+            yield return null;
+            Assert.IsFalse(beacon.IsShowing, "No target before the journey begins.");
+
+            manager.Begin();
+            yield return null;
+            Assert.IsTrue(beacon.IsShowing);
+            Assert.AreEqual(new Vector3(1f, 0.25f, 0f), beacon.transform.position, "Jumps to the target, keeping its own height.");
+
+            CutsceneEvents.RaiseCutsceneStarted("intro");
+            yield return null;
+            Assert.IsFalse(beacon.IsShowing);
+
+            CutsceneEvents.RaiseCutsceneEnded("intro");
+            yield return null;
+            Assert.IsTrue(beacon.IsShowing);
+        }
+
+        [UnityTest]
+        public IEnumerator TheBeaconShowsOnlyWhilePlaying()
+        {
+            BuildLevel();
+            Prop("a", Vector3.zero);
+            Prop("switch.1", Vector3.zero);
+            Prop(ChapterEvents.ConsoleTaskId, Vector3.zero);
+            ChapterManager manager = CreateManager();
+            ObjectiveBeacon beacon = CreateBeacon();
+            var clock = new FakeClock { State = GameState.Title };
+            GameClock.Publish(clock);
+            try
+            {
+                manager.Begin();
+                yield return null;
+                Assert.IsFalse(beacon.IsShowing, "Hidden on the title screen.");
+
+                clock.State = GameState.Playing;
+                yield return null;
+                Assert.IsTrue(beacon.IsShowing);
+
+                clock.State = GameState.Paused;
+                yield return null;
+                Assert.IsFalse(beacon.IsShowing, "Hidden in the pause menu.");
+            }
+            finally
+            {
+                GameClock.Publish(null);
+            }
+        }
     }
 }
