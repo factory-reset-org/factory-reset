@@ -141,6 +141,13 @@ namespace ToyFactory.Editor.Animation
                 new Wave(head, Channel.RotX, -5f),
                 new Wave(cannon, Channel.RotX, -20f, 3f, 2),
                 new Wave(shield, Channel.RotX, -15f, 3f, 2, 0.5f));
+            // Aim: the cannon arm lifts the barrel towards chest height and the shield comes
+            // forward. The barrel already points forward at rest, so the lift is small.
+            spec.Aim = Clip("Aim", 1f,
+                new Wave(cannon, Channel.RotX, -20f),
+                new Wave(shield, Channel.RotX, -25f),
+                new Wave(torso, Channel.RotX, 4f),
+                new Wave(head, Channel.RotX, 5f));
             return Leaning(spec, torso, 6f);
         }
 
@@ -178,6 +185,12 @@ namespace ToyFactory.Editor.Animation
             spec.Walk = Clip("Walk", StrideCycle(22f, 2.5f), gait(22f, 17f, 0.04f, 10f, 0f));
             spec.Run = Clip("Run", StrideCycle(35f, 4.6f),
                 With(Clip("", 0f, gait(35f, 30f, 0.06f, 20f, -10f)), new Wave(torso, Channel.RotX, 8f)));
+            // Aim: both cannons lift slightly, the torso braces back and the head tips down
+            // towards the much shorter player.
+            spec.Aim = Clip("Aim", 1f,
+                new Wave(armL, Channel.RotX, -15f), new Wave(armR, Channel.RotX, -15f),
+                new Wave(torso, Channel.RotX, -4f),
+                new Wave(head, Channel.RotX, 8f));
             return Leaning(spec, torso, 8f);
         }
 

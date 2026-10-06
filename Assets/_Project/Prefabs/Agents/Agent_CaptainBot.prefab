@@ -13,7 +13,8 @@ GameObject:
   - component: {fileID: 991450059929440182}
   - component: {fileID: 7075240395378938352}
   - component: {fileID: 6658538843940112905}
-  m_Layer: 0
+  - component: {fileID: 4788375802282383868}
+  m_Layer: 11
   m_Name: Agent_CaptainBot
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -89,6 +90,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Agents.AgentController
   smoothPaths: 1
+  hitPoints: 6
+  knockOutSeconds: 6
+  scrapWhenDown: 0
 --- !u!114 &6658538843940112905
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -103,6 +107,30 @@ MonoBehaviour:
   m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentAnimatorBridge
   animator: {fileID: 8039331634596765918}
   dampTime: 0.1
+  aimBlendTime: 0.1
+--- !u!114 &4788375802282383868
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2423681692945176304}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f9dc50e04486c9c4b825bab27c0062f6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Agents.AgentWeapon
+  barrels:
+  - {fileID: 7119253584049345050}
+  - {fileID: 2160097108017567228}
+  aimSeconds: 0.3
+  damage: 15
+  range: 20
+  chestHeight: 1.2
+  tracerSeconds: 0.08
+  lineMaterial: {fileID: 2100000, guid: f7a1b61649e9f404b8a6efe2fac01eb8, type: 2}
+  aimColour: {r: 1, g: 0.25, b: 0.2, a: 0.6}
+  tracerColour: {r: 1, g: 0.9, b: 0.4, a: 1}
 --- !u!1001 &6301709427974699168
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -163,6 +191,11 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 8039331634596765918}
   m_SourcePrefab: {fileID: 100100000, guid: 12f22ae6271c497419128b0180334639, type: 3}
+--- !u!23 &2160097108017567228 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 5372266273110830428, guid: 12f22ae6271c497419128b0180334639, type: 3}
+  m_PrefabInstance: {fileID: 6301709427974699168}
+  m_PrefabAsset: {fileID: 0}
 --- !u!4 &4680304842691956594 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1695573525149562834, guid: 12f22ae6271c497419128b0180334639, type: 3}
@@ -195,3 +228,8 @@ Animator:
   m_AllowConstantClipSamplingOptimization: 1
   m_KeepAnimatorStateOnDisable: 0
   m_WriteDefaultValuesOnDisable: 0
+--- !u!23 &7119253584049345050 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 3870984876842379962, guid: 12f22ae6271c497419128b0180334639, type: 3}
+  m_PrefabInstance: {fileID: 6301709427974699168}
+  m_PrefabAsset: {fileID: 0}

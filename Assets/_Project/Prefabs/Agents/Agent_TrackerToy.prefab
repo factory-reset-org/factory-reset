@@ -15,7 +15,7 @@ GameObject:
   - component: {fileID: 2553827492962338154}
   - component: {fileID: 1473701194945597901}
   - component: {fileID: 7976939757859409435}
-  m_Layer: 0
+  m_Layer: 11
   m_Name: Agent_TrackerToy
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -91,6 +91,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Agents.AgentController
   smoothPaths: 1
+  hitPoints: 3
+  knockOutSeconds: 7
+  scrapWhenDown: 0
 --- !u!114 &2553827492962338154
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -105,6 +108,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentAnimatorBridge
   animator: {fileID: 7324137770163989200}
   dampTime: 0.1
+  aimBlendTime: 0.1
 --- !u!114 &1473701194945597901
 MonoBehaviour:
   m_ObjectHideFlags: 0

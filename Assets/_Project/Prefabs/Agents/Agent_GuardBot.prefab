@@ -13,7 +13,8 @@ GameObject:
   - component: {fileID: 6785457829351469131}
   - component: {fileID: 8290627080012992370}
   - component: {fileID: 6738969916081812476}
-  m_Layer: 0
+  - component: {fileID: 2358035611716374269}
+  m_Layer: 11
   m_Name: Agent_GuardBot
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -89,6 +90,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Agents.AgentController
   smoothPaths: 1
+  hitPoints: 4
+  knockOutSeconds: 8
+  scrapWhenDown: 0
 --- !u!114 &6738969916081812476
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -103,6 +107,29 @@ MonoBehaviour:
   m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentAnimatorBridge
   animator: {fileID: 9212846698455045781}
   dampTime: 0.1
+  aimBlendTime: 0.1
+--- !u!114 &2358035611716374269
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1436568227419779139}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f9dc50e04486c9c4b825bab27c0062f6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Agents.AgentWeapon
+  barrels:
+  - {fileID: 8159921576524970745}
+  aimSeconds: 0.3
+  damage: 10
+  range: 20
+  chestHeight: 1.2
+  tracerSeconds: 0.08
+  lineMaterial: {fileID: 2100000, guid: f7a1b61649e9f404b8a6efe2fac01eb8, type: 2}
+  aimColour: {r: 1, g: 0.25, b: 0.2, a: 0.6}
+  tracerColour: {r: 1, g: 0.9, b: 0.4, a: 1}
 --- !u!1001 &5722044532394225745
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -193,5 +220,10 @@ Animator:
 --- !u!4 &6705865121344752329 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1331040064917830296, guid: 8f8bc80f89f9ca745b2f4b96d37cb9cf, type: 3}
+  m_PrefabInstance: {fileID: 5722044532394225745}
+  m_PrefabAsset: {fileID: 0}
+--- !u!23 &8159921576524970745 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 4491518604537367208, guid: 8f8bc80f89f9ca745b2f4b96d37cb9cf, type: 3}
   m_PrefabInstance: {fileID: 5722044532394225745}
   m_PrefabAsset: {fileID: 0}

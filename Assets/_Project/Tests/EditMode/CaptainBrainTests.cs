@@ -202,7 +202,7 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void PlayerInViewWithinTenMetresIsEngagedAfterTheAimTelegraph()
+        public void PlayerInViewWithinTenMetresIsEngagedOneShotPerInterval()
         {
             CaptainBrain brain = Captain();
             Vector2Int captain = new Vector2Int(22, 3);
@@ -210,17 +210,14 @@ namespace ToyFactory.Tests.EditMode
 
             AgentIntent first = Tick(brain, captain, 0f, Vector3.right);
             Assert.AreEqual("Engage", brain.StateName);
-            Assert.AreEqual(AgentAction.None, first.Action, "Aims first.");
+            Assert.AreEqual(AgentAction.Shoot, first.Action, "Asks for a shot; the body adds the 0.3 s telegraph.");
             Assert.AreEqual(_grid.CellToWorld(new Vector2Int(26, 3)), first.LookTarget);
 
-            AgentIntent tooEarly = Tick(brain, captain, 0.2f, Vector3.right);
-            Assert.AreEqual(AgentAction.None, tooEarly.Action);
+            AgentIntent tooSoon = Tick(brain, captain, 0.5f, Vector3.right);
+            Assert.AreEqual(AgentAction.None, tooSoon.Action, "One shot per 1.2 s.");
 
-            AgentIntent shot = Tick(brain, captain, 0.31f, Vector3.right);
-            Assert.AreEqual(AgentAction.Shoot, shot.Action, "Fires once the 0.3 s telegraph is over.");
-
-            AgentIntent next = Tick(brain, captain, 0.5f, Vector3.right);
-            Assert.AreEqual(AgentAction.None, next.Action, "Then waits for the next shot.");
+            AgentIntent next = Tick(brain, captain, CaptainBrain.FireInterval, Vector3.right);
+            Assert.AreEqual(AgentAction.Shoot, next.Action);
         }
 
         [Test]

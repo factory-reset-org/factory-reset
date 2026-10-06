@@ -139,12 +139,11 @@ namespace ToyFactory.AI.Agents.Captain
         }
 
         /// <summary>
-        /// The player is in view within 10 m: stands, faces them and fires, each shot after a
-        /// 0.3 s aim telegraph so the player can react.
+        /// The player is in view within 10 m: stands, faces them and asks for a shot every 1.2 s.
+        /// The body's weapon aims for 0.3 s (the telegraph) before each shot, so the player can react.
         /// </summary>
         sealed class EngageState : CaptainState
         {
-            float _aimStartedAt;
             float _lastShotAt;
 
             public EngageState() : base("Engage") { }
@@ -153,7 +152,6 @@ namespace ToyFactory.AI.Agents.Captain
             {
                 base.Enter(b);
                 b.StopMoving();
-                _aimStartedAt = float.NegativeInfinity;
                 _lastShotAt = float.NegativeInfinity;
             }
 
@@ -164,23 +162,10 @@ namespace ToyFactory.AI.Agents.Captain
                     return;
                 b._outLook = b.Player.Position;
 
-                if (!b._seesPlayer)
-                {
-                    _aimStartedAt = float.NegativeInfinity;   // the telegraph restarts when seen again
-                    return;
-                }
-                if (b.Now - _lastShotAt < FireInterval)
-                    return;
-                if (float.IsNegativeInfinity(_aimStartedAt))
-                {
-                    _aimStartedAt = b.Now;
-                    return;
-                }
-                if (b.Now - _aimStartedAt >= AimTime)
+                if (b._seesPlayer && b.Now - _lastShotAt >= FireInterval)
                 {
                     b._outAction = AgentAction.Shoot;
                     _lastShotAt = b.Now;
-                    _aimStartedAt = float.NegativeInfinity;
                 }
             }
         }

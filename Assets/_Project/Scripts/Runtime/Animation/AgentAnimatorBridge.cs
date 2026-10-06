@@ -4,11 +4,11 @@ using ToyFactory.Runtime.Agents;
 namespace ToyFactory.Runtime.Animation
 {
     /// <summary>
-    /// Feeds the agent's movement into its Animator every frame, so the Blend Trees pick the
-    /// clip: <c>Speed</c> (m/s) blends idle, walk and run; <c>TurnRate</c> (degrees per
-    /// second, positive = right) drives the lean layer; <c>IsAttacking</c> and <c>IsDead</c>
-    /// switch the attack and dead poses. The brain never sees the Animator; it only moves
-    /// the body, and this reads the result through <see cref="ToyFactory.Interfaces.IAgentState"/>.
+    /// Feeds the agent's movement into its Animator every frame: <c>Speed</c> (m/s) and
+    /// <c>TurnRate</c> (degrees per second, positive = right) drive the locomotion Blend Tree
+    /// (idle, walk, run and the turning leans); <c>IsAttacking</c> fades the Aim layer in over
+    /// 0.1 s; <c>IsDead</c> is set for the fall-apart pose. The brain never sees the Animator;
+    /// it only moves the body, and this reads the result through <see cref="ToyFactory.Interfaces.IAgentState"/>.
     /// </summary>
     /// <remarks>
     /// Parameters are found once by hash, so a controller may leave some out and nothing is
@@ -30,8 +30,13 @@ namespace ToyFactory.Runtime.Animation
         [Tooltip("Seconds to ease Speed and TurnRate towards a new value, so blends don't pop when the path follower changes speed.")]
         [SerializeField, Min(0f)] float dampTime = 0.1f;
 
+        [Tooltip("Seconds to fade the Aim layer fully in or out when the agent starts or stops attacking.")]
+        [SerializeField, Min(0.01f)] float aimBlendTime = 0.1f;
+
         AgentController _agent;
         bool _hasSpeed, _hasTurnRate, _hasAttacking, _hasDead;
+        int _aimLayer = -1;
+        float _aimWeight;
 
         void Awake()
         {
@@ -53,6 +58,10 @@ namespace ToyFactory.Runtime.Animation
                 else if (parameter.nameHash == IsAttackingId) _hasAttacking = true;
                 else if (parameter.nameHash == IsDeadId) _hasDead = true;
             }
+
+            // The aim pose is an override layer whose weight is driven from code, so it can fade
+            // and never fights the locomotion layer while the agent is not attacking.
+            _aimLayer = animator.GetLayerIndex("Aim");
         }
 
         // LateUpdate: the path follower has moved and turned the body this frame already.
@@ -69,6 +78,13 @@ namespace ToyFactory.Runtime.Animation
                 animator.SetBool(IsAttackingId, !still && _agent.IsAttacking);
             if (_hasDead)
                 animator.SetBool(IsDeadId, _agent.IsDead);
+
+            if (_aimLayer >= 0)
+            {
+                float target = !still && _agent.IsAttacking ? 1f : 0f;
+                _aimWeight = Mathf.MoveTowards(_aimWeight, target, dt / aimBlendTime);
+                animator.SetLayerWeight(_aimLayer, _aimWeight);
+            }
         }
     }
 }

@@ -177,7 +177,36 @@ The walk and run speeds are the brains' own speeds (Tracker 1.9 / 4.6, Saboteur 
 
 **Wheels and key in code, not clips:** a wheel of radius r rolling distance d turns `d / r` radians (rolling without slipping), so `WheelSpinner` turns each wheel by `Speed · Δt / r` every frame. A clip could only match one speed and would visibly slip at every other. `WindUpKeySpinner` turns the key at 180°/s × energy, so it slows as the Tracker runs down, and at −720°/s while it rewinds. It reads the brain's energy through `IWindUpState` (AI.Core), copied by `AgentController.WindUp`. Wheel and key pivots are never keyed in clips, so the Animator never fights the code.
 
-**Not done yet:** the attack and fall-apart poses (`IsAttacking` and `IsDead` are already parameters), the Guard's tread scroll, and Unit 047's cutscene clips.
+**Not done yet:** the fall-apart pose (`IsDead` is already a parameter), the Guard's tread scroll, and Unit 047's cutscene clips. The aim pose is in 2.9.
+
+### 2.9 Taking hits and shooting (S4, implemented)
+
+**Taking hits:** `AgentController` implements S2's `IDamageable.TakeHit()`. The agent's capsule (`CharacterController`) is its hitbox, on the **Agents** layer, so S2's blaster finds the agent with `GetComponentInParent<IDamageable>()` on whatever it hits. Each hit costs one hit point; at 0 the agent goes down.
+
+| Agent | Hit points | When it goes down |
+| --- | --- | --- |
+| Tracker | 3 | Knocked out for 7 s, then reassembles with full hit points |
+| Guard | 4 | Knocked out for 8 s |
+| Captain | 6 | Knocked out for 6 s |
+| Saboteur | 2 | Scrapped for good (`AgentEvents.OnDestroyed`) |
+
+Hits on an agent that is already down, frozen in a cutscene or scrapped are ignored. The numbers are serialized on each body prefab, so they can be tuned without code.
+
+**Shooting:** a brain only decides *when* to shoot (`AgentAction.Shoot`); `AgentWeapon` on the Guard and Captain bodies carries the shot out the same way for every agent:
+
+1. **Aim for 0.3 s (the telegraph):** a thin red line from the cannon to the player's chest. A request while the weapon is still busy is ignored.
+2. **Hitscan:** one ray from the front of the barrel to the player's chest. If the first thing it meets is the player, `IPlayerState.TakeDamage(damage, agentId)` is called (Guard 10, Captain 15); a wall, a box or a prop in between takes the shot instead.
+3. **Tracer:** a bright line for 0.08 s, on the **Tracer** layer.
+
+The Captain alternates its two cannons. The aim pose is an **Aim** override layer in the Guard's and Captain's controllers (cannon arm lifted, shield or torso braced), faded in over 0.1 s by `AgentAnimatorBridge` while `IsAttacking`; its weight is driven from code, so it never fights the locomotion tree.
+
+**Why the telegraph is in the body, not the brain:** hitscan cannot be dodged once fired, so the 0.3 s aim is the player's chance to step behind cover. Putting it in one place makes it identical for every agent; the brains keep only their own decision (the Guard's peek timing, the Captain's 1.2 s interval).
+
+**No friendly fire:** the Agents layer is not in the shot's hit mask, so another agent in the line of fire neither blocks nor takes the shot. Because agents are hit through their capsules (not S3's per-part colliders, which stay disabled), S2's cover check, which skips capsules, is unaffected.
+
+**Cancelled:** a knock-out or scrap during the aim cancels the shot. A cutscene or the pause menu holds it where it is (game time).
+
+**Not done yet:** the Saboteur's door, trap and battery actions (`CloseDoor`, `ArmTrap`, `StealBattery`). Its brain does not output them yet; S2's `Door` already implements `ISabotageable`, so the controller will call `Execute()` on the target once it does. Player health is S2's (`TakeDamage` is still a no-op), so hits are wired but do not hurt yet.
 
 ## 3. Search contracts
 <!-- ICostModel, PathResult, IPathfinder -->
@@ -387,6 +416,7 @@ The journey's rules live in the plain C# `ChapterFlow` (Journey assembly); `Chap
 | 2026-10-06 | Agent clips are generated from sine-wave specs by an editor builder; one 2D Blend Tree over Speed and TurnRate per agent; wheels and the wind-up key turn in code; bodies nest S3's model prefabs | Hand-key every clip in the Animation window; separate lean layers; keyed wheel spin; copy the models into new prefabs | Every number in a clip is written down and explainable, and a rebuild is one click, so tuning in the level is quick. One tree blends speed and lean together without layers fighting over the same pivot. Code-driven wheels match any speed exactly. Nesting keeps S3's prefabs and their colliders the single source of truth | S4 |
 | 2026-10-06 | Add a `FactoryShutdown` Critical signal, fired by the ending cutscene | Let the lighting listen for `OnCutsceneStarted("ending")`; make the shutdown part of the results screen | A Critical signal is the agreed way for a cutscene to change the world, and it also fires when the ending is skipped, so the factory always goes dark before the results. Listeners compare against a constant, not a cutscene id that could be renamed. Adding a constant changes no existing contract | S4 |
 | 2026-10-06 | Spawn points follow the level layout's room plan, with short patrol routes on open floor checked against the built grid | Spawn every agent near the player start; long patrols through doorways | Each chapter meets its own threat in its own room, as the level plan intends, and short routes inside one room keep agents from bunching at doors before the player arrives. Checking against the real grid catches a point placed inside a press or shelf before it fails at runtime | S4 |
+| 2026-10-06 | Agents are hit through their capsule on the Agents layer; shots are a body-side 0.3 s telegraph then one hitscan, with no friendly fire; the brains only decide when to shoot | Per-part hitboxes; projectiles; each brain timing its own aim | The capsule is already there and is skipped by S2's cover check, so hits need no new colliders. Hitscan is cheap and deterministic, and the shared telegraph is what makes it fair: the player always gets 0.3 s to take cover. One implementation means every agent telegraphs the same way, and the brains stay pure decisions | S4 |
 
 ## 8. Greybox character model contract (S3)
 
