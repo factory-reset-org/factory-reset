@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using ToyFactory.Interfaces;
 using ToyFactory.Runtime.World;
 
@@ -53,6 +54,9 @@ namespace ToyFactory.Interaction
         [Tooltip("The DoorwayMarker.DoorId of the doorway this door stands in. -1 = not linked to the grid.")]
         [SerializeField] int doorId = -1;
 
+        [Tooltip("Start fully open. Must match the doorway marker's Initially Closed setting, which is what the grid starts from.")]
+        [SerializeField] bool startOpen;
+
         State _state = State.Closed;
         Quaternion _closedRotation;
         Quaternion _openRotation;
@@ -74,6 +78,18 @@ namespace ToyFactory.Interaction
             _openRotation = _closedRotation * Quaternion.Euler(0f, openAngle, 0f);
             _closedPosition = movingPart.localPosition;
             _openPosition = _closedPosition + openOffset;
+            CreateUseZone();
+
+            // The panel is placed closed in the scene; a door that starts open jumps to its
+            // open pose here. The grid already has it open, from the doorway marker.
+            if (startOpen)
+            {
+                if (mode == DoorMode.Swing)
+                    MoveSwing(target: true, maxStep: float.PositiveInfinity);
+                else
+                    MoveSlide(target: true, maxStep: float.PositiveInfinity);
+                _state = State.Open;
+            }
         }
 
         [ContextMenu("Open")]
@@ -133,9 +149,10 @@ namespace ToyFactory.Interaction
                 return;
             }
 
+            float step = speed * Time.deltaTime;
             bool reached = mode == DoorMode.Swing
-                ? MoveSwing(target)
-                : MoveSlide(target);
+                ? MoveSwing(target, step)
+                : MoveSlide(target, step);
 
             if (reached)
             {
@@ -148,18 +165,46 @@ namespace ToyFactory.Interaction
             }
         }
 
-        bool MoveSwing(bool target)
+        bool MoveSwing(bool target, float maxStep)
         {
             Quaternion goal = target ? _openRotation : _closedRotation;
-            movingPart.localRotation = Quaternion.RotateTowards(movingPart.localRotation, goal, speed * Time.deltaTime);
+            movingPart.localRotation = Quaternion.RotateTowards(movingPart.localRotation, goal, maxStep);
             return movingPart.localRotation == goal;
         }
 
-        bool MoveSlide(bool target)
+        bool MoveSlide(bool target, float maxStep)
         {
             Vector3 goal = target ? _openPosition : _closedPosition;
-            movingPart.localPosition = Vector3.MoveTowards(movingPart.localPosition, goal, speed * Time.deltaTime);
+            movingPart.localPosition = Vector3.MoveTowards(movingPart.localPosition, goal, maxStep);
             return movingPart.localPosition == goal;
+        }
+
+        // A trigger the size of the closed panel, left in the doorway. Without it an open
+        // door could not be closed: its panel has moved out of the player's reach.
+        void CreateUseZone()
+        {
+            Transform panel = movingPart;
+            var zone = new GameObject(name + "_UseZone");
+            zone.layer = panel.gameObject.layer;
+            zone.transform.SetPositionAndRotation(panel.position, panel.rotation);
+            zone.transform.localScale = panel.lossyScale;
+
+            // Parented to something that does not move with the panel.
+            Transform anchor = panel == transform ? transform.parent : transform;
+            if (anchor != null)
+                zone.transform.SetParent(anchor, true);
+            else
+                SceneManager.MoveGameObjectToScene(zone, gameObject.scene);
+
+            BoxCollider box = zone.AddComponent<BoxCollider>();
+            box.isTrigger = true;
+            if (panel.TryGetComponent(out BoxCollider panelCollider))
+            {
+                box.center = panelCollider.center;
+                box.size = panelCollider.size;
+            }
+
+            zone.AddComponent<DoorUseZone>().Bind(this);
         }
 
         void SetGridClosed(bool closed)
