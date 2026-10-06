@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Chapters.TaskDefinition
   taskId: ch3.relays
   objectiveId: 9
-  displayName: Throw the 3 relays in the board's order
+  displayName: Read the relay board, then activate the 3 relays in that order
   type: 5
   anchorId: ch3.relay
   isPickup: 0

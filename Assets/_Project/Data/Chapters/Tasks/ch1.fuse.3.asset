@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Chapters.TaskDefinition
   taskId: ch1.fuse.3
   objectiveId: 5
-  displayName: Collect fuse 3
+  displayName: Collect spare fuse 3 of 3
   type: 2
   anchorId: ch1.fuse.3
   isPickup: 1

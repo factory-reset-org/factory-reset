@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Chapters.TaskDefinition
   taskId: ch3.keycard
   objectiveId: 8
-  displayName: Take the master keycard from Saboteur A
+  displayName: Take the master keycard off Saboteur A
   type: 2
   anchorId: 
   isPickup: 1

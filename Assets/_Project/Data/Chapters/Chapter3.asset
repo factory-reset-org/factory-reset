@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: Chapter3
   m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Chapters.ChapterDefinition
   index: 3
-  title: Storage Vault
-  subtitle: Wake the relays
+  title: The Storage Vault
+  subtitle: Crack the storage vault
   area: Storage Area
   tasks:
   - {fileID: 11400000, guid: ded0e764572f56c46bf59f8edc7a8f14, type: 2}

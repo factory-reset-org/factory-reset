@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Chapters.TaskDefinition
   taskId: ch2.terminal
   objectiveId: 7
-  displayName: Hold the colour terminal for 6 s
+  displayName: Hack the colour terminal (hold E for 6 s, it is loud)
   type: 4
   anchorId: ch2.terminal
   isPickup: 0

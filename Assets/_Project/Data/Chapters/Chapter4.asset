@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: Chapter4
   m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Chapters.ChapterDefinition
   index: 4
-  title: Heart of Factory OS
-  subtitle: Shut it down
+  title: The Heart of Factory OS
+  subtitle: Overload Factory OS
   area: Control Room
   tasks:
   - {fileID: 11400000, guid: dd9b4264adfcac04f8aec83faf7bd5ea, type: 2}

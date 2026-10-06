@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Chapters.TaskDefinition
   taskId: ch1.plate
   objectiveId: 2
-  displayName: Ride a crate onto the pressure plate
+  displayName: Push a crate onto the top belt so it rides onto the pressure plate
   type: 1
   anchorId: ch1.plate
   isPickup: 0

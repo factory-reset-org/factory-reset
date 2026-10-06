@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Chapters.TaskDefinition
   taskId: ch2.targets
   objectiveId: 6
-  displayName: Hit all 4 spinning targets within 12 s
+  displayName: Shoot all 4 spinning targets within 12 seconds
   type: 3
   anchorId: 
   isPickup: 0

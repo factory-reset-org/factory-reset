@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Chapters.TaskDefinition
   taskId: console
   objectiveId: 13
-  displayName: Hold the console for 3 s
+  displayName: Hold E at the console to shut the factory down
   type: 7
   anchorId: ch4.console
   isPickup: 0
