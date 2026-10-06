@@ -67,6 +67,20 @@ Baked GI + 2-3 real-time point lights. Bloom, colour grading (warm factory), vig
 - Screen-space ambient occlusion at low intensity to ground objects; soft shadows.
 - Bloom threshold above 1, so only emissives glow and plastic highlights do not glare.
 
+As built in `Env.unity` (S1, Week 12):
+- Materials are `Materials/Environment/M_Env_*`. Floors use a lighter tint of the room key colour (Assembly `#7FE3C6`, Painting `#FF9CC8`, Storage `#FFC170`, Control `#A592FF`); the full key colour over a 20 m floor drowns the props.
+- A ninth material, `M_Env_GlowAlarm` (red `#FF5A4E` emission), is used on the Control Room alarm beacons. It is left out of the bake so the lighting state can turn it amber at runtime.
+- Lights, under `Lighting`: the sun is Mixed (Baked Indirect). Each room has one baked fill light. Three real-time accents remain: a pink light in Painting, an orange lamp in Storage and the red alarm in Control. Lighting settings are in `Settings/Lighting/LS_Env`.
+- Ambient is Trilight. Fog is exponential, density 0.006.
+- 511 light probes: a 3 m grid at 0.5, 2 and 4 m, plus six probes at each doorway.
+- Post-processing is one global Volume (`Settings/PostProcessing/PP_Factory`):
+  - Bloom: threshold 1.1, intensity 0.6.
+  - Neutral tonemapping. ACES was not used because it greys out the pastels.
+  - Colour adjustments: exposure -0.2, contrast +12, saturation +15.
+  - White balance: +8 warm.
+  - Vignette: 0.25, Plum colour.
+- A camera only shows the grade if its URP camera data has Post Processing ticked.
+
 ## Room identity
 
 | Room | Key colour | Mood |
