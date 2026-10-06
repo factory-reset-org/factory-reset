@@ -70,6 +70,58 @@ namespace ToyFactory.Tests.EditMode
             Assert.Greater(tree.children[4].position.y, 0f);
         }
 
+        [TestCase("GuardBot", true)]
+        [TestCase("CaptainBot", true)]
+        [TestCase("TrackerToy", false)]
+        [TestCase("SaboteurBot", false)]
+        public void ShootersHaveAnAimOverrideLayerStartingAtWeightZero(string model, bool shoots)
+        {
+            var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>($"Assets/_Project/Animations/{model}/{model}.controller");
+            AnimatorControllerLayer[] layers = controller.layers;
+            if (!shoots)
+            {
+                Assert.AreEqual(1, layers.Length, "Agents that do not shoot have locomotion only.");
+                return;
+            }
+
+            Assert.AreEqual(2, layers.Length);
+            AnimatorControllerLayer aim = layers[1];
+            Assert.AreEqual("Aim", aim.name);
+            Assert.AreEqual(AnimatorLayerBlendingMode.Override, aim.blendingMode);
+            Assert.AreEqual(0f, aim.defaultWeight, "The bridge fades it in only while attacking.");
+            var clip = aim.stateMachine.defaultState.motion as AnimationClip;
+            Assert.IsNotNull(clip);
+
+            var modelPrefab = AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/_Project/Prefabs/Characters/{model}.prefab");
+            foreach (EditorCurveBinding binding in AnimationUtility.GetCurveBindings(clip))
+                Assert.IsNotNull(AnimationUtility.GetAnimatedObject(modelPrefab, binding), binding.path);
+        }
+
+        [TestCase("TrackerToy", 3, 7f, false, false)]
+        [TestCase("SaboteurBot", 2, 0f, true, false)]
+        [TestCase("GuardBot", 4, 8f, false, true)]
+        [TestCase("CaptainBot", 6, 6f, false, true)]
+        public void BodyCarriesItsToughnessHitboxLayerAndWeapon(string model, int hitPoints, float knockOut, bool scrap, bool armed)
+        {
+            var body = AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/_Project/Prefabs/Agents/Agent_{model}.prefab");
+            Assert.AreEqual(LayerMask.NameToLayer("Agents"), body.layer, "The capsule hitbox is on the Agents layer.");
+
+            var settings = new SerializedObject(body.GetComponent("AgentController"));
+            Assert.AreEqual(hitPoints, settings.FindProperty("hitPoints").intValue);
+            Assert.AreEqual(knockOut, settings.FindProperty("knockOutSeconds").floatValue);
+            Assert.AreEqual(scrap, settings.FindProperty("scrapWhenDown").boolValue);
+
+            Component weapon = body.GetComponent("AgentWeapon");
+            Assert.AreEqual(armed, weapon != null);
+            if (armed)
+            {
+                SerializedProperty barrels = new SerializedObject(weapon).FindProperty("barrels");
+                Assert.Greater(barrels.arraySize, 0);
+                for (int i = 0; i < barrels.arraySize; i++)
+                    Assert.IsNotNull(barrels.GetArrayElementAtIndex(i).objectReferenceValue, "Every barrel is set.");
+            }
+        }
+
         [TestCaseSource(nameof(Models))]
         public void BodyPrefabNestsTheModelWithItsControllerAndAFeetPivotCapsule(string model)
         {
