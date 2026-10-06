@@ -163,6 +163,23 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void AlertLevelFollowsHowCommittedTheCaptainIs()
+        {
+            CaptainBrain brain = Captain(startAwake: false);
+            PlacePlayer(new Vector2Int(3, 3));
+            Assert.AreEqual(AlertLevel.None, Tick(brain, new Vector2Int(22, 3), 0f).Alert, "Dormant: no icon.");
+
+            brain = Captain();
+            AgentIntent watching = Tick(brain, new Vector2Int(22, 3), 0f);
+            Assert.AreEqual("Observe", brain.StateName);
+            Assert.AreEqual(AlertLevel.Suspicious, watching.Alert, "Watching and predicting: \"?\".");
+
+            CaptainBrain committed = CommittedToTheSecondDoorway(out AgentIntent intercept);
+            Assert.AreEqual("Intercept", committed.StateName);
+            Assert.AreEqual(AlertLevel.Alert, intercept.Alert, "Committed to cutting the player off: \"!\".");
+        }
+
+        [Test]
         public void ReachingTheCellTurnsToAmbushFacingTheWayThePlayerComes()
         {
             CaptainBrain brain = CommittedToTheSecondDoorway(out _);
