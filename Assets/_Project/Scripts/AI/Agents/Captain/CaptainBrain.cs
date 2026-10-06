@@ -50,8 +50,8 @@ namespace ToyFactory.AI.Agents.Captain
         public const float SightEndInset = 0.8f;         // same grid line-of-sight rule as the Tracker
         public const float LoseSightDelay = 0.7f;
 
-        // Shooting: a 0.3 s aim telegraph before each shot.
-        public const float AimTime = 0.3f;
+        // Shooting: one shot every 1.2 s. The body's weapon adds the 0.3 s aim telegraph
+        // before each, the same for every agent, so the brain only decides when to shoot.
         public const float FireInterval = 1.2f;
 
         // Distances, metres.
