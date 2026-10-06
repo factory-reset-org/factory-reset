@@ -111,6 +111,14 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual(knockOut, settings.FindProperty("knockOutSeconds").floatValue);
             Assert.AreEqual(scrap, settings.FindProperty("scrapWhenDown").boolValue);
 
+            var fallApart = body.GetComponent("AgentFallApart");
+            Assert.IsNotNull(fallApart, "Falls apart when downed.");
+            Assert.IsNotNull(new SerializedObject(fallApart).FindProperty("model").objectReferenceValue);
+            var icon = body.GetComponent("AlertIcon");
+            Assert.IsNotNull(icon, "Shows \"?\" / \"!\".");
+            Assert.Greater(new SerializedObject(icon).FindProperty("height").floatValue,
+                body.GetComponent<CharacterController>().height, "The icon floats above the head.");
+
             Component weapon = body.GetComponent("AgentWeapon");
             Assert.AreEqual(armed, weapon != null);
             if (armed)
