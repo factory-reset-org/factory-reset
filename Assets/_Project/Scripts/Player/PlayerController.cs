@@ -101,6 +101,14 @@ namespace ToyFactory.Player
         void Update()
         {
             HandleCursorLock();
+
+            // Title, cutscenes, pause and results all take the controls away.
+            if (GameClock.Current != null && GameClock.Current.State != GameState.Playing)
+            {
+                Velocity = Vector3.zero;
+                return;
+            }
+
             Look();
             Move();
         }
