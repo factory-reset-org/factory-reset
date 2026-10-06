@@ -67,6 +67,10 @@ namespace ToyFactory.Runtime.Animation
         // LateUpdate: the path follower has moved and turned the body this frame already.
         void LateUpdate()
         {
+            // Switched off while the agent lies in pieces (AgentFallApart).
+            if (!animator.isActiveAndEnabled)
+                return;
+
             bool still = _agent.IsFrozen || _agent.IsDisabled || _agent.IsDead;
             float dt = Time.deltaTime;
 

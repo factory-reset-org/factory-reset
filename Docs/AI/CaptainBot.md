@@ -47,6 +47,8 @@ The Captain is a finite-state machine built on the shared FSM framework: each st
 | **Reassess** | Something invalidated the plan. Discards the current intercept cell, re-runs goal inference immediately, then hands over to Observe or Intercept. Lasts one decision tick. |
 | **Stunned** | Knocked out. The controller owns the 6 s reboot and does not tick the brain meanwhile; the brain drops its plan and prediction at once. On the first tick after the reboot it passes straight through to Reassess. |
 
+**Alert icon:** the brain sets `AgentIntent.Alert`: "!" once it has committed to the player (Intercept, Ambush, Engage), "?" while it watches and re-predicts (Observe, Reassess, with a player present), nothing while Dormant or down.
+
 **Waking up:** the Chapter 3 cutscene fires the `CaptainWake` Critical signal. The runtime's `CaptainWakeWriter` turns it into `WorldBlackboard.CaptainAwake`, and the brain reads the flag. The signal fires even when the player skips the cutscene. As a second safety net the Captain also wakes once Chapter 3 has started (`ChapterIndex ≥ 3`), so it can never stay asleep for the chapters it guards. Test scenes have no cutscene, so a spawn point can start it awake.
 
 **Cutscenes and pause:** `AgentController` does not tick any brain unless the game state is Playing (so not in Title, Cutscene, Paused or Results), and the body holds its route while frozen. All Captain timers use `AgentContext.Time`, which is game time from S2's `GameManager`, so the 5 s history window, the 2 Hz prediction and the stun reboot resume where they stopped.

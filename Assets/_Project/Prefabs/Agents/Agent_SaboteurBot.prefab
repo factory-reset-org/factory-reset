@@ -14,6 +14,8 @@ GameObject:
   - component: {fileID: 5172471769490426685}
   - component: {fileID: 6835292230290014988}
   - component: {fileID: 1142842270313622872}
+  - component: {fileID: 885581884208109546}
+  - component: {fileID: 4357518660318742485}
   m_Layer: 11
   m_Name: Agent_SaboteurBot
   m_TagString: Untagged
@@ -124,6 +126,40 @@ MonoBehaviour:
   - pivot: {fileID: 1465884784387286978}
     radius: 0.365
     localAxis: {x: 1, y: 0, z: 0}
+--- !u!114 &885581884208109546
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e722a24db0bd39140b3c205bf825c152, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentFallApart
+  model: {fileID: 720575241433806517}
+  reassembleSeconds: 1
+  burstSpeed: 2.5
+  scrapLingerSeconds: 2
+  scrapShrinkSeconds: 1
+--- !u!114 &4357518660318742485
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6fccee21ed4872a49b6245b387d3bc3a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AlertIcon
+  height: 2
+  size: 0.12
+  popSeconds: 0.25
+  suspiciousColour: {r: 1, g: 0.85, b: 0.2, a: 1}
+  alertColour: {r: 1, g: 0.25, b: 0.2, a: 1}
 --- !u!1001 &6993411909807918050
 PrefabInstance:
   m_ObjectHideFlags: 0

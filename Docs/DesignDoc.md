@@ -49,7 +49,8 @@ A read-only struct built by `AgentController` every frame.
 | `DesiredSpeed` | Walking speed in m/s |
 | `LookTarget` | Optional point to face |
 | `Action` + `ActionTargetId` | `None`, `Shoot`, `CloseDoor`, `ArmTrap`, `StealBattery` or `Rewind`, plus the id of the door, trap or battery |
-| `DebugState` | State name for the debug overlay and the "!"/"?" icons |
+| `DebugState` | State name for the debug overlay |
+| `Alert` | Optional `AlertLevel` (None, Suspicious, Alert) for the "?"/"!" icon; left at None, the body works it out from `DebugState` |
 
 **Why `null` and an empty list mean different things:** most ticks a brain has no new route, so returning `null` costs nothing and lets the body keep walking. Stopping on purpose is a separate, explicit answer.
 
@@ -177,7 +178,7 @@ The walk and run speeds are the brains' own speeds (Tracker 1.9 / 4.6, Saboteur 
 
 **Wheels and key in code, not clips:** a wheel of radius r rolling distance d turns `d / r` radians (rolling without slipping), so `WheelSpinner` turns each wheel by `Speed · Δt / r` every frame. A clip could only match one speed and would visibly slip at every other. `WindUpKeySpinner` turns the key at 180°/s × energy, so it slows as the Tracker runs down, and at −720°/s while it rewinds. It reads the brain's energy through `IWindUpState` (AI.Core), copied by `AgentController.WindUp`. Wheel and key pivots are never keyed in clips, so the Animator never fights the code.
 
-**Not done yet:** the fall-apart pose (`IsDead` is already a parameter), the Guard's tread scroll, and Unit 047's cutscene clips. The aim pose is in 2.9.
+**Not done yet:** the Guard's tread scroll and Unit 047's cutscene clips. The aim pose is in 2.9, falling apart in 2.10.
 
 ### 2.9 Taking hits and shooting (S4, implemented)
 
@@ -207,6 +208,26 @@ The Captain alternates its two cannons. The aim pose is an **Aim** override laye
 **Cancelled:** a knock-out or scrap during the aim cancels the shot. A cutscene or the pause menu holds it where it is (game time).
 
 **Not done yet:** the Saboteur's door, trap and battery actions (`CloseDoor`, `ArmTrap`, `StealBattery`). Its brain does not output them yet; S2's `Door` already implements `ISabotageable`, so the controller will call `Execute()` on the target once it does. Player health is S2's (`TakeDamage` is still a no-op), so hits are wired but do not hurt yet.
+
+### 2.10 Falling apart and the "?"/"!" icons (S4, implemented)
+
+**Falling apart:** `AgentFallApart` on every body. S3's models are rigid parts under pivots, each with a disabled collider, so falling apart needs nothing spawned:
+
+| When | What happens |
+| --- | --- |
+| Knocked out | Every mesh part leaves the body as a physics body on the **Debris** layer, with a small outward burst; the Animator stops |
+| Last 1 s of the knock-out | The parts lose their physics and fly back to their pose under their pivots on a smoothstep, all arriving together |
+| Reboot | Parts re-attached exactly as they were (position, rotation, scale, layer, collider off), Animator back on |
+| Scrapped (Saboteurs) | Falls apart the same way, lies there for 2 s, shrinks away over 1 s, and the agent is switched off (not destroyed, so the spawner's list stays valid) |
+
+The Debris layer collides with the floor, walls and other debris but not with the player or the agents, so a heap of parts never blocks anyone. `AgentController.KnockOutTimeLeft` tells the component when to start reassembling.
+
+**Alert icons:** `AlertIcon` on every body shows a yellow **"?"** (suspicious) or a red **"!"** (has the player) above the agent's head, facing the camera, with a short pop when the level rises. It hides while the agent is down, scrapped or frozen. The level comes from `AgentController.Alert`:
+
+- **From the brain:** `AgentIntent.Alert` (`AlertLevel.None`, `Suspicious`, `Alert`). The Captain sets it: "!" in Intercept, Ambush and Engage, "?" in Observe and Reassess.
+- **Fallback:** a brain that leaves it at `None` gets a level worked out from its state name by `AlertFromState` (for example Tracker Chase, Guard PeekAndShoot → "!"; Tracker Investigate and Search → "?"). So the Tracker, Guard and Saboteurs show icons before their owners add the one line.
+
+**Why an explicit level instead of only state names:** a renamed state would silently lose its icon; a brain that sets `Alert` keeps it whatever its states are called. The fallback is there so nothing waits on that change.
 
 ## 3. Search contracts
 <!-- ICostModel, PathResult, IPathfinder -->
@@ -417,6 +438,7 @@ The journey's rules live in the plain C# `ChapterFlow` (Journey assembly); `Chap
 | 2026-10-06 | Add a `FactoryShutdown` Critical signal, fired by the ending cutscene | Let the lighting listen for `OnCutsceneStarted("ending")`; make the shutdown part of the results screen | A Critical signal is the agreed way for a cutscene to change the world, and it also fires when the ending is skipped, so the factory always goes dark before the results. Listeners compare against a constant, not a cutscene id that could be renamed. Adding a constant changes no existing contract | S4 |
 | 2026-10-06 | Spawn points follow the level layout's room plan, with short patrol routes on open floor checked against the built grid | Spawn every agent near the player start; long patrols through doorways | Each chapter meets its own threat in its own room, as the level plan intends, and short routes inside one room keep agents from bunching at doors before the player arrives. Checking against the real grid catches a point placed inside a press or shelf before it fails at runtime | S4 |
 | 2026-10-06 | Agents are hit through their capsule on the Agents layer; shots are a body-side 0.3 s telegraph then one hitscan, with no friendly fire; the brains only decide when to shoot | Per-part hitboxes; projectiles; each brain timing its own aim | The capsule is already there and is skipped by S2's cover check, so hits need no new colliders. Hitscan is cheap and deterministic, and the shared telegraph is what makes it fair: the player always gets 0.3 s to take cover. One implementation means every agent telegraphs the same way, and the brains stay pure decisions | S4 |
+| 2026-10-06 | Agents fall apart by detaching S3's rigid mesh parts as Debris physics bodies and flying them back on a smoothstep in the last second of the knock-out; the "?"/"!" icon reads an optional `AlertLevel` on `AgentIntent`, with a state-name fallback | Pre-made broken prefabs or a fall-apart clip; icons only from state names | The parts and their colliders already exist, so nothing is spawned and every model works the same way; physics makes each fall different. An explicit level survives state renames, and the fallback means no brain owner is blocked. Adding a field with a default changes no existing brain | S4 |
 
 ## 8. Greybox character model contract (S3)
 

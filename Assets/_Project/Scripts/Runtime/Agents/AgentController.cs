@@ -92,6 +92,18 @@ namespace ToyFactory.Runtime.Agents
         /// <summary>True while knocked out by <see cref="Disable"/>, until it reboots.</summary>
         public bool IsDisabled { get; private set; }
 
+        /// <summary>Seconds of game time until a knocked-out agent reboots; 0 when it is not down.</summary>
+        public float KnockOutTimeLeft => IsDisabled ? Mathf.Max(0f, _rebootAt - Now) : 0f;
+
+        /// <summary>
+        /// How aware the agent is of the player, for the "?"/"!" icon: the brain's
+        /// <see cref="AgentIntent.Alert"/>, or worked out from its state name if the brain does
+        /// not set one. None while down, scrapped or frozen.
+        /// </summary>
+        public AlertLevel Alert => IsDead || IsDisabled || IsFrozen ? AlertLevel.None : _alert;
+
+        AlertLevel _alert;
+
         /// <summary>
         /// The brain's wind-up energy, for the key animation, or null if the brain has no
         /// key. Found once in <see cref="Initialise"/>, not looked up every frame.
@@ -277,6 +289,7 @@ namespace ToyFactory.Runtime.Agents
             ApplyPath(intent);
             ApplyAction(intent);
             DebugState = intent.DebugState ?? string.Empty;
+            _alert = intent.Alert != AlertLevel.None ? intent.Alert : AlertFromState.For(DebugState);
         }
 
         void OnDestroy()

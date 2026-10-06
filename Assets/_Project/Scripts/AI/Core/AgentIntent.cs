@@ -32,7 +32,14 @@ namespace ToyFactory.AI.Core
         /// <summary>Id of the object <see cref="Action"/> targets (a door, trap or battery).</summary>
         public int ActionTargetId;
 
-        /// <summary>Human-readable current state, shown by the debug overlay and driving "!"/"?" icons.</summary>
+        /// <summary>Human-readable current state, shown by the debug overlay.</summary>
         public string DebugState;
+
+        /// <summary>
+        /// How aware the agent is of the player, shown as a "?" or "!" icon above its head.
+        /// Optional: left at <see cref="AlertLevel.None"/>, the body works it out from
+        /// <see cref="DebugState"/> instead.
+        /// </summary>
+        public AlertLevel Alert;
     }
 }

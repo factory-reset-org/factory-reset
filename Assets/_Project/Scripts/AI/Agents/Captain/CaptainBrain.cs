@@ -199,8 +199,21 @@ namespace ToyFactory.AI.Agents.Captain
                 LookTarget = _outLook,
                 Action = _outAction,
                 ActionTargetId = 0,
-                DebugState = _debugState
+                DebugState = _debugState,
+                Alert = CurrentAlert()
             };
+        }
+
+        // "!" once it has committed to the player (cutting them off, waiting, fighting);
+        // "?" while it watches and re-predicts; nothing while asleep, down or with no player.
+        AlertLevel CurrentAlert()
+        {
+            IState<CaptainBrain> state = _machine.Current;
+            if (state == _engage || state == _intercept || state == _ambush)
+                return AlertLevel.Alert;
+            if ((state == _observe || state == _reassess) && PlayerAvailable())
+                return AlertLevel.Suspicious;
+            return AlertLevel.None;
         }
 
         /// <summary>
