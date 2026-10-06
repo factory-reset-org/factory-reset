@@ -254,12 +254,23 @@ Both write into a caller-owned list and allocate nothing once it has capacity.
 | `Bootstrap` | S2 | Scene loader and game manager. Build index 0 | Empty scene (light and camera); scene loader and game manager not written yet |
 | `Env` | S1 | Static geometry, lighting, NavMesh, grid, chapter manager | Empty scene (light and camera) |
 | `Interactables` | S2 | Doors, boxes, belts, switches, task props, pickups. All non-static | Empty scene (light and camera) |
-| `Agents` | S4 | Agent spawner and spawn points, debug overlays, cutscene director, Timelines, cutscene cameras | Spawner and cutscene director in place; Timelines and cameras planned |
+| `Agents` | S4 | Agent spawner and spawn points, debug overlays, cutscene director, Timelines, cutscene cameras | Spawner, seven spawn points and cutscene director in place; Timelines and cameras planned |
 | `UI` | S3 | HUD, subtitles, chapter card, results screen, leaderboard | Planned |
 | `ModelShowcase` | S3 | Model turntable. Not in the build | In use |
 
 - Playing starts in `Bootstrap`, which loads the other scenes additively. `Env` is the active scene, so lighting is baked with only `Env` loaded and only `Env` holds static geometry.
 - Agents are parented under the spawner, so they stay in the `Agents` scene when scenes load.
+- **Spawn points** (in `Agents.unity`, in spawn order, which is also the agent id order), placed in the rooms from the level layout. Every point and waypoint was checked against the built grid: all are walkable, and all except the Captain's are reachable from `player.start` (the Control Room starts locked).
+
+  | Agent | Room | Spawn (x, z) | Patrol |
+  | --- | --- | --- | --- |
+  | Tracker | Assembly | 4, 14 | Loop round the presses: (4, 14) → (17, 14) → (17, 5) → (4, 5) |
+  | Guard | Painting | 31, 15 | (25, 10.5) ↔ (37, 10.5), past the terminal |
+  | Saboteur A | Storage | 37, 24 | (37, 24) ↔ (23, 28) |
+  | Saboteur B | Assembly | 17, 17 | (17, 17) ↔ (11, 17) |
+  | Saboteur C | Painting | 38, 3 | (38, 3) ↔ (24, 3) |
+  | Saboteur D | Storage north | 30, 39 | (25, 39) ↔ (38, 39) |
+  | Captain | Control | 10.5, 36, facing south | None: Dormant until the Chapter 3 wake |
 - Timelines live in `Agents` but animate objects in other scenes (doors, lamps, cores). They find those objects at runtime by a stable `CutsceneBindingId` on the target, never by a serialised cross-scene reference (see Cutscene contracts under Event flow).
 - Test scenes live under `Scenes/Test/` and are not in the build.
 
@@ -375,6 +386,7 @@ The journey's rules live in the plain C# `ChapterFlow` (Journey assembly); `Chap
 | 2026-10-05 | The four Saboteur colours come from one mesh and one material: `SaboteurTint` (`Scripts/Runtime/Visuals/`, `ToyFactory.Runtime.Visuals`) reads the squad slot in `Start` from the `IAgentState` above it and writes the Art Bible tint into a `MaterialPropertyBlock` on the body slot only (`SetPropertyBlock(block, materialIndex)`); it does nothing unless that agent is a Saboteur with a squad slot | `renderer.material` per instance; four material assets (`Saboteur_A` to `Saboteur_D`) assigned to the body slot; four prefab variants; a tint in the shader keyed by an id | The spawner uses one shared body for every agent type for now, so the component must be inert on any other agent, and `renderer.material` would make a copy per renderer that has to be destroyed. A property block copies nothing, runs nothing after `Start` and needs no change to S4's spawner or controller. It costs SRP Batcher compatibility on the tinted renderer: four Saboteurs drew with 19 SetPass calls against 9 for one shared material or for four materials (see the Optimisation Log), so four pre-made material assets are the cheaper alternative if SetPass calls ever matter | S3 (agreed with S4 on 2026-10-04 and 2026-10-05) |
 | 2026-10-06 | Agent clips are generated from sine-wave specs by an editor builder; one 2D Blend Tree over Speed and TurnRate per agent; wheels and the wind-up key turn in code; bodies nest S3's model prefabs | Hand-key every clip in the Animation window; separate lean layers; keyed wheel spin; copy the models into new prefabs | Every number in a clip is written down and explainable, and a rebuild is one click, so tuning in the level is quick. One tree blends speed and lean together without layers fighting over the same pivot. Code-driven wheels match any speed exactly. Nesting keeps S3's prefabs and their colliders the single source of truth | S4 |
 | 2026-10-06 | Add a `FactoryShutdown` Critical signal, fired by the ending cutscene | Let the lighting listen for `OnCutsceneStarted("ending")`; make the shutdown part of the results screen | A Critical signal is the agreed way for a cutscene to change the world, and it also fires when the ending is skipped, so the factory always goes dark before the results. Listeners compare against a constant, not a cutscene id that could be renamed. Adding a constant changes no existing contract | S4 |
+| 2026-10-06 | Spawn points follow the level layout's room plan, with short patrol routes on open floor checked against the built grid | Spawn every agent near the player start; long patrols through doorways | Each chapter meets its own threat in its own room, as the level plan intends, and short routes inside one room keep agents from bunching at doors before the player arrives. Checking against the real grid catches a point placed inside a press or shelf before it fails at runtime | S4 |
 
 ## 8. Greybox character model contract (S3)
 
