@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: Chapter2
   m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Chapters.ChapterDefinition
   index: 2
-  title: Painting Room
-  subtitle: Bring the colour back
+  title: The Painting Room
+  subtitle: Calibrate the paint line
   area: Painting Room
   tasks:
   - {fileID: 11400000, guid: 5c74509927519aa42a890dac9e0aecce, type: 2}

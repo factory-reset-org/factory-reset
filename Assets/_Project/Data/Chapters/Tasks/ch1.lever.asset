@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Chapters.TaskDefinition
   taskId: ch1.lever
   objectiveId: 1
-  displayName: Pull the conveyor lever
+  displayName: Pull the jammed conveyor lever
   type: 0
   anchorId: ch1.lever
   isPickup: 0

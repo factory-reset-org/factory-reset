@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: Chapter1
   m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Chapters.ChapterDefinition
   index: 1
-  title: Assembly Line
-  subtitle: Get the belts moving again
+  title: The Assembly Line
+  subtitle: Restart the assembly line
   area: Assembly Floor
   tasks:
   - {fileID: 11400000, guid: 3a9e269879541434ab6af38d210b16ad, type: 2}
