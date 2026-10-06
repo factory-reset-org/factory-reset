@@ -56,6 +56,12 @@ namespace ToyFactory.Editor.Animation
         public float RunSpeed;
         public ClipSpec Idle, Walk, Run, LeanLeft, LeanRight;
 
+        /// <summary>
+        /// Optional aim pose for agents that shoot, played on an override layer whose weight
+        /// the animator bridge fades in while attacking. Null for agents that do not shoot.
+        /// </summary>
+        public ClipSpec Aim;
+
         public IEnumerable<ClipSpec> Clips
         {
             get

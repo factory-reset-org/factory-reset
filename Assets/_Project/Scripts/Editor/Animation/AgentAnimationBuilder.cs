@@ -37,6 +37,28 @@ namespace ToyFactory.Editor.Animation
                 { "CaptainBot", (AgentType.Captain, 0.55f, 3.25f) },
             };
 
+        const string ShotLineMaterialPath = BodyFolder + "/AgentShotLine.mat";
+
+        // Taking hits: hit points, knock-out seconds (the plan's reassemble times) and whether
+        // the agent is scrapped instead (the Saboteurs are destroyed for good).
+        static readonly Dictionary<string, (int hitPoints, float knockOut, bool scrap)> Toughness =
+            new Dictionary<string, (int, float, bool)>
+            {
+                { "TrackerToy", (3, 7f, false) },
+                { "SaboteurBot", (2, 0f, true) },
+                { "GuardBot", (4, 8f, false) },
+                { "CaptainBot", (6, 6f, false) },
+            };
+
+        // Agents that shoot: their cannon meshes and the damage per hit.
+        static readonly Dictionary<string, (string[] barrels, float damage)> Weapons =
+            new Dictionary<string, (string[], float)>
+            {
+                { "GuardBot", (new[] { "GuardBot_Root/Torso_Pivot/CannonArm_R_Pivot/Cannon_Barrel" }, 10f) },
+                { "CaptainBot", (new[] { "CaptainBot_Root/Torso_Pivot/CannonArm_L_Pivot/Cannon_L",
+                                         "CaptainBot_Root/Torso_Pivot/CannonArm_R_Pivot/Cannon_R" }, 15f) },
+            };
+
         [MenuItem("Factory Reset/Animation/Build Agent Animations")]
         public static void BuildAll()
         {
@@ -63,13 +85,18 @@ namespace ToyFactory.Editor.Animation
             EnsureFolder(folder);
 
             var clips = new Dictionary<string, AnimationClip>();
+            Dictionary<string, ChannelSet> locomotion = ChannelsOf(spec.Clips);
             foreach (ClipSpec clipSpec in spec.Clips)
-                clips[clipSpec.Name] = WriteClip($"{folder}/{spec.Model}_{clipSpec.Name}.anim", clipSpec, spec, model.transform);
+                clips[clipSpec.Name] = WriteClip($"{folder}/{spec.Model}_{clipSpec.Name}.anim", clipSpec, locomotion, model.transform);
 
-            AnimatorController controller = WriteController($"{folder}/{spec.Model}.controller", spec, clips);
+            // The aim pose keys only its own pivots: it is an override layer on top of locomotion.
+            AnimationClip aim = spec.Aim == null ? null :
+                WriteClip($"{folder}/{spec.Model}_{spec.Aim.Name}.anim", spec.Aim, ChannelsOf(new[] { spec.Aim }), model.transform);
+
+            AnimatorController controller = WriteController($"{folder}/{spec.Model}.controller", spec, clips, aim);
             WriteBody(spec, model, controller);
 
-            report.AppendLine($"{spec.Model}: 5 clips, controller, body prefab");
+            report.AppendLine($"{spec.Model}: {(aim != null ? 6 : 5)} clips, controller, body prefab");
             return true;
         }
 
@@ -78,7 +105,10 @@ namespace ToyFactory.Editor.Animation
         static bool CheckPaths(AgentMotionSpec spec, Transform modelRoot)
         {
             bool ok = true;
-            foreach (ClipSpec clip in spec.Clips)
+            var all = new List<ClipSpec>(spec.Clips);
+            if (spec.Aim != null)
+                all.Add(spec.Aim);
+            foreach (ClipSpec clip in all)
                 foreach (Wave wave in clip.Waves)
                     if (modelRoot.Find(wave.Path) == null)
                     {
@@ -91,7 +121,7 @@ namespace ToyFactory.Editor.Animation
         // Every clip of an agent keys the same channels (rest values where a clip has no
         // wave), so the blend tree always blends like with like and nothing snaps to a
         // default when one clip's weight drops to 0. Waves on the same channel add up.
-        static AnimationClip WriteClip(string path, ClipSpec spec, AgentMotionSpec agent, Transform modelRoot)
+        static AnimationClip WriteClip(string path, ClipSpec spec, Dictionary<string, ChannelSet> channels, Transform modelRoot)
         {
             var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
             if (clip == null)
@@ -102,7 +132,7 @@ namespace ToyFactory.Editor.Animation
             clip.ClearCurves();
             clip.frameRate = 30f;
 
-            foreach (KeyValuePair<string, ChannelSet> pivot in ChannelsOf(agent))
+            foreach (KeyValuePair<string, ChannelSet> pivot in channels)
             {
                 Transform node = modelRoot.Find(pivot.Key);
                 if (pivot.Value.Rotates)
@@ -131,10 +161,10 @@ namespace ToyFactory.Editor.Animation
             public bool Moves;
         }
 
-        static Dictionary<string, ChannelSet> ChannelsOf(AgentMotionSpec agent)
+        static Dictionary<string, ChannelSet> ChannelsOf(IEnumerable<ClipSpec> clips)
         {
             var channels = new Dictionary<string, ChannelSet>();
-            foreach (ClipSpec clip in agent.Clips)
+            foreach (ClipSpec clip in clips)
                 foreach (Wave wave in clip.Waves)
                 {
                     if (!channels.TryGetValue(wave.Path, out ChannelSet set))
@@ -182,7 +212,8 @@ namespace ToyFactory.Editor.Animation
 
         // ---- Controller ----------------------------------------------------------------
 
-        static AnimatorController WriteController(string path, AgentMotionSpec spec, Dictionary<string, AnimationClip> clips)
+        static AnimatorController WriteController(string path, AgentMotionSpec spec, Dictionary<string, AnimationClip> clips,
+            AnimationClip aim)
         {
             var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(path);
             if (controller == null)
@@ -215,6 +246,23 @@ namespace ToyFactory.Editor.Animation
             tree.AddChild(clips["LeanRight"], new Vector2(spec.RunSpeed, AgentMotionLibrary.LeanTurnRate));
             machine.defaultState = locomotion;
 
+            // Rebuild the Aim layer: an override layer at weight 0 that the animator bridge
+            // fades in while the agent attacks. Its weight is driven from code, not by states.
+            for (int i = controller.layers.Length - 1; i >= 1; i--)
+                controller.RemoveLayer(i);
+            if (aim != null)
+            {
+                controller.AddLayer("Aim");
+                AnimatorControllerLayer[] layers = controller.layers;
+                AnimatorControllerLayer aimLayer = layers[layers.Length - 1];
+                aimLayer.blendingMode = AnimatorLayerBlendingMode.Override;
+                aimLayer.defaultWeight = 0f;
+                AnimatorState pose = aimLayer.stateMachine.AddState("Aim");
+                pose.motion = aim;
+                aimLayer.stateMachine.defaultState = pose;
+                controller.layers = layers;
+            }
+
             EditorUtility.SetDirty(controller);
             return controller;
         }
@@ -235,12 +283,25 @@ namespace ToyFactory.Editor.Animation
             GameObject root = exists ? PrefabUtility.LoadPrefabContents(path) : new GameObject($"Agent_{spec.Model}");
             try
             {
+                // The capsule is also the hitbox. It sits on the Agents layer, so the agents'
+                // shots pass through each other, and S2's cover check (which skips capsules)
+                // is unaffected.
+                int agentsLayer = LayerMask.NameToLayer("Agents");
+                if (agentsLayer >= 0)
+                    root.layer = agentsLayer;
+
                 var capsule = GetOrAdd<CharacterController>(root);
                 capsule.radius = radius;
                 capsule.height = height;
                 capsule.center = new Vector3(0f, height * 0.5f, 0f);   // pivot at the feet
                 GetOrAdd<AgentPathFollower>(root);
-                GetOrAdd<AgentController>(root);
+                var agent = GetOrAdd<AgentController>(root);
+                (int hitPoints, float knockOut, bool scrap) = Toughness[spec.Model];
+                var agentSettings = new SerializedObject(agent);
+                agentSettings.FindProperty("hitPoints").intValue = hitPoints;
+                agentSettings.FindProperty("knockOutSeconds").floatValue = knockOut;
+                agentSettings.FindProperty("scrapWhenDown").boolValue = scrap;
+                agentSettings.ApplyModifiedPropertiesWithoutUndo();
 
                 Transform model = root.transform.Find(spec.Model);
                 if (model == null)
@@ -252,6 +313,19 @@ namespace ToyFactory.Editor.Animation
                 animator.applyRootMotion = false;   // the path follower moves the body
 
                 SetReference(GetOrAdd<AgentAnimatorBridge>(root), "animator", animator);
+
+                if (Weapons.TryGetValue(spec.Model, out (string[] barrels, float damage) weapon))
+                {
+                    var gun = GetOrAdd<AgentWeapon>(root);
+                    var gunSettings = new SerializedObject(gun);
+                    SerializedProperty barrels = gunSettings.FindProperty("barrels");
+                    barrels.arraySize = weapon.barrels.Length;
+                    for (int i = 0; i < weapon.barrels.Length; i++)
+                        barrels.GetArrayElementAtIndex(i).objectReferenceValue = model.Find(weapon.barrels[i]).GetComponent<Renderer>();
+                    gunSettings.FindProperty("damage").floatValue = weapon.damage;
+                    gunSettings.FindProperty("lineMaterial").objectReferenceValue = ShotLineMaterial();
+                    gunSettings.ApplyModifiedPropertiesWithoutUndo();
+                }
 
                 if (spec.Model == "TrackerToy")
                 {
@@ -278,6 +352,21 @@ namespace ToyFactory.Editor.Animation
         }
 
         // Not "??": in the editor a missing component comes back as Unity's fake null.
+        // Unlit and coloured by the line's vertex colour, so one material serves the red aim
+        // line and the yellow tracer. Created once, then reused.
+        static Material ShotLineMaterial()
+        {
+            var material = AssetDatabase.LoadAssetAtPath<Material>(ShotLineMaterialPath);
+            if (material != null)
+                return material;
+            Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            if (shader == null)
+                shader = Shader.Find("Sprites/Default");
+            material = new Material(shader) { name = "AgentShotLine" };
+            AssetDatabase.CreateAsset(material, ShotLineMaterialPath);
+            return material;
+        }
+
         static T GetOrAdd<T>(GameObject target) where T : Component
         {
             T component = target.GetComponent<T>();
