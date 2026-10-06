@@ -33,7 +33,18 @@ namespace ToyFactory.Runtime.Agents
         /// <summary>The spawner in the loaded Agents scene, for the scene loader to call.</summary>
         public static AgentSpawner Instance { get; private set; }
 
-        [Tooltip("Agent body to spawn. One placeholder body is used for every type until the real models exist.")]
+        /// <summary>The body prefab for one agent type.</summary>
+        [Serializable]
+        struct AgentBody
+        {
+            public AgentType type;
+            public AgentController prefab;
+        }
+
+        [Tooltip("Body to spawn for each agent type: its model, Animator and a capsule sized for that agent.")]
+        [SerializeField] AgentBody[] bodies = new AgentBody[0];
+
+        [Tooltip("Fallback body for any type not listed above, e.g. the placeholder capsule.")]
         [SerializeField] AgentController agentPrefab;
 
         [Tooltip("Spawn as soon as the scene starts, building the level grid first if the scene has a GridManager. Use in test scenes that have no scene loader; leave off in Agents.unity.")]
@@ -120,13 +131,6 @@ namespace ToyFactory.Runtime.Agents
                 return;
             }
 
-            if (agentPrefab == null)
-            {
-                Debug.LogError($"{nameof(AgentSpawner)} on {name} has no agent prefab assigned.", this);
-                return;
-            }
-
-            float feetToPivot = FeetToPivotHeight(agentPrefab);
             var usedSquadSlots = new HashSet<(AgentType, int)>();
 
             // The level grid is built by the scene loader before agents spawn. Without one
@@ -144,11 +148,18 @@ namespace ToyFactory.Runtime.Agents
                 if (identity.IsInSquad && !usedSquadSlots.Add((identity.Type, identity.SquadIndex)))
                     Debug.LogError($"Two {identity.Type} spawn points use squad slot {identity.SquadLetter}; each slot must be used once.", point);
 
-                // Spawn points mark where the agent's feet go; the prefab's pivot is higher up.
-                Vector3 position = point.transform.position + Vector3.up * feetToPivot;
+                AgentController body = BodyFor(point.AgentType);
+                if (body == null)
+                {
+                    Debug.LogError($"{nameof(AgentSpawner)} on {name} has no body for {point.AgentType} and no fallback prefab.", point);
+                    continue;
+                }
+
+                // Spawn points mark where the agent's feet go; the prefab's pivot may be higher up.
+                Vector3 position = point.transform.position + Vector3.up * FeetToPivotHeight(body);
 
                 // Parented under the spawner so agents stay in the Agents scene when scenes load additively.
-                AgentController agent = Instantiate(agentPrefab, position, point.transform.rotation, transform);
+                AgentController agent = Instantiate(body, position, point.transform.rotation, transform);
                 agent.name = identity.ToString();
                 var setup = new BrainSetup(identity, grid, pathfinder, _blackboard, point.GetPatrolPositions());
                 agent.Initialise(identity, CreateBrain(point, setup), _blackboard, grid);
@@ -191,6 +202,15 @@ namespace ToyFactory.Runtime.Agents
                 default:
                     return new MockPathProvider(setup.PatrolPoints);
             }
+        }
+
+        /// <summary>The body listed for <paramref name="type"/>, or the fallback prefab.</summary>
+        AgentController BodyFor(AgentType type)
+        {
+            for (int i = 0; i < bodies.Length; i++)
+                if (bodies[i].type == type && bodies[i].prefab != null)
+                    return bodies[i].prefab;
+            return agentPrefab;
         }
 
         // Height from the bottom of the agent's CharacterController to its pivot, so an

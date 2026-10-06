@@ -1,0 +1,19 @@
+{
+  "name": "ToyFactory.Editor",
+  "rootNamespace": "ToyFactory.Editor",
+  "references": [
+    "ToyFactory.Runtime",
+    "ToyFactory.Interfaces"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

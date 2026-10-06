@@ -1,0 +1,219 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &8364676418852828001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4499057061954017396}
+  - component: {fileID: 5717149258502898245}
+  - component: {fileID: 8664708463803033083}
+  - component: {fileID: 5172471769490426685}
+  - component: {fileID: 6835292230290014988}
+  - component: {fileID: 1142842270313622872}
+  m_Layer: 0
+  m_Name: Agent_SaboteurBot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4499057061954017396
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 720575241433806517}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!143 &5717149258502898245
+CharacterController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Height: 1.6
+  m_Radius: 0.45
+  m_SlopeLimit: 45
+  m_StepOffset: 0.3
+  m_SkinWidth: 0.08
+  m_MinMoveDistance: 0.001
+  m_Center: {x: 0, y: 0.8, z: 0}
+--- !u!114 &8664708463803033083
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 79a25d8792a00bd47a23d8c2e793cc33, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Movement.AgentPathFollower
+  arrivalRadius: 0.3
+  groundedStickSpeed: -2
+  turnSpeed: 360
+--- !u!114 &5172471769490426685
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4f6e4f5f7cbe0c04bbe15220690687b1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Agents.AgentController
+  smoothPaths: 1
+--- !u!114 &6835292230290014988
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a9c7b7a9d4cc29c44a468950580051eb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentAnimatorBridge
+  animator: {fileID: 4458622914453848836}
+  dampTime: 0.1
+--- !u!114 &1142842270313622872
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cec7c5fff6b0e9f4b8832d45e5d68327, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.WheelSpinner
+  wheels:
+  - pivot: {fileID: 1465884784387286978}
+    radius: 0.365
+    localAxis: {x: 1, y: 0, z: 0}
+--- !u!1001 &6993411909807918050
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 4499057061954017396}
+    m_Modifications:
+    - target: {fileID: 7185977976637122541, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_Name
+      value: SaboteurBot
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 7185977976637122541, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 4458622914453848836}
+  m_SourcePrefab: {fileID: 100100000, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+--- !u!1 &194833399660817423 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 7185977976637122541, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!95 &4458622914453848836
+Animator:
+  serializedVersion: 7
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 194833399660817423}
+  m_Enabled: 1
+  m_Avatar: {fileID: 0}
+  m_Controller: {fileID: 9100000, guid: fdc3f4c8d3ae10749ad2f68916253b91, type: 2}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_AnimatePhysics: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
+--- !u!4 &720575241433806517 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &1465884784387286978 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 8456151950950116384, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
