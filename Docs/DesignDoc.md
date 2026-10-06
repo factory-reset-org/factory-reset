@@ -276,7 +276,7 @@ Systems talk through events and the blackboard, not direct references. The journ
 | Objective changed (`ObjectiveEvents`) | Chapter manager (S1) | `ObjectiveTargetWriter` → blackboard `ObjectiveTargets`, then Captain, Saboteurs, beacon and HUD | Implemented: the chapter manager publishes after every change |
 | Switch unsealed, switch restored, chapter started (`ChapterEvents`) | Chapter manager | Switch cage (opens on unseal), cutscene director (next cutscene 1.3 s after a restore), blackboard writer (`ChapterIndex`), HUD, scoring | Raised by the chapter manager; cutscene director and `ChapterIndex` writer implemented, other listeners planned |
 | Cutscene started, ended (`CutsceneEvents`) | Cutscene director | Chapter manager (starts the next chapter on ended), HUD | Implemented. The director itself sets the Cutscene state through `IGameClock.RequestState` |
-| Critical cutscene signal (`CutsceneEvents.OnCriticalSignal`) | Cutscene Timeline (`CriticalSignalMarker`), through the director | Captain wake (`CaptainWakeWriter` sets `CaptainAwake`), Control Room door unlock, core shields drop. Also fired when a cutscene is skipped | Implemented in the director; Captain wake implemented, other listeners planned |
+| Critical cutscene signal (`CutsceneEvents.OnCriticalSignal`) | Cutscene Timeline (`CriticalSignalMarker`), through the director | Captain wake (`CaptainWakeWriter` sets `CaptainAwake`), Control Room door unlock, core shields drop, factory shutdown (S1's lighting goes to its shutdown state). Also fired when a cutscene is skipped | Implemented in the director; Captain wake implemented, other listeners planned |
 | Agent disabled, destroyed, rebooted (`AgentEvents`) | `AgentController` | Scoring, Saboteur squad, HUD | Events and raising implemented; nothing calls `Disable` or `Scrap` yet |
 | Game state changed (Title, Playing, Cutscene, Paused, Results) | Game manager (`IGameClock`, published as `GameClock.Current`) | `AgentController` (freezes brain and body outside Playing), player input, timers, HUD | Game clock and agent freezing implemented |
 
@@ -298,7 +298,7 @@ All three live in `Scripts/Interfaces/`, so code in every scene can use them. Th
 | `OnCutsceneEnded` | Cutscene id | A cutscene finishes or is skipped |
 | `OnCriticalSignal` | A `CutsceneSignals` id | The Timeline reaches a Critical signal, or straight away on skip for every Critical signal not yet reached |
 
-**`CutsceneSignals`**: constants for the signal ids (`CaptainWake`, `ControlRoomUnlock`, `CoreShieldsDown`). Listeners compare against these, so a misspelt id fails to compile instead of silently never matching.
+**`CutsceneSignals`**: constants for the signal ids (`CaptainWake`, `ControlRoomUnlock`, `CoreShieldsDown`, `FactoryShutdown`). Listeners compare against these, so a misspelt id fails to compile instead of silently never matching.
 
 **Why a skip fires the missed signals:** if the player skips the Chapter 3 cutscene before the wake marker, the Captain would otherwise stay Dormant and the Control Room doors would stay locked. Firing every Critical signal not yet reached leaves the game in the same state as watching the whole cutscene.
 
@@ -314,7 +314,7 @@ All three live in `Scripts/Interfaces/`, so code in every scene can use them. Th
 | `ch2` | Switch 1 is restored | none | Playing |
 | `ch3` | Switch 2 is restored | `CaptainWake`, `ControlRoomUnlock` | Playing |
 | `ch4` | Switch 3 is restored | `CoreShieldsDown` | Playing |
-| `ending` | The console hold completes | none | Results |
+| `ending` | The console hold completes | `FactoryShutdown` | Results |
 
 The ids `ch2` to `ch4` are the ones S1's chapter data waits for. The table is the director's default list and can be edited in the Inspector.
 
@@ -374,6 +374,7 @@ The journey's rules live in the plain C# `ChapterFlow` (Journey assembly); `Chap
 | 2026-10-05 | The Captain's prediction reaches the blackboard through an `IGoalPredictor` interface that the controller copies after each tick; the wake reaches the brain as a blackboard flag set by a Runtime writer; the Captain also wakes once Chapter 3 has started | Let the brain write `PredictedGoal` itself; let the brain listen to cutscene events; wake only on the signal | Only Runtime writes the blackboard, and brains cannot see the Interfaces events, so both crossings go through Runtime, like `IDropsItems`. The chapter fallback means a missed or reordered signal can never leave the boss asleep for the chapters it guards | S4 |
 | 2026-10-05 | The four Saboteur colours come from one mesh and one material: `SaboteurTint` (`Scripts/Runtime/Visuals/`, `ToyFactory.Runtime.Visuals`) reads the squad slot in `Start` from the `IAgentState` above it and writes the Art Bible tint into a `MaterialPropertyBlock` on the body slot only (`SetPropertyBlock(block, materialIndex)`); it does nothing unless that agent is a Saboteur with a squad slot | `renderer.material` per instance; four material assets (`Saboteur_A` to `Saboteur_D`) assigned to the body slot; four prefab variants; a tint in the shader keyed by an id | The spawner uses one shared body for every agent type for now, so the component must be inert on any other agent, and `renderer.material` would make a copy per renderer that has to be destroyed. A property block copies nothing, runs nothing after `Start` and needs no change to S4's spawner or controller. It costs SRP Batcher compatibility on the tinted renderer: four Saboteurs drew with 19 SetPass calls against 9 for one shared material or for four materials (see the Optimisation Log), so four pre-made material assets are the cheaper alternative if SetPass calls ever matter | S3 (agreed with S4 on 2026-10-04 and 2026-10-05) |
 | 2026-10-06 | Agent clips are generated from sine-wave specs by an editor builder; one 2D Blend Tree over Speed and TurnRate per agent; wheels and the wind-up key turn in code; bodies nest S3's model prefabs | Hand-key every clip in the Animation window; separate lean layers; keyed wheel spin; copy the models into new prefabs | Every number in a clip is written down and explainable, and a rebuild is one click, so tuning in the level is quick. One tree blends speed and lean together without layers fighting over the same pivot. Code-driven wheels match any speed exactly. Nesting keeps S3's prefabs and their colliders the single source of truth | S4 |
+| 2026-10-06 | Add a `FactoryShutdown` Critical signal, fired by the ending cutscene | Let the lighting listen for `OnCutsceneStarted("ending")`; make the shutdown part of the results screen | A Critical signal is the agreed way for a cutscene to change the world, and it also fires when the ending is skipped, so the factory always goes dark before the results. Listeners compare against a constant, not a cutscene id that could be renamed. Adding a constant changes no existing contract | S4 |
 
 ## 8. Greybox character model contract (S3)
 

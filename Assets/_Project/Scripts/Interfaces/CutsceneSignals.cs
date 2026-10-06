@@ -14,5 +14,11 @@ namespace ToyFactory.Interfaces
 
         /// <summary>The core shields drop so the cores can be reached.</summary>
         public const string CoreShieldsDown = "CoreShieldsDown";
+
+        /// <summary>
+        /// Ending cutscene: the factory powers down. The lighting switches to its shutdown
+        /// state and the agents power down. Fired on skip too, like every Critical signal.
+        /// </summary>
+        public const string FactoryShutdown = "FactoryShutdown";
     }
 }
