@@ -18,16 +18,27 @@ namespace ToyFactory.Runtime.Agents
     /// Unity objects: the brain never touches a GameObject and the body never decides.
     /// </summary>
     [RequireComponent(typeof(AgentPathFollower))]
-    public sealed class AgentController : MonoBehaviour, IAgentState, IGameStateListener, INoiseListener
+    public sealed class AgentController : MonoBehaviour, IAgentState, IGameStateListener, INoiseListener, IDamageable
     {
         [Tooltip("Smooth the brain's grid paths before walking them: drop the waypoints the agent does not need, then round the corners. Only works with a level grid; untick to compare with the raw path.")]
         [SerializeField] bool smoothPaths = true;
+
+        [Header("Taking hits")]
+        [Tooltip("Hits from the player's blaster before this agent goes down.")]
+        [SerializeField, Min(1)] int hitPoints = 3;
+
+        [Tooltip("Seconds a downed agent stays knocked out before it reassembles (Tracker 7, Guard 8, Captain 6).")]
+        [SerializeField, Min(0f)] float knockOutSeconds = 7f;
+
+        [Tooltip("Scrap the agent for good when it goes down instead of knocking it out (the Saboteurs).")]
+        [SerializeField] bool scrapWhenDown;
 
         // Reused for every new route, so smoothing allocates nothing once they have grown.
         readonly List<Vector3> _pulledPath = new List<Vector3>();
         readonly List<Vector3> _smoothedPath = new List<Vector3>();
 
         AgentPathFollower _follower;
+        AgentWeapon _weapon;
         IAgentBrain _brain;
         IGoalPredictor _predictor;
         WorldBlackboard _blackboard;
@@ -61,8 +72,19 @@ namespace ToyFactory.Runtime.Agents
         /// <inheritdoc/>
         public float TurnRate => _follower.TurnRate;
 
-        /// <summary>True while the brain's current action is <see cref="AgentAction.Shoot"/>.</summary>
-        public bool IsAttacking { get; private set; }
+        /// <summary>
+        /// True while attacking: aiming or firing with the <see cref="AgentWeapon"/>, or, for a body
+        /// without one, while the brain's action is <see cref="AgentAction.Shoot"/>.
+        /// </summary>
+        public bool IsAttacking => _weapon != null ? _weapon.IsBusy : _shootRequested;
+
+        bool _shootRequested;
+
+        /// <summary>Hits left before this agent goes down. Back to full when it reboots.</summary>
+        public int HitPointsLeft { get; private set; }
+
+        /// <summary>Hits this agent can take, for the HUD and tests.</summary>
+        public int MaxHitPoints => hitPoints;
 
         /// <summary>True once <see cref="Scrap"/> has been called. Never becomes false again.</summary>
         public bool IsDead { get; private set; }
@@ -92,6 +114,29 @@ namespace ToyFactory.Runtime.Agents
         void Awake()
         {
             _follower = GetComponent<AgentPathFollower>();
+            _weapon = GetComponent<AgentWeapon>();
+            HitPointsLeft = hitPoints;
+        }
+
+        /// <summary>
+        /// One hit from the player's blaster (S2's <see cref="IDamageable"/>). Each hit costs a hit
+        /// point; at 0 the agent goes down: scrapped for good if it is a Saboteur, otherwise knocked
+        /// out for <c>knockOutSeconds</c>, after which it reboots with full hit points. Hits on an
+        /// agent that is already down, frozen in a cutscene or scrapped are ignored.
+        /// </summary>
+        public void TakeHit()
+        {
+            if (IsDead || IsDisabled || IsFrozen || HitPointsLeft <= 0)
+                return;
+
+            HitPointsLeft--;
+            if (HitPointsLeft > 0)
+                return;
+
+            if (scrapWhenDown)
+                Scrap();
+            else
+                Disable(knockOutSeconds);
         }
 
         /// <summary>
@@ -151,7 +196,9 @@ namespace ToyFactory.Runtime.Agents
                 return;
 
             IsDead = true;
-            IsAttacking = false;
+            HitPointsLeft = 0;
+            _shootRequested = false;
+            _weapon?.Cancel();
             _follower.Stop();
 
             // Release the brain's claims before the event, so listeners such as the
@@ -174,7 +221,8 @@ namespace ToyFactory.Runtime.Agents
             bool wasDisabled = IsDisabled;
             _rebootAt = wasDisabled ? Mathf.Max(_rebootAt, Now + duration) : Now + duration;
             IsDisabled = true;
-            IsAttacking = false;
+            _shootRequested = false;
+            _weapon?.Cancel();
             _heard = default; // a noise from before the knock-out is stale by the reboot
             _follower.Stop();
             _brain?.OnStunned(_rebootAt - Now);
@@ -188,6 +236,7 @@ namespace ToyFactory.Runtime.Agents
         void Reboot()
         {
             IsDisabled = false;
+            HitPointsLeft = hitPoints;
             AgentEvents.RaiseRebooted(this);
         }
 
@@ -226,7 +275,7 @@ namespace ToyFactory.Runtime.Agents
                 _blackboard.SetPredictedGoal(_predictor.Prediction);
 
             ApplyPath(intent);
-            IsAttacking = intent.Action == AgentAction.Shoot;
+            ApplyAction(intent);
             DebugState = intent.DebugState ?? string.Empty;
         }
 
@@ -275,6 +324,16 @@ namespace ToyFactory.Runtime.Agents
         // nearest walkable cell, which also covers an agent standing on a box.
         Vector2Int CurrentCell(Vector3 position) =>
             _grid != null ? _grid.WorldToCell(position) : Vector2Int.zero;
+
+        // Carries out the brain's action. Shoot goes to the weapon, which aims for 0.3 s (the
+        // telegraph) before the hitscan; a request while it is still busy is ignored. The
+        // Saboteur's door, trap and battery actions are added when its brain outputs them.
+        void ApplyAction(in AgentIntent intent)
+        {
+            _shootRequested = intent.Action == AgentAction.Shoot;
+            if (_shootRequested && _weapon != null)
+                _weapon.RequestShot();
+        }
 
         void ApplyPath(in AgentIntent intent)
         {
