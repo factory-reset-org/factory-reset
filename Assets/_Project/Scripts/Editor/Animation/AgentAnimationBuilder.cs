@@ -314,6 +314,12 @@ namespace ToyFactory.Editor.Animation
 
                 SetReference(GetOrAdd<AgentAnimatorBridge>(root), "animator", animator);
 
+                // Falls apart when knocked out or scrapped, and shows "?"/"!" above its head.
+                SetReference(GetOrAdd<AgentFallApart>(root), "model", model);
+                var icon = new SerializedObject(GetOrAdd<AlertIcon>(root));
+                icon.FindProperty("height").floatValue = height + 0.4f;
+                icon.ApplyModifiedPropertiesWithoutUndo();
+
                 if (Weapons.TryGetValue(spec.Model, out (string[] barrels, float damage) weapon))
                 {
                     var gun = GetOrAdd<AgentWeapon>(root);
