@@ -427,6 +427,130 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual(afterBegin + 1, _objectiveChanges);
         }
 
+        // ---- Beacon target --------------------------------------------------------------
+
+        BeaconTarget Beacon()
+        {
+            Assert.IsTrue(_flow.TryGetBeaconTarget(_locator, out BeaconTarget target), "Expected a beacon target.");
+            return target;
+        }
+
+        void FinishChapter3()
+        {
+            CompleteAll("ch3.keycard", "ch3.relays", "switch.3");
+            Assert.IsTrue(_flow.CutsceneEnded("ch4"));
+        }
+
+        [Test]
+        public void NoBeaconTargetBeforeBegin()
+        {
+            Assert.IsFalse(_flow.TryGetBeaconTarget(_locator, out _));
+        }
+
+        [Test]
+        public void TheBeaconMarksTheFirstIncompleteTaskInDataOrder()
+        {
+            _flow.Begin();
+            BeaconTarget first = Beacon();
+            Assert.AreEqual("ch1.lever", first.TaskId);
+            Assert.AreEqual(ChapterFlow.TaskTargetIdBase + 1, first.Id);
+            Assert.AreEqual(ObjectiveKind.Task, first.Kind);
+            Assert.AreEqual(_locator.Known["ch1.lever"], first.Position);
+            Assert.AreEqual("ch1.lever", first.Label, "The label is the task's display name.");
+
+            CompleteAll("ch1.lever", "ch1.fuse.1");
+
+            Assert.AreEqual("ch1.plate", Beacon().TaskId);
+            CompleteAll("ch1.plate");
+            Assert.AreEqual("ch1.fuse.2", Beacon().TaskId, "Fuse 1 is already done, so it is skipped.");
+        }
+
+        [Test]
+        public void OnceTheTasksAreDoneTheBeaconMarksTheUnsealedSwitch()
+        {
+            _flow.Begin();
+            CompleteAll(Chapter1Tasks);
+
+            BeaconTarget target = Beacon();
+
+            Assert.AreEqual("switch.1", target.TaskId);
+            Assert.AreEqual(ChapterFlow.SwitchTargetIdBase + 1, target.Id);
+            Assert.AreEqual(ObjectiveKind.Switch, target.Kind);
+            Assert.AreEqual(_locator.Known["switch.1"], target.Position);
+            Assert.AreEqual("Restore the Area switch", target.Label);
+        }
+
+        [Test]
+        public void NoBeaconTargetWhileTheCutsceneBetweenChaptersPlays()
+        {
+            _flow.Begin();
+            CompleteAll(Chapter1Tasks);
+            CompleteAll("switch.1");
+
+            Assert.IsFalse(_flow.TryGetBeaconTarget(_locator, out _));
+
+            _flow.CutsceneEnded("ch2");
+            Assert.AreEqual("ch2.targets", Beacon().TaskId);
+            Assert.AreEqual(_locator.Known["ch2.targets"], Beacon().Position, "Placed on the prop itself: it has no anchor.");
+        }
+
+        [Test]
+        public void ATaskThatCannotBePlacedYetIsPassedOver()
+        {
+            _flow.Begin();
+            FinishChapter1();
+            FinishChapter2();
+            Assert.IsTrue(_flow.TryGetSequenceOrder("ch3.relays", out IReadOnlyList<int> order));
+
+            // The keycard has not dropped yet, so the beacon shows the next relay instead.
+            BeaconTarget relay = Beacon();
+            Assert.AreEqual("ch3.relays", relay.TaskId);
+            Assert.AreEqual(_locator.Known["ch3.relay." + order[0]], relay.Position);
+
+            _locator.Known["ch3.keycard"] = new Vector3(3f, 0f, 9f);
+            Assert.AreEqual("ch3.keycard", Beacon().TaskId, "Once the keycard can be placed, it comes first again.");
+        }
+
+        [Test]
+        public void TheBeaconFollowsTheRelayOrder()
+        {
+            _flow.Begin();
+            FinishChapter1();
+            FinishChapter2();
+            CompleteAll("ch3.keycard");
+            _flow.TryGetSequenceOrder("ch3.relays", out IReadOnlyList<int> order);
+
+            _flow.ReportProgress("ch3.relays", 1f / 3f);
+
+            Assert.AreEqual(_locator.Known["ch3.relay." + order[1]], Beacon().Position);
+        }
+
+        [Test]
+        public void TheConsoleComesLastAndTheBeaconGoesOutAfterIt()
+        {
+            _flow.Begin();
+            FinishChapter1();
+            FinishChapter2();
+            FinishChapter3();
+
+            Assert.AreEqual("ch4.core.1", Beacon().TaskId);
+            CompleteAll("ch4.core.1", "ch4.core.2", "ch4.core.3");
+
+            BeaconTarget console = Beacon();
+            Assert.AreEqual(ChapterEvents.ConsoleTaskId, console.TaskId);
+            Assert.AreEqual(ChapterFlow.ConsoleTargetId, console.Id);
+            Assert.AreEqual(ObjectiveKind.Console, console.Kind);
+
+            CompleteAll(ChapterEvents.ConsoleTaskId);
+            Assert.IsFalse(_flow.TryGetBeaconTarget(_locator, out _));
+        }
+
+        [Test]
+        public void TheBeaconTargetNeedsALocator()
+        {
+            Assert.Throws<ArgumentNullException>(() => _flow.TryGetBeaconTarget(null, out _));
+        }
+
         // ---- Data validation ------------------------------------------------------------
 
         [Test]

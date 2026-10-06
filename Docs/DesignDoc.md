@@ -405,6 +405,61 @@ The journey's rules live in the plain C# `ChapterFlow` (Journey assembly); `Chap
 - **Data:** `Assets/_Project/Data/Chapters/` (four `ChapterDefinition`s, thirteen `TaskDefinition`s). The task ids there are the ids the props must use.
 - **Story:** [Story.md](Story.md) has the chapter beats, each task's HUD text (the same as `TaskDefinition.displayName`), the chapter card text and the full cutscene script.
 
+### 6.3 Objective beacon and lighting state (S1, implemented)
+
+**Beacon target.** `ChapterManager.CurrentBeaconTarget` (a `BeaconTarget?`) is the one place the player should head for next:
+- The first incomplete task of the active chapter, in the chapter's data order.
+- Once all of the chapter's tasks are done, its unsealed switch.
+- In Chapter 4, the cores and then the console.
+- A task that cannot be placed yet is passed over. The keycard is the example: it is passed over until Saboteur A drops it.
+- Null before `Begin()`, while a chapter cutscene plays, and after the ending.
+
+| Field | Meaning |
+| --- | --- |
+| `Id` | The same id as in the objective list (100 + objectiveId, 200 + n, 300) |
+| `Position` | The task's anchor, or the prop itself |
+| `Kind` | Task, Switch or Console |
+| `TaskId` | `"ch1.lever"`, `"switch.2"` or `"console"` |
+| `Label` | The HUD line: the task's display name, or "Restore the {area} switch" |
+
+`BeaconTargetChanged` fires when the target changes or moves; republishing the same target does not fire it. The rule is `ChapterFlow.TryGetBeaconTarget`, tested in EditMode. S3's HUD reads the same property for its arrow and distance.
+
+**Beacon.** `ObjectiveBeacon` (`Prefabs/Environment/ObjectiveBeacon.prefab`, in `Env`) is built like the prototype:
+- A 5 m beam, a ground ring that pulses, and a yellow arrow that bobs and spins at 4.2 m.
+- It stands at the target's floor position. It glides after a target that moves, but jumps to a new target more than 3 m away.
+- It shows only while the game clock is Playing and no cutscene runs. Because the intro is a cutscene, the beacon first appears when the intro ends, and it hides for every later cutscene, the pause menu and the results screen.
+- The look is the `ToyFactory/ObjectiveBeacon` shader: URP Unlit, additive, double-sided. It has:
+  - stripes that scroll up the beam
+  - a soft silhouette
+  - a fade towards the top of the beam
+  - a depth fade where the beam meets the floor (uses the URP depth texture)
+  - a near fade: the whole beacon dims to 25% within 2 m of the camera
+- All material values are in `UnityPerMaterial`, so the three parts stay SRP Batcher compatible.
+
+**Lighting state.** `LightingState` sits on `Env`'s `Lighting` root and listens only to `CutsceneEvents.OnCriticalSignal`, so a skipped cutscene leaves the lights right too. The mood only moves forward:
+
+| Mode | When | Lights | Emissives |
+| --- | --- | --- | --- |
+| `Alarm` | From the start | The two alarm lights in the sealed Control Room doorways (3 and 4) blink red, about once a second | The four lintel beacons swap between `M_Env_GlowAlarm` and `M_Env_GlowAlarmOff` |
+| `Unlocked` | `ControlRoomUnlock` (`ch3`) | Steady amber | `M_Env_GlowAmber` |
+| `Shutdown` | `FactoryShutdown` (`ending`) | The sun, the Storage lamp and the alarms fade over 3 s to a warm glow at 35% intensity | Screens, press strips and beacons dim to 15% |
+
+The beacons change by swapping shared materials, which keeps the SRP Batcher. Only the shutdown fade makes per-renderer material copies, once, at the end of the game.
+
+**Cutscene binding ids in `Env`** (for S4's Timelines, through `CutsceneBindingId.TryFind`):
+
+| Id | Object | Holds |
+| --- | --- | --- |
+| `LightingRig` | `Lighting` | `LightingState`, every light, the post-processing Volume |
+| `Sun` | `Lighting/Sun` | Directional light (Mixed) |
+| `StorageLamp` | `Lighting/Accents_Realtime/Accent_Storage_Lamp` | Orange real-time point light |
+| `AlarmDoor3` | `Lighting/ControlAlarms/AlarmDoor3` | Alarm light and two lintel beacons, Storage–Control door |
+| `AlarmDoor4` | `Lighting/ControlAlarms/AlarmDoor4` | Alarm light and two lintel beacons, Control–Assembly door |
+| `ControlScreens` | `Level/Dressing/ControlScreens` | The three Control Room screens |
+| `ObjectiveBeacon` | `ObjectiveBeacon` | The beacon (it already hides itself during cutscenes) |
+
+The alarm colours belong to `LightingState`. A Timeline can frame or activate these objects, but a light that both a Timeline and `LightingState` animate would fight, so leave the alarm colour to the signals.
+
 ## 7. Decision log
 
 | Date | Decision | Alternatives considered | Because | Owner |
@@ -440,6 +495,9 @@ The journey's rules live in the plain C# `ChapterFlow` (Journey assembly); `Chap
 | 2026-10-06 | Spawn points follow the level layout's room plan, with short patrol routes on open floor checked against the built grid | Spawn every agent near the player start; long patrols through doorways | Each chapter meets its own threat in its own room, as the level plan intends, and short routes inside one room keep agents from bunching at doors before the player arrives. Checking against the real grid catches a point placed inside a press or shelf before it fails at runtime | S4 |
 | 2026-10-06 | Agents are hit through their capsule on the Agents layer; shots are a body-side 0.3 s telegraph then one hitscan, with no friendly fire; the brains only decide when to shoot | Per-part hitboxes; projectiles; each brain timing its own aim | The capsule is already there and is skipped by S2's cover check, so hits need no new colliders. Hitscan is cheap and deterministic, and the shared telegraph is what makes it fair: the player always gets 0.3 s to take cover. One implementation means every agent telegraphs the same way, and the brains stay pure decisions | S4 |
 | 2026-10-06 | Agents fall apart by detaching S3's rigid mesh parts as Debris physics bodies and flying them back on a smoothstep in the last second of the knock-out; the "?"/"!" icon reads an optional `AlertLevel` on `AgentIntent`, with a state-name fallback | Pre-made broken prefabs or a fall-apart clip; icons only from state names | The parts and their colliders already exist, so nothing is spawned and every model works the same way; physics makes each fall different. An explicit level survives state renames, and the fallback means no brain owner is blocked. Adding a field with a default changes no existing brain | S4 |
+| 2026-10-06 | The objective beacon shows while the game clock is Playing and no cutscene runs; its target rule lives in `ChapterFlow`, and `ChapterManager` exposes the result as `CurrentBeaconTarget` | Show it only after `OnCutsceneEnded("intro")`; let the beacon or the HUD each work out the target | Nothing plays the intro yet, so an intro-only gate would hide the beacon in every current build; the intro is a cutscene, so the game-state rule still hides it until the intro ends. One rule in the plain C# flow is tested without a scene, and the beacon and the HUD can never point at different things | S1 |
+| 2026-10-06 | The Control Room alarm beacons sit on the lintels of the two sealed doors, each with a red real-time light, as in the prototype; the Painting accent light becomes baked | Keep the beacons on the Control Room's back wall; add the door alarms as a fourth and fifth real-time light | The alarm marks the locked doors from the rooms the player is in, and the unlock is visible on camera in `ch3`. The plan allows 2-3 real-time point lights: Storage lamp plus two alarms is three, and the pink Painting fill looks the same baked | S1 |
+| 2026-10-06 | `LightingState` reacts to Critical signals only, swaps shared materials for the alarm, and never goes back to an earlier mood | Animate the lights in the Timelines; tint with a MaterialPropertyBlock | Signals also fire on skip, so the lights cannot be left red after a skipped `ch3`. A property block breaks the SRP Batcher (S3 measured +10 SetPass for four Saboteurs); two shared materials keep it. Moving forward only means a late or repeated signal cannot relock the doors' lights | S1 |
 
 ## 8. Greybox character model contract (S3)
 
