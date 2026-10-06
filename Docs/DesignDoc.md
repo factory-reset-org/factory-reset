@@ -238,7 +238,14 @@ Both write into a caller-owned list and allocate nothing once it has capacity.
 - smoothing and curving into a reused list allocate 0 bytes.
 
 ## 4. Grid
-<!-- Cell size, connectivity, GridChange events, Version -->
+
+- **Cells:** 0.5 m, eight-connected, no corner cutting. Built once by `GridManager.BuildGrid()` from the baked NavMesh (agent radius 0.55 m, height 3.25 m), so cells within the agent clearance of static walls are already unwalkable.
+- **Changes:** every edit goes through a `GridGraph.Batch` and raises one `Changed` event with the changed cells and a new `Version`. Brains replan only when a changed cell is on their route.
+- **Doors:** `GridManager.SetDoorClosed(doorId, closed)` updates every cell of a doorway at once. Closed doors block movement but carry sound (35 lost per door).
+- **Blockers (S1):** `GridManager.SetBlocker(ownerId, worldBounds)` blocks the cells under the bounds grown by the 0.55 m clearance, replacing what that owner blocked before in one change. `GridManager.ClearBlocker(ownerId)` releases them. Blocking is a per-cell count, so overlapping boxes keep a shared cell blocked until both have gone. Requests made before the grid exists are applied by the build.
+  - **Pushable boxes (S2):** call `ClearBlocker` on `OnBoxMoved` and `SetBlocker(id, collider.bounds)` on `OnBoxSettled`, plus once at start for a box that begins settled. Use positive owner ids.
+  - **Static props:** add a `GridFootprint` component (terminal, relays, anything solid outside the `Level` bake). It blocks its collider's bounds while enabled and uses negative owner ids.
+
 
 ## 5. Scenes and loading order
 

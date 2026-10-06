@@ -8,8 +8,9 @@ using ToyFactory.AI.Core.Grid;
 namespace ToyFactory.Runtime.World
 {
     /// <summary>
-    /// Builds and publishes the level's flat navigation grid when the scene loader asks.
-    /// This adapter handles static walkability only; dynamic occupancy is integrated separately.
+    /// Builds and publishes the level's flat navigation grid when the scene loader asks, and
+    /// applies everything that changes it afterwards: doors (<see cref="SetDoorClosed"/>) and
+    /// blockers such as pushed boxes and solid props (<see cref="SetBlocker"/>).
     /// </summary>
     public sealed class GridManager : MonoBehaviour
     {
@@ -27,10 +28,21 @@ namespace ToyFactory.Runtime.World
         [Tooltip("Maximum sample height difference from Origin.y; does not change cell heights.")]
         [SerializeField, Min(0f)] float verticalTolerance = 0.1f;
 
+        /// <summary>
+        /// Clearance added round a blocker's bounds, matching the NavMesh agent radius, so a box
+        /// blocks the same band of cells that a wall of the same size does after the bake.
+        /// </summary>
+        public const float BlockerClearance = 0.55f;
+
         static object s_session = new object();
+        // What each owner wants blocked, kept even before the grid exists (a box that settles,
+        // or a footprint that enables, before BuildGrid) and applied by the build.
+        static readonly Dictionary<int, Bounds> s_blockerRequests = new Dictionary<int, Bounds>();
         object _session;
         GridGraph _grid;
         Dictionary<int, Vector2Int[]> _doorCells;
+        // Cells each owner currently blocks in _grid, so moving or clearing undoes exactly them.
+        readonly Dictionary<int, Vector2Int[]> _blockerCells = new Dictionary<int, Vector2Int[]>();
         bool _building;
 
         /// <summary>The active owner. Its existence does not imply that the grid is ready.</summary>
@@ -63,6 +75,7 @@ namespace ToyFactory.Runtime.World
             }
             _grid = null;
             _doorCells = null;
+            _blockerCells.Clear();
         }
 
         void EnsureSession()
@@ -73,6 +86,7 @@ namespace ToyFactory.Runtime.World
             _session = s_session;
             _grid = null;
             _doorCells = null;
+            _blockerCells.Clear();
             _building = false;
         }
 
@@ -82,7 +96,95 @@ namespace ToyFactory.Runtime.World
             Instance = null;
             Current = null;
             Ready = null;
+            s_blockerRequests.Clear();
             s_session = new object();
+        }
+
+        /// <summary>
+        /// Blocks the cells under <paramref name="worldBounds"/> (inflated by
+        /// <see cref="BlockerClearance"/>) for <paramref name="ownerId"/>, replacing whatever that
+        /// owner blocked before. Old cells are released and new ones blocked in one batch, so the
+        /// grid raises one change per call; a call that changes nothing raises none. Blocking
+        /// counts per cell, so two overlapping boxes keep a cell blocked until both have gone.
+        /// Called before the grid is built, the request is kept and applied by the build.
+        /// </summary>
+        /// <remarks>
+        /// S2's PushableBox calls this on OnBoxSettled with a positive owner id of its choice;
+        /// GridFootprint uses negative ids for static props.
+        /// </remarks>
+        public static void SetBlocker(int ownerId, Bounds worldBounds)
+        {
+            s_blockerRequests[ownerId] = worldBounds;
+            if (Current == null || Instance == null) return;
+            Instance.ApplyBlocker(ownerId, CellsUnder(Current, worldBounds));
+        }
+
+        /// <summary>
+        /// Releases every cell <paramref name="ownerId"/> blocks, in one batch. Unknown owners are
+        /// a no-op. S2's PushableBox calls this on OnBoxMoved.
+        /// </summary>
+        public static void ClearBlocker(int ownerId)
+        {
+            s_blockerRequests.Remove(ownerId);
+            if (Current == null || Instance == null) return;
+            Instance.ApplyBlocker(ownerId, Array.Empty<Vector2Int>());
+        }
+
+        /// <summary>Cells <paramref name="ownerId"/> currently blocks in the built grid (empty if none).</summary>
+        public static IReadOnlyList<Vector2Int> BlockedCellsOf(int ownerId)
+        {
+            if (Instance != null && Instance._blockerCells.TryGetValue(ownerId, out Vector2Int[] cells))
+                return cells;
+            return Array.Empty<Vector2Int>();
+        }
+
+        void ApplyBlocker(int ownerId, Vector2Int[] cells)
+        {
+            _blockerCells.TryGetValue(ownerId, out Vector2Int[] old);
+            old = old ?? Array.Empty<Vector2Int>();
+            if (SameCells(old, cells)) return;
+
+            using (GridGraph.Batch batch = _grid.BeginBatch())
+            {
+                foreach (Vector2Int cell in old) batch.RemoveBlocker(cell);
+                foreach (Vector2Int cell in cells) batch.AddBlocker(cell);
+                batch.Commit();
+            }
+            if (cells.Length == 0) _blockerCells.Remove(ownerId);
+            else _blockerCells[ownerId] = cells;
+        }
+
+        /// <summary>
+        /// Grid cells whose centres lie inside <paramref name="bounds"/> grown by
+        /// <see cref="BlockerClearance"/> on X and Z, clamped to the grid. Pure: exposed for tests.
+        /// </summary>
+        public static Vector2Int[] CellsUnder(GridGraph graph, Bounds bounds)
+        {
+            float minX = bounds.min.x - BlockerClearance, maxX = bounds.max.x + BlockerClearance;
+            float minZ = bounds.min.z - BlockerClearance, maxZ = bounds.max.z + BlockerClearance;
+            Vector2Int low = graph.WorldToCell(new Vector3(minX, 0f, minZ));
+            Vector2Int high = graph.WorldToCell(new Vector3(maxX, 0f, maxZ));
+            int x0 = Mathf.Max(0, low.x), y0 = Mathf.Max(0, low.y);
+            int x1 = Mathf.Min(graph.Width - 1, high.x), y1 = Mathf.Min(graph.Height - 1, high.y);
+
+            var cells = new List<Vector2Int>();
+            for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++)
+            {
+                var cell = new Vector2Int(x, y);
+                Vector3 centre = graph.CellToWorld(cell);
+                if (centre.x >= minX && centre.x <= maxX && centre.z >= minZ && centre.z <= maxZ)
+                    cells.Add(cell);
+            }
+            return cells.ToArray();
+        }
+
+        static bool SameCells(Vector2Int[] a, Vector2Int[] b)
+        {
+            if (a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++)
+                if (a[i] != b[i]) return false;   // CellsUnder always lists cells in the same order
+            return true;
         }
 
         /// <summary>
@@ -137,6 +239,7 @@ namespace ToyFactory.Runtime.World
             _building = true;
             GridGraph graph;
             Dictionary<int, Vector2Int[]> doorCells;
+            var blockerCells = new Dictionary<int, Vector2Int[]>();
             try
             {
                 if (width <= 0 || height <= 0 || (long)width * height > int.MaxValue)
@@ -168,6 +271,13 @@ namespace ToyFactory.Runtime.World
                     foreach (DoorwayMarker marker in markers)
                     foreach (Vector2Int cell in doorCells[marker.DoorId])
                         batch.SetDoor(cell, marker.DoorId, marker.InitiallyClosed);
+                    // Footprints and boxes that asked before the grid existed join the same batch.
+                    foreach (KeyValuePair<int, Bounds> request in s_blockerRequests)
+                    {
+                        Vector2Int[] cells = CellsUnder(graph, request.Value);
+                        foreach (Vector2Int cell in cells) batch.AddBlocker(cell);
+                        if (cells.Length > 0) blockerCells[request.Key] = cells;
+                    }
                     if (supportedCells == 0)
                         throw new InvalidOperationException("No grid cell is supported by the selected NavMesh and sampling settings.");
                     batch.Commit();
@@ -180,6 +290,9 @@ namespace ToyFactory.Runtime.World
 
             _grid = graph;
             _doorCells = doorCells;
+            _blockerCells.Clear();
+            foreach (KeyValuePair<int, Vector2Int[]> entry in blockerCells)
+                _blockerCells.Add(entry.Key, entry.Value);
             Current = graph;
             // Publication has succeeded even if a consumer's event handler throws.
             Ready?.Invoke(graph);
