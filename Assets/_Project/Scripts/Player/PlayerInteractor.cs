@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using ToyFactory.Interaction;
@@ -7,10 +9,17 @@ namespace ToyFactory.Player
 {
     /// <summary>
     /// Lets the player use what they are looking at: on Interact it casts a short ray from
-    /// the camera and calls <see cref="IInteractable.Interact"/> on what it hits.
+    /// the camera and calls <see cref="IInteractable.Interact"/> on the nearest usable thing.
     /// </summary>
+    /// <remarks>
+    /// The ray passes through triggers that are not usable (room volumes, doorway markers)
+    /// and stops at the first solid object, so nothing can be used through a wall.
+    /// </remarks>
     public sealed class PlayerInteractor : MonoBehaviour
     {
+        static readonly IComparer<RaycastHit> ByDistance =
+            Comparer<RaycastHit>.Create((a, b) => a.distance.CompareTo(b.distance));
+
         [Tooltip("Shared Input Actions asset. Must contain a 'Player' map with an Interact action.")]
         [SerializeField] InputActionAsset inputActions;
 
@@ -19,9 +28,10 @@ namespace ToyFactory.Player
 
         [SerializeField, Min(0.1f)] float reach = 2.5f;
 
-        [Tooltip("Layers the ray can hit. Anything solid in front of an interactable blocks it.")]
+        [Tooltip("Layers the ray can hit.")]
         [SerializeField] LayerMask interactMask = Physics.DefaultRaycastLayers;
 
+        readonly RaycastHit[] _hits = new RaycastHit[8];
         InputAction _interactAction;
 
         void Awake()
@@ -33,18 +43,28 @@ namespace ToyFactory.Player
 
         void Update()
         {
-            // The lookup below only runs on the frame the key goes down, never every frame.
+            // The lookups below only run on the frame the key goes down, never every frame.
             if (!_interactAction.WasPressedThisFrame())
                 return;
             if (GameClock.Current != null && GameClock.Current.State != GameState.Playing)
                 return;
-            if (!Physics.Raycast(aim.position, aim.forward, out RaycastHit hit, reach, interactMask,
-                    QueryTriggerInteraction.Ignore))
-                return;
 
-            IInteractable target = hit.collider.GetComponentInParent<IInteractable>();
-            if (target != null)
-                target.Interact();
+            int count = Physics.RaycastNonAlloc(aim.position, aim.forward, _hits, reach, interactMask,
+                QueryTriggerInteraction.Collide);
+            Array.Sort(_hits, 0, count, ByDistance);
+
+            for (int i = 0; i < count; i++)
+            {
+                Collider hit = _hits[i].collider;
+                IInteractable target = hit.GetComponentInParent<IInteractable>();
+                if (target != null)
+                {
+                    target.Interact();
+                    return;
+                }
+                if (!hit.isTrigger)
+                    return;   // something solid is in the way
+            }
         }
     }
 }
