@@ -14,6 +14,8 @@ GameObject:
   - component: {fileID: 8290627080012992370}
   - component: {fileID: 6738969916081812476}
   - component: {fileID: 2358035611716374269}
+  - component: {fileID: 4947976135915116715}
+  - component: {fileID: 7160851386128979493}
   m_Layer: 11
   m_Name: Agent_GuardBot
   m_TagString: Untagged
@@ -130,6 +132,40 @@ MonoBehaviour:
   lineMaterial: {fileID: 2100000, guid: f7a1b61649e9f404b8a6efe2fac01eb8, type: 2}
   aimColour: {r: 1, g: 0.25, b: 0.2, a: 0.6}
   tracerColour: {r: 1, g: 0.9, b: 0.4, a: 1}
+--- !u!114 &4947976135915116715
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1436568227419779139}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e722a24db0bd39140b3c205bf825c152, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentFallApart
+  model: {fileID: 6705865121344752329}
+  reassembleSeconds: 1
+  burstSpeed: 2.5
+  scrapLingerSeconds: 2
+  scrapShrinkSeconds: 1
+--- !u!114 &7160851386128979493
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1436568227419779139}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6fccee21ed4872a49b6245b387d3bc3a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AlertIcon
+  height: 2.8500001
+  size: 0.12
+  popSeconds: 0.25
+  suspiciousColour: {r: 1, g: 0.85, b: 0.2, a: 1}
+  alertColour: {r: 1, g: 0.25, b: 0.2, a: 1}
 --- !u!1001 &5722044532394225745
 PrefabInstance:
   m_ObjectHideFlags: 0
