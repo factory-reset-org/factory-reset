@@ -14,7 +14,7 @@ GameObject:
   - component: {fileID: 5172471769490426685}
   - component: {fileID: 6835292230290014988}
   - component: {fileID: 1142842270313622872}
-  m_Layer: 0
+  m_Layer: 11
   m_Name: Agent_SaboteurBot
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -90,6 +90,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Agents.AgentController
   smoothPaths: 1
+  hitPoints: 2
+  knockOutSeconds: 0
+  scrapWhenDown: 1
 --- !u!114 &6835292230290014988
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -104,6 +107,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentAnimatorBridge
   animator: {fileID: 4458622914453848836}
   dampTime: 0.1
+  aimBlendTime: 0.1
 --- !u!114 &1142842270313622872
 MonoBehaviour:
   m_ObjectHideFlags: 0
