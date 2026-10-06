@@ -85,7 +85,9 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual("ch4", Array.Find(all, c => c.SwitchNumber == 3).Id);
             CollectionAssert.AreEquivalent(new[] { CutsceneSignals.CaptainWake, CutsceneSignals.ControlRoomUnlock },
                 Array.Find(all, c => c.Id == "ch3").CriticalSignals);
-            Assert.AreEqual(GameState.Results, Array.Find(all, c => c.Trigger == CutsceneTrigger.ConsoleCompleted).StateAfter);
+            CutsceneDefinition ending = Array.Find(all, c => c.Trigger == CutsceneTrigger.ConsoleCompleted);
+            Assert.AreEqual(GameState.Results, ending.StateAfter);
+            CollectionAssert.AreEqual(new[] { CutsceneSignals.FactoryShutdown }, ending.CriticalSignals);
         }
 
         [Test]
@@ -249,6 +251,23 @@ namespace ToyFactory.Tests.EditMode
 
             Assert.AreEqual("ended:ending@Cutscene", _log[_log.Count - 1]);
             Assert.AreEqual(GameState.Results, _clock.State);
+        }
+
+        [Test]
+        public void SkippedEndingStillShutsTheFactoryDown()
+        {
+            CutsceneRunner runner = Create();
+            runner.RequestForTrigger(CutsceneTrigger.ConsoleCompleted, 0f);
+            runner.Tick(0f);
+
+            runner.Skip();
+
+            CollectionAssert.AreEqual(new[]
+            {
+                "started:ending",
+                "signal:" + CutsceneSignals.FactoryShutdown,
+                "ended:ending@Cutscene",
+            }, _log, "The lights go down before the results screen, even when skipped.");
         }
 
         [Test]
