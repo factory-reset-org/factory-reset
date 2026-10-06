@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using ToyFactory.Interfaces;
+using ToyFactory.Runtime.World;
 
 namespace ToyFactory.Interaction
 {
@@ -15,8 +16,10 @@ namespace ToyFactory.Interaction
     /// A door that swings or slides open, stops and retries if something blocks its path
     /// instead of reversing, and raises <see cref="StateChanged"/> when it settles fully
     /// open or closed. <see cref="ISabotageable.Execute"/> closes it, for the Saboteur.
+    /// The player toggles it with Interact. It tells the level grid when it stops being
+    /// passable, so agents never plan a route through a closed door.
     /// </summary>
-    public sealed class Door : MonoBehaviour, IDoor, ISabotageable
+    public sealed class Door : MonoBehaviour, IDoor, ISabotageable, IInteractable
     {
         enum State
         {
@@ -45,6 +48,10 @@ namespace ToyFactory.Interaction
         [SerializeField] Vector3 blockCheckHalfExtents = new Vector3(0.5f, 1f, 0.1f);
         [SerializeField] LayerMask blockingMask;
         [SerializeField, Min(0.05f)] float retryInterval = 0.5f;
+
+        [Header("Grid")]
+        [Tooltip("The DoorwayMarker.DoorId of the doorway this door stands in. -1 = not linked to the grid.")]
+        [SerializeField] int doorId = -1;
 
         State _state = State.Closed;
         Quaternion _closedRotation;
@@ -79,8 +86,21 @@ namespace ToyFactory.Interaction
         [ContextMenu("Close")]
         public void Close()
         {
-            if (_state == State.Open || _state == State.Opening)
-                _state = State.Closing;
+            if (_state != State.Open && _state != State.Opening)
+                return;
+
+            // Blocked for agents from the moment it starts closing, not once it has shut.
+            _state = State.Closing;
+            SetGridClosed(true);
+        }
+
+        /// <summary>Player use: opens a closed door and closes an open one.</summary>
+        public void Interact()
+        {
+            if (_state == State.Closed || _state == State.Closing)
+                Open();
+            else
+                Close();
         }
 
         /// <summary>Saboteur action: close the door.</summary>
@@ -120,6 +140,10 @@ namespace ToyFactory.Interaction
             if (reached)
             {
                 _state = settledState;
+                if (settledState == State.Open)
+                    SetGridClosed(false);   // passable only once fully open
+                else
+                    EmitSlam();
                 StateChanged?.Invoke(this);
             }
         }
@@ -136,6 +160,20 @@ namespace ToyFactory.Interaction
             Vector3 goal = target ? _openPosition : _closedPosition;
             movingPart.localPosition = Vector3.MoveTowards(movingPart.localPosition, goal, speed * Time.deltaTime);
             return movingPart.localPosition == goal;
+        }
+
+        void SetGridClosed(bool closed)
+        {
+            if (doorId >= 0 && GridManager.Current != null)
+                GridManager.SetDoorClosed(doorId, closed);
+        }
+
+        void EmitSlam()
+        {
+            float time = GameClock.Current != null ? GameClock.Current.GameTime : Time.time;
+            // The object's hash keeps each door a distinct emitter: small ids belong to agents
+            // and -1 means the player.
+            NoiseEvents.Emit(new NoiseEvent(movingPart.position, NoiseLoudness.DoorSlam, GetHashCode(), time));
         }
 
         bool IsBlocked() =>
