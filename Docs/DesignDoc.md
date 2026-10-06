@@ -403,6 +403,7 @@ The journey's rules live in the plain C# `ChapterFlow` (Journey assembly); `Chap
 - **Objectives** (`ObjectiveEvents.RaiseTargetsChanged`, after every change): each incomplete task of the active chapter at 100 + objectiveId, each switch not yet restored (sealed or not) at 200 + n, and the console at 300 until it is used. Never batteries. A target on a moving prop is re-raised with the same id.
 - **Relays:** the order is random per run, chosen in `Begin()` and announced with `ChapterEvents.OnSequenceChosen("ch3.relays", order)` for the relay prop and the HUD; the objective follows the next relay as the prop reports progress.
 - **Data:** `Assets/_Project/Data/Chapters/` (four `ChapterDefinition`s, thirteen `TaskDefinition`s). The task ids there are the ids the props must use.
+- **Story:** [Story.md](Story.md) has the chapter beats, each task's HUD text (the same as `TaskDefinition.displayName`), the chapter card text and the full cutscene script.
 
 ## 7. Decision log
 
