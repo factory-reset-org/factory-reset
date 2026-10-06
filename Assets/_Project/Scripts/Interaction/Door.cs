@@ -1,6 +1,8 @@
 using System;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using ToyFactory.Interfaces;
+using ToyFactory.Runtime.World;
 
 namespace ToyFactory.Interaction
 {
@@ -15,8 +17,10 @@ namespace ToyFactory.Interaction
     /// A door that swings or slides open, stops and retries if something blocks its path
     /// instead of reversing, and raises <see cref="StateChanged"/> when it settles fully
     /// open or closed. <see cref="ISabotageable.Execute"/> closes it, for the Saboteur.
+    /// The player toggles it with Interact. It tells the level grid when it stops being
+    /// passable, so agents never plan a route through a closed door.
     /// </summary>
-    public sealed class Door : MonoBehaviour, IDoor, ISabotageable
+    public sealed class Door : MonoBehaviour, IDoor, ISabotageable, IInteractable
     {
         enum State
         {
@@ -46,6 +50,13 @@ namespace ToyFactory.Interaction
         [SerializeField] LayerMask blockingMask;
         [SerializeField, Min(0.05f)] float retryInterval = 0.5f;
 
+        [Header("Grid")]
+        [Tooltip("The DoorwayMarker.DoorId of the doorway this door stands in. -1 = not linked to the grid.")]
+        [SerializeField] int doorId = -1;
+
+        [Tooltip("Start fully open. Must match the doorway marker's Initially Closed setting, which is what the grid starts from.")]
+        [SerializeField] bool startOpen;
+
         State _state = State.Closed;
         Quaternion _closedRotation;
         Quaternion _openRotation;
@@ -67,6 +78,18 @@ namespace ToyFactory.Interaction
             _openRotation = _closedRotation * Quaternion.Euler(0f, openAngle, 0f);
             _closedPosition = movingPart.localPosition;
             _openPosition = _closedPosition + openOffset;
+            CreateUseZone();
+
+            // The panel is placed closed in the scene; a door that starts open jumps to its
+            // open pose here. The grid already has it open, from the doorway marker.
+            if (startOpen)
+            {
+                if (mode == DoorMode.Swing)
+                    MoveSwing(target: true, maxStep: float.PositiveInfinity);
+                else
+                    MoveSlide(target: true, maxStep: float.PositiveInfinity);
+                _state = State.Open;
+            }
         }
 
         [ContextMenu("Open")]
@@ -79,8 +102,21 @@ namespace ToyFactory.Interaction
         [ContextMenu("Close")]
         public void Close()
         {
-            if (_state == State.Open || _state == State.Opening)
-                _state = State.Closing;
+            if (_state != State.Open && _state != State.Opening)
+                return;
+
+            // Blocked for agents from the moment it starts closing, not once it has shut.
+            _state = State.Closing;
+            SetGridClosed(true);
+        }
+
+        /// <summary>Player use: opens a closed door and closes an open one.</summary>
+        public void Interact()
+        {
+            if (_state == State.Closed || _state == State.Closing)
+                Open();
+            else
+                Close();
         }
 
         /// <summary>Saboteur action: close the door.</summary>
@@ -113,29 +149,76 @@ namespace ToyFactory.Interaction
                 return;
             }
 
+            float step = speed * Time.deltaTime;
             bool reached = mode == DoorMode.Swing
-                ? MoveSwing(target)
-                : MoveSlide(target);
+                ? MoveSwing(target, step)
+                : MoveSlide(target, step);
 
             if (reached)
             {
                 _state = settledState;
+                if (settledState == State.Open)
+                    SetGridClosed(false);   // passable only once fully open
+                else
+                    EmitSlam();
                 StateChanged?.Invoke(this);
             }
         }
 
-        bool MoveSwing(bool target)
+        bool MoveSwing(bool target, float maxStep)
         {
             Quaternion goal = target ? _openRotation : _closedRotation;
-            movingPart.localRotation = Quaternion.RotateTowards(movingPart.localRotation, goal, speed * Time.deltaTime);
+            movingPart.localRotation = Quaternion.RotateTowards(movingPart.localRotation, goal, maxStep);
             return movingPart.localRotation == goal;
         }
 
-        bool MoveSlide(bool target)
+        bool MoveSlide(bool target, float maxStep)
         {
             Vector3 goal = target ? _openPosition : _closedPosition;
-            movingPart.localPosition = Vector3.MoveTowards(movingPart.localPosition, goal, speed * Time.deltaTime);
+            movingPart.localPosition = Vector3.MoveTowards(movingPart.localPosition, goal, maxStep);
             return movingPart.localPosition == goal;
+        }
+
+        // A trigger the size of the closed panel, left in the doorway. Without it an open
+        // door could not be closed: its panel has moved out of the player's reach.
+        void CreateUseZone()
+        {
+            Transform panel = movingPart;
+            var zone = new GameObject(name + "_UseZone");
+            zone.layer = panel.gameObject.layer;
+            zone.transform.SetPositionAndRotation(panel.position, panel.rotation);
+            zone.transform.localScale = panel.lossyScale;
+
+            // Parented to something that does not move with the panel.
+            Transform anchor = panel == transform ? transform.parent : transform;
+            if (anchor != null)
+                zone.transform.SetParent(anchor, true);
+            else
+                SceneManager.MoveGameObjectToScene(zone, gameObject.scene);
+
+            BoxCollider box = zone.AddComponent<BoxCollider>();
+            box.isTrigger = true;
+            if (panel.TryGetComponent(out BoxCollider panelCollider))
+            {
+                box.center = panelCollider.center;
+                box.size = panelCollider.size;
+            }
+
+            zone.AddComponent<DoorUseZone>().Bind(this);
+        }
+
+        void SetGridClosed(bool closed)
+        {
+            if (doorId >= 0 && GridManager.Current != null)
+                GridManager.SetDoorClosed(doorId, closed);
+        }
+
+        void EmitSlam()
+        {
+            float time = GameClock.Current != null ? GameClock.Current.GameTime : Time.time;
+            // The object's hash keeps each door a distinct emitter: small ids belong to agents
+            // and -1 means the player.
+            NoiseEvents.Emit(new NoiseEvent(movingPart.position, NoiseLoudness.DoorSlam, GetHashCode(), time));
         }
 
         bool IsBlocked() =>
