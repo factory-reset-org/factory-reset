@@ -147,6 +147,38 @@ Listeners (scoring, the HUD, the Saboteur squad) subscribe in `OnEnable` and uns
 
 **Why the listeners are cleared on play:** domain reload is turned off in this project (Enter Play Mode Options), so static fields keep their values between play sessions. A listener left over from the last session would be called on a destroyed object. `AgentEvents` clears every event with `[RuntimeInitializeOnLoadMethod(SubsystemRegistration)]` at the start of each session.
 
+### 2.8 Agent animation (S4, implemented)
+
+Each agent type has its own body prefab, `Prefabs/Agents/Agent_<Model>`. The spawner picks one per type from its `bodies` list, and the placeholder capsule is the fallback.
+
+| Part | What it is |
+| --- | --- |
+| Root | `CharacterController` sized to the measured body (Tracker 0.50 / 1.40 m, Saboteur 0.45 / 1.60, Guard 0.55 / 2.45, Captain 0.55 / 3.25), with the pivot at the feet. Also `AgentPathFollower`, `AgentController` and `AgentAnimatorBridge` |
+| Model | S3's prefab from `Prefabs/Characters`, nested unchanged. An `Animator` is added on the nested instance as an override, so S3's prefab is never edited |
+| Spinners | `WheelSpinner` (Tracker's four wheels, the Saboteur's one) and `WindUpKeySpinner` (Tracker's key) |
+
+**Blend tree:** each agent's controller has one state, a 2D Freeform Cartesian Blend Tree over `Speed` (m/s) and `TurnRate` (°/s, positive = right), with five looping clips:
+
+| Clip | Position (Speed, TurnRate) |
+| --- | --- |
+| Idle | (0, 0) |
+| Walk | (walk speed, 0) |
+| Run | (run speed, 0) |
+| LeanLeft | (run speed, −180) |
+| LeanRight | (run speed, +180) |
+
+The walk and run speeds are the brains' own speeds (Tracker 1.9 / 4.6, Saboteur 2.2 / 4.3, Captain 2.5 / 4.6; the Guard uses 2 / 4 until its brain exists). The lean clips are the run plus a roll into the turn. Every clip of an agent keys the same channels, so blending never pulls a pivot towards a default.
+
+**Feeding the tree:** `AgentAnimatorBridge` copies `Speed` and `TurnRate` from `IAgentState` in `LateUpdate`, after the path follower has moved, with 0.1 s damping so speed changes do not pop. While the agent is frozen, knocked out or scrapped, both go to 0, so it settles into Idle instead of walking on the spot. The brain never sees the Animator.
+
+**Clips as sine waves:** every clip is written as sine waves on the frozen pivots (`value = offset + amplitude · sin(2π(cycles · t/L + phase))`) by `ToyFactory.Editor.Animation.AgentAnimationBuilder` (menu Factory Reset → Animation → Build Agent Animations). Whole cycles per clip make every loop seamless. The numbers are in `AgentMotionLibrary`, so a change is one edit and a rebuild. The builder updates clips, controllers and prefabs in place, so GUIDs and scene references survive. It refuses to write a clip if a pivot path is missing from the model.
+
+**Captain stride:** a hip swing of ±θ moves a boot 2·l·sin θ per step for a 1.08 m leg. One cycle is two steps, so the cycle that keeps the boots from sliding at speed v is `L = 2 · 2·l·sin θ / v`: 0.65 s for the walk (±22° at 2.5 m/s) and 0.54 s for the run (±35° at 4.6 m/s).
+
+**Wheels and key in code, not clips:** a wheel of radius r rolling distance d turns `d / r` radians (rolling without slipping), so `WheelSpinner` turns each wheel by `Speed · Δt / r` every frame. A clip could only match one speed and would visibly slip at every other. `WindUpKeySpinner` turns the key at 180°/s × energy, so it slows as the Tracker runs down, and at −720°/s while it rewinds. It reads the brain's energy through `IWindUpState` (AI.Core), copied by `AgentController.WindUp`. Wheel and key pivots are never keyed in clips, so the Animator never fights the code.
+
+**Not done yet:** the attack and fall-apart poses (`IsAttacking` and `IsDead` are already parameters), the Guard's tread scroll, and Unit 047's cutscene clips.
+
 ## 3. Search contracts
 <!-- ICostModel, PathResult, IPathfinder -->
 
@@ -334,6 +366,7 @@ The journey's rules live in the plain C# `ChapterFlow` (Journey assembly); `Chap
 | 2026-10-05 | The cutscene director keeps its rules in a plain C# runner behind a small playback interface; cutscenes without a Timeline hold for a placeholder time; every listed Critical signal fires at the end as well as on skip | Put the logic in the MonoBehaviour; block the journey until each Timeline exists; fire missed signals only on skip | The runner is tested without Unity (EditMode) and the PlayableDirector part with one real Timeline (PlayMode). Placeholders let the team play the whole journey now. Firing missed signals at the end too means a Timeline with a forgotten marker still wakes the Captain | S4 |
 | 2026-10-05 | The Captain's prediction reaches the blackboard through an `IGoalPredictor` interface that the controller copies after each tick; the wake reaches the brain as a blackboard flag set by a Runtime writer; the Captain also wakes once Chapter 3 has started | Let the brain write `PredictedGoal` itself; let the brain listen to cutscene events; wake only on the signal | Only Runtime writes the blackboard, and brains cannot see the Interfaces events, so both crossings go through Runtime, like `IDropsItems`. The chapter fallback means a missed or reordered signal can never leave the boss asleep for the chapters it guards | S4 |
 | 2026-10-05 | The four Saboteur colours come from one mesh and one material: `SaboteurTint` (`Scripts/Runtime/Visuals/`, `ToyFactory.Runtime.Visuals`) reads the squad slot in `Start` from the `IAgentState` above it and writes the Art Bible tint into a `MaterialPropertyBlock` on the body slot only (`SetPropertyBlock(block, materialIndex)`); it does nothing unless that agent is a Saboteur with a squad slot | `renderer.material` per instance; four material assets (`Saboteur_A` to `Saboteur_D`) assigned to the body slot; four prefab variants; a tint in the shader keyed by an id | The spawner uses one shared body for every agent type for now, so the component must be inert on any other agent, and `renderer.material` would make a copy per renderer that has to be destroyed. A property block copies nothing, runs nothing after `Start` and needs no change to S4's spawner or controller. It costs SRP Batcher compatibility on the tinted renderer: four Saboteurs drew with 19 SetPass calls against 9 for one shared material or for four materials (see the Optimisation Log), so four pre-made material assets are the cheaper alternative if SetPass calls ever matter | S3 (agreed with S4 on 2026-10-04 and 2026-10-05) |
+| 2026-10-06 | Agent clips are generated from sine-wave specs by an editor builder; one 2D Blend Tree over Speed and TurnRate per agent; wheels and the wind-up key turn in code; bodies nest S3's model prefabs | Hand-key every clip in the Animation window; separate lean layers; keyed wheel spin; copy the models into new prefabs | Every number in a clip is written down and explainable, and a rebuild is one click, so tuning in the level is quick. One tree blends speed and lean together without layers fighting over the same pivot. Code-driven wheels match any speed exactly. Nesting keeps S3's prefabs and their colliders the single source of truth | S4 |
 
 ## 8. Greybox character model contract (S3)
 
