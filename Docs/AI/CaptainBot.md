@@ -43,7 +43,7 @@ The Captain is a finite-state machine built on the shared FSM framework: each st
 | **Observe** | Prediction is too uncertain to commit. Watches the player and backs off 4 m whenever they come within 8 m, so it never simply chases while the prediction settles. |
 | **Intercept** | Confident about `g*`. Picks the first chokepoint on the player's predicted route it can reach at least 1 s before them, and walks there with A*. If no cell qualifies, it heads to `g*` itself to defend it. |
 | **Ambush** | At the intercept cell. Stands still, facing the route cell the player will arrive from. Holds its ground while the cell is still ahead of the player on their predicted route. |
-| **Engage** | Player is in view within 10 m (a 70° half-angle cone, or anywhere within 2.5 m, with line of sight traced on the grid). Faces the player and fires a shot every 1.2 s, each after a 0.3 s aim telegraph. |
+| **Engage** | Player is in view within 10 m (a 70° half-angle cone, or anywhere within 2.5 m, with line of sight traced on the grid). Faces the player and asks for a shot every 1.2 s; the body's weapon aims for 0.3 s (the telegraph, the same for every agent) before each hitscan shot. |
 | **Reassess** | Something invalidated the plan. Discards the current intercept cell, re-runs goal inference immediately, then hands over to Observe or Intercept. Lasts one decision tick. |
 | **Stunned** | Knocked out. The controller owns the 6 s reboot and does not tick the brain meanwhile; the brain drops its plan and prediction at once. On the first tick after the reboot it passes straight through to Reassess. |
 
@@ -297,7 +297,7 @@ Implemented: `CaptainBrainTests` (16 tests), on a three-room level with two goal
 | `ReachingTheCellTurnsToAmbushFacingTheWayThePlayerComes` | Intercept → Ambush, facing the approach |
 | `AmbushHoldsWhileTheCellIsStillAheadOfThePlayer` | No creeping towards the player while waiting |
 | `TaskCompletedMidInterceptDropsThePlanAndRepredicts` | A goal leaving the objectives sends the Captain to Reassess and onto the other goal |
-| `PlayerInViewWithinTenMetresIsEngagedAfterTheAimTelegraph` | Engage, then a shot only after 0.3 s, then the 1.2 s interval |
+| `PlayerInViewWithinTenMetresIsEngagedOneShotPerInterval` | Engage asks for a shot at once (the body adds the 0.3 s telegraph), then one per 1.2 s |
 | `PlayerOutOfRangeOrBehindAWallIsNotEngaged` | The 10 m range and grid line of sight |
 | `LosingSightForLongerThanTheDelayEndsTheEngagement` | Engage → Reassess after 0.7 s out of sight |
 | `StunDropsThePredictionAndReassessesAfterTheReboot` | Stunned and Reassess pass straight through after the reboot |
