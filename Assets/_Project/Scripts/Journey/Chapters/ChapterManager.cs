@@ -47,6 +47,16 @@ namespace ToyFactory.Journey.Chapters
         /// <summary>The objective list as last published.</summary>
         public IReadOnlyList<ObjectiveTargetInfo> Objectives => _objectives;
 
+        /// <summary>
+        /// Where the objective beacon stands and what the HUD shows: the first incomplete task
+        /// of the active chapter, then its unsealed switch (see <see cref="ChapterFlow.TryGetBeaconTarget"/>).
+        /// Null before <see cref="Begin"/>, between chapters and after the ending.
+        /// </summary>
+        public BeaconTarget? CurrentBeaconTarget { get; private set; }
+
+        /// <summary>Raised when <see cref="CurrentBeaconTarget"/> changes target or moves.</summary>
+        public event Action BeaconTargetChanged;
+
         readonly Dictionary<string, ITaskAnchor> _anchors = new Dictionary<string, ITaskAnchor>();
         readonly Dictionary<string, ITask> _props = new Dictionary<string, ITask>();
         readonly List<Subscription> _subscriptions = new List<Subscription>();
@@ -189,6 +199,18 @@ namespace ToyFactory.Journey.Chapters
             _tracked.Clear();
             Flow.BuildObjectives(_objectives, this);
             ObjectiveEvents.RaiseTargetsChanged(_objectives);
+            UpdateBeaconTarget();
+        }
+
+        void UpdateBeaconTarget()
+        {
+            BeaconTarget? next = Flow.TryGetBeaconTarget(this, out BeaconTarget target) ? target : (BeaconTarget?)null;
+            BeaconTarget? previous = CurrentBeaconTarget;
+            if (next.HasValue == previous.HasValue &&
+                (!next.HasValue || (next.Value.Id == previous.Value.Id && next.Value.Position == previous.Value.Position)))
+                return;
+            CurrentBeaconTarget = next;
+            BeaconTargetChanged?.Invoke();
         }
 
         void HandleCutsceneEnded(string cutsceneId) => Flow?.CutsceneEnded(cutsceneId);

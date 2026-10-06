@@ -370,6 +370,52 @@ namespace ToyFactory.Journey.Chapters
         }
 
         /// <summary>
+        /// The single target the objective beacon marks: the first incomplete task of the
+        /// active chapter, in the chapter's data order; once all its tasks are done, its
+        /// unsealed switch. Chapter 4 lists the cores before the console, so the console comes
+        /// last. A task the locator cannot place yet (the keycard before it drops) is passed
+        /// over for the next one. False before <see cref="Begin"/>, between chapters (while the
+        /// cutscene plays) and once the journey is finished.
+        /// </summary>
+        public bool TryGetBeaconTarget(IObjectiveLocator locator, out BeaconTarget target)
+        {
+            if (locator == null) throw new ArgumentNullException(nameof(locator));
+            target = default;
+            if (!_begun)
+                return false;
+
+            Vector3 position;
+            foreach (Run run in _runs)
+            {
+                if (run.Phase == ChapterPhase.Active)
+                {
+                    foreach (TaskDefinition task in run.Definition.Tasks)
+                    {
+                        if (_completed.Contains(task.TaskId) ||
+                            !locator.TryLocate(task.TaskId, AnchorFor(task), out position))
+                            continue;
+                        bool console = task == _console;
+                        target = new BeaconTarget(console ? ConsoleTargetId : TaskTargetIdBase + task.ObjectiveId, position,
+                            console ? ObjectiveKind.Console : ObjectiveKind.Task, task.TaskId, task.DisplayName);
+                        return true;
+                    }
+                    return false;
+                }
+
+                if (run.Phase == ChapterPhase.TasksDone && run.Definition.HasSwitch && !run.SwitchFlipped)
+                {
+                    string id = SwitchTaskPrefix + run.Definition.SwitchNumber;
+                    if (!locator.TryLocate(id, id, out position))
+                        return false;
+                    target = new BeaconTarget(SwitchTargetIdBase + run.Definition.SwitchNumber, position,
+                        ObjectiveKind.Switch, id, $"Restore the {run.Definition.Area} switch");
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
         /// The anchor that shows <paramref name="task"/>'s objective now: for an in-order task,
         /// the next item's anchor ("ch3.relay" + "." + item); otherwise its own anchor id.
         /// </summary>
