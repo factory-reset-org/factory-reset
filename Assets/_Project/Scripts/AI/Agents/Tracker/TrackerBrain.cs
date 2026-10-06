@@ -29,7 +29,7 @@ namespace ToyFactory.AI.Agents.Tracker
     /// <para><b>Time.</b> Every timer uses <c>ctx.Time</c> (game time), so cutscenes and pause
     /// freeze them. Stuns are owned by the controller: see <see cref="OnStunned"/>.</para>
     /// </remarks>
-    public sealed partial class TrackerBrain : IAgentBrain
+    public sealed partial class TrackerBrain : IAgentBrain, IWindUpState
     {
         // Speeds in m/s, from the prototype's 3.5 m/s base speed.
         public const float PatrolSpeed = 1.9f;
