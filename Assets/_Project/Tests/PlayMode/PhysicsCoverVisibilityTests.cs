@@ -103,6 +103,29 @@ namespace ToyFactory.Tests
         }
 
         [Test]
+        public void HitboxesOnTheAgentsLayerAreNotCover()
+        {
+            int agents = LayerMask.NameToLayer("Agents");
+            Assert.GreaterOrEqual(agents, 0, "The Agents layer must exist in Tags and Layers.");
+            SpawnBox(height: 3f);
+            _spawned[0].layer = agents;
+
+            Assert.IsFalse(_visibility.IsBlocked(_cell, CoverEvaluator.ChestHeight));
+        }
+
+        [Test]
+        public void EnvironmentAndPushableLayersAreCover()
+        {
+            SpawnBox(height: 3f);
+
+            _spawned[0].layer = LayerMask.NameToLayer("Environment");
+            Assert.IsTrue(_visibility.IsBlocked(_cell, CoverEvaluator.ChestHeight));
+
+            _spawned[0].layer = LayerMask.NameToLayer("Pushable");
+            Assert.IsTrue(_visibility.IsBlocked(_cell, CoverEvaluator.ChestHeight));
+        }
+
+        [Test]
         public void TriggersAreNotCover()
         {
             SpawnBox(height: 3f);
