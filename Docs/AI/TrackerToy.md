@@ -131,6 +131,24 @@ The icon no longer depends on the state names.
 
 **Graph changes.** `OnGraphChanged` replans only when a changed cell lies on the current route, or is the closed door the route stops at (it may have opened). Other changes cost nothing. While waiting, WaitAtDoor also checks the door every tick and goes back to Chase as soon as it opens.
 
+### Debug overlay (F3)
+
+`Runtime/Debug/TrackerOverlayLayer.cs` is a layer on S4's debug overlay. It registers itself on scene load, so S4's overlay needs no edits. S4's base layer already labels the Tracker's leaf state and "?"/"!" and draws the route its body is walking. The Tracker layer adds:
+
+| Drawn | Shows |
+| --- | --- |
+| Label under its feet | Top state (Calm, Hunting, Rewind, Stunned) and spring energy, with "rewinding, hits x2" during Rewind |
+| Orange cell path | The GBFS route the brain planned (`RouteCells`) |
+| Noise cells with labels | Every remembered noise and its decayed score. The one it would follow is linked to the Tracker; repeating sources are pink, handled ones grey |
+| Red cell "last seen" | The player's last known position while hunting |
+| Red double cell "shut door" | The door it is waiting at (`BlockingDoorCell`) |
+| Three yellow circles | The Search rings (1.5, 3 and 4.5 m) round `SearchCentre` |
+| Heatmap dots | How the latest noise in the level spread: cold (just audible) to hot (at the source), for 4 s |
+
+The heatmap is the hearing model made visible. The layer listens to `NoiseEvents` and runs its own `NoisePropagation` once per new noise, or again if the grid changes; it does not run every frame. It draws every other cell (1 m apart), so walls, corners and the −35 at a closed door show as gaps and colour steps.
+
+Reading the brain never changes it: `NoiseMemory.CopyTo` lists noises without forgetting decayed ones, which the brain's own queries do. Tests: `TrackerOverlayLayerTests` (PlayMode, 3), `CopyToListsEveryRememberedSourceWithItsFlags`, `CopyToLeavesOutDecayedNoisesAndChangesNothing` and `TheOverlayCanReadTheRouteNoisesLastSightingAndSearchCentre` (EditMode).
+
 ## Why this architecture over the alternatives
 
 GBFS fits the Tracker's eager "sniffing toward a sound" behaviour. It is expected to expand fewer nodes than A* in open rooms, but it can take longer or slightly wandering routes around obstacles. That trade-off is acceptable for this scout and can make its pursuit less predictable. Fewer expansions are an expectation to test, not a measured result or a guarantee for every map.
@@ -264,7 +282,7 @@ For an otherwise equivalent noise aged 5 seconds, the multiplier is `exp(-0.3 * 
 
 `Tests/EditMode/CompositeStateTests.cs` (6): the child is entered and ticked inside the parent, child transitions run inside it, leaving exits the running child first, re-entry restarts at the initial child, and a child that never ran is never exited.
 
-Full suites after the closed-door change: EditMode 725/725, PlayMode 130/130.
+Full suites after the debug overlay layer: EditMode 728/728, PlayMode 138/138.
 
 ### Planned S1 delivery schedule
 

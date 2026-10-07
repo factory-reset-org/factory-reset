@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace ToyFactory.AI.Agents.Tracker
@@ -17,6 +19,29 @@ namespace ToyFactory.AI.Agents.Tracker
             Position = position;
             Score = score;
             IsRepeating = isRepeating;
+        }
+    }
+
+    /// <summary>One source the Tracker still remembers, as the debug overlay shows it.</summary>
+    public readonly struct RememberedNoise
+    {
+        public readonly int SourceId;
+        public readonly Vector3 Position;
+        /// <summary>The level heard at the Tracker's cell.</summary>
+        public readonly float Level;
+        public readonly float Score;
+        public readonly bool IsRepeating;
+        /// <summary>Already investigated: ignored until the source makes a new noise.</summary>
+        public readonly bool IsHandled;
+
+        public RememberedNoise(int sourceId, Vector3 position, float level, float score, bool isRepeating, bool isHandled)
+        {
+            SourceId = sourceId;
+            Position = position;
+            Level = level;
+            Score = score;
+            IsRepeating = isRepeating;
+            IsHandled = isHandled;
         }
     }
 
@@ -146,6 +171,27 @@ namespace ToyFactory.AI.Agents.Tracker
         {
             for (int i = 0; i < _entries.Length; i++)
                 _entries[i] = default;
+        }
+
+        /// <summary>
+        /// Adds every source still remembered at <paramref name="now"/> to <paramref name="into"/>,
+        /// handled ones included, for the debug overlay. Read-only: unlike the queries above it
+        /// never forgets a decayed entry, so looking cannot change what the Tracker does.
+        /// </summary>
+        public void CopyTo(float now, List<RememberedNoise> into)
+        {
+            if (into == null) throw new ArgumentNullException(nameof(into));
+            for (int i = 0; i < _entries.Length; i++)
+            {
+                Entry entry = _entries[i];
+                if (!entry.Used)
+                    continue;
+                float score = Score(entry.Level, now - entry.Time);
+                if (score <= ForgetScore)
+                    continue;
+                into.Add(new RememberedNoise(entry.SourceId, entry.Position, entry.Level, score,
+                    IsRepeating(i, now), entry.Handled));
+            }
         }
 
         bool IsRepeating(int slot, float now) =>

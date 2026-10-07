@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using ToyFactory.AI.Agents.Tracker;
@@ -123,6 +124,48 @@ namespace ToyFactory.Tests.EditMode
             Assert.IsFalse(memory.TryGetPosition(1, out _));
             Assert.IsTrue(memory.TryGetPosition(2, out _));
             Assert.IsTrue(memory.TryGetPosition(3, out _));
+        }
+
+        // ---- CopyTo (debug overlay) -----------------------------------------------------
+
+        [Test]
+        public void CopyToListsEveryRememberedSourceWithItsFlags()
+        {
+            var memory = new NoiseMemory();
+            memory.Remember(1, new Vector3(1f, 0f, 0f), 60f, 0f);
+            memory.Remember(2, new Vector3(2f, 0f, 0f), 30f, 0.2f);
+            memory.Remember(2, new Vector3(2f, 0f, 0f), 30f, 1.0f);   // repeating
+            memory.MarkHandled(1);
+            var noises = new List<RememberedNoise>();
+
+            memory.CopyTo(1.0f, noises);
+
+            Assert.AreEqual(2, noises.Count, "Handled sources are listed too.");
+            RememberedNoise shot = noises.Find(n => n.SourceId == 1);
+            RememberedNoise beep = noises.Find(n => n.SourceId == 2);
+            Assert.IsTrue(shot.IsHandled);
+            Assert.IsFalse(shot.IsRepeating);
+            Assert.AreEqual(NoiseMemory.Score(60f, 1f), shot.Score, 1e-4f);
+            Assert.AreEqual(60f, shot.Level);
+            Assert.IsTrue(beep.IsRepeating);
+            Assert.IsFalse(beep.IsHandled);
+            Assert.AreEqual(new Vector3(2f, 0f, 0f), beep.Position);
+        }
+
+        [Test]
+        public void CopyToLeavesOutDecayedNoisesAndChangesNothing()
+        {
+            var memory = new NoiseMemory();
+            memory.Remember(1, Vector3.zero, 20f, 0f);   // score 8.1 at 3 s: below the threshold
+            memory.Remember(2, Vector3.zero, 90f, 0f);
+            var noises = new List<RememberedNoise>();
+
+            memory.CopyTo(3f, noises);
+
+            Assert.AreEqual(1, noises.Count);
+            Assert.AreEqual(2, noises[0].SourceId);
+            Assert.IsTrue(memory.TryGetPosition(1, out _), "Looking does not forget anything; only the brain's own queries do.");
+            Assert.Throws<System.ArgumentNullException>(() => memory.CopyTo(0f, null));
         }
     }
 }

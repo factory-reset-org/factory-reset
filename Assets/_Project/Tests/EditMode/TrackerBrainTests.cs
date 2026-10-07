@@ -569,6 +569,36 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual(AlertLevel.Suspicious, brain.Alert);
         }
 
+        // ---- Read-only state for the debug overlay --------------------------------------
+
+        [Test]
+        public void TheOverlayCanReadTheRouteNoisesLastSightingAndSearchCentre()
+        {
+            TrackerBrain brain = Brain();
+            brain.Tick(At(Start, 0f));
+            Assert.AreEqual(PatrolA, brain.RouteCells[brain.RouteCells.Count - 1], "The GBFS route cells.");
+            Assert.IsFalse(brain.HasLastKnownPosition);
+
+            brain.Tick(At(Start, 0.1f, Noise(new Vector2Int(12, 18), 60f, 5, 0.1f)));
+            var noises = new List<RememberedNoise>();
+            brain.GetRememberedNoises(noises);
+            Assert.AreEqual(1, noises.Count);
+            Assert.AreEqual(5, noises[0].SourceId);
+
+            var player = new Vector2Int(25, 10);
+            PlacePlayer(player);
+            brain.Tick(At(Start, 0.2f));
+            Assert.IsTrue(brain.HasLastKnownPosition);
+            Assert.AreEqual(_grid.CellToWorld(player), brain.LastKnownPosition);
+            Assert.IsFalse(brain.IsSearching);
+
+            PlacePlayer(new Vector2Int(2, 10));   // out of the cone
+            brain.Tick(At(Start, 0.5f));
+            brain.Tick(At(Start, 1f));
+            Assert.IsTrue(brain.IsSearching);
+            Assert.AreEqual(_grid.CellToWorld(player), brain.SearchCentre, "Search rings round where it last saw the player.");
+        }
+
         [Test]
         public void ConstructorRejectsMissingInputs()
         {
