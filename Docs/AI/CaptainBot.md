@@ -323,6 +323,7 @@ Edge-case tests are listed in the table above.
 | `CaptainBrain` states and transitions | `Captain/CaptainBrain`, `CaptainBrain.States` | Implemented, 16 tests |
 | `PredictedGoal` on the blackboard | `Core/IGoalPredictor`, `Blackboard/PredictedGoal`, copied by `AgentController` | Implemented |
 | Wake flag | `Blackboard.CaptainAwake`, `Runtime/CaptainWakeWriter` | Implemented |
+| Live view (F3 debug overlay) | `Runtime/Debug/CaptainOverlayLayer` | Implemented: P(g) per goal, predicted route, intercept cell and arrival times |
 
 **How the implemented parts fit together:** each 2 Hz decision tick, the brain records the player's cell in `PlayerTrack`, takes the cell from about 5 s ago with `TryGetPast`, and calls `GoalInference.Update` with the current candidate goals. `Update` computes the category priors, looks up each goal's cached field and returns the posteriors, the most likely goal and the confidence. When the confidence reaches 0.5, the brain takes `g*`'s cached field with `TryGetGoalField` and calls `InterceptPlanner.Plan` with the player's and its own cell. When the top two goals are within 0.1 it calls `PlanShared` with both fields instead.
 

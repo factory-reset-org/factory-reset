@@ -229,6 +229,28 @@ The Debris layer collides with the floor, walls and other debris but not with th
 
 **Why an explicit level instead of only state names:** a renamed state would silently lose its icon; a brain that sets `Alert` keeps it whatever its states are called. The fallback is there so nothing waits on that change.
 
+### 2.11 Debug overlay (S4, implemented)
+
+Press **F3** in play to see what every agent is doing and thinking, drawn over the level (`AgentDebugOverlay`, in `Agents.unity`; `Test_AgentSpawner` shows it from the start). It works only in the Editor and development builds, so it can never appear in the submitted build, and it costs nothing while hidden.
+
+| Layer | Draws |
+| --- | --- |
+| **Agents** (every agent) | A label above the head: name, state, alert ("?"/"!"), hit points, or "knocked out 3.2s" / "scrapped"; coloured by alert level. The route still to walk, in cyan |
+| **Captain** | Every candidate goal with its live probability P(g), the most likely in green; the player's predicted route in yellow; the cell it is heading for or holding, in magenta, with the player's and its own arrival times and the lead |
+
+Lines are drawn through walls (no depth test), so a route behind cover stays visible. Labels further than 25 m from the camera are hidden, so agents in other rooms do not pile up on the horizon.
+
+**Adding a layer (each owner, in their own file):** implement `IAgentOverlayLayer` (`Name`, `Handles(agent)`, `Draw(agent, canvas)`) and register it once:
+
+```csharp
+[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+static void Register() => AgentDebugOverlay.Register(new TrackerOverlayLayer());
+```
+
+`Handles` usually tests the brain type (`agent.Brain is TrackerBrain`). `Draw` writes into an `OverlayCanvas`: `DrawLine`, `DrawLabel`, `DrawCell` and `DrawCellPath` (cells need `canvas.Grid`, which is null without a level grid). Layers never draw directly, so they are plain code, easy to test. Registering the same layer type twice is ignored, and registrations are cleared at the start of each play session.
+
+**Debug-only accessors:** `AgentController.Brain` and `AgentController.Follower` exist for the overlay. Game code must not use `Brain`: the journey and UI still talk to agents only through events and the blackboard. `AgentPathFollower.RemainingWaypointCount` / `RemainingWaypoint(i)` expose the route left to walk; the Captain exposes its goals, `GoalProbability(i)`, `PredictedRoute`, `HasTarget` and `TargetCell`.
+
 ## 3. Search contracts
 <!-- ICostModel, PathResult, IPathfinder -->
 
@@ -304,7 +326,7 @@ Both write into a caller-owned list and allocate nothing once it has capacity.
 | `Bootstrap` | S2 | Scene loader and game manager. Build index 0 | Empty scene (light and camera); scene loader and game manager not written yet |
 | `Env` | S1 | Static geometry, lighting, NavMesh, grid, chapter manager | Empty scene (light and camera) |
 | `Interactables` | S2 | Doors, boxes, belts, switches, task props, pickups. All non-static | Empty scene (light and camera) |
-| `Agents` | S4 | Agent spawner and spawn points, debug overlays, cutscene director, Timelines, cutscene cameras | Spawner, seven spawn points and cutscene director in place; Timelines and cameras planned |
+| `Agents` | S4 | Agent spawner and spawn points, debug overlays, cutscene director, Timelines, cutscene cameras | Spawner, seven spawn points, cutscene director and debug overlay in place; Timelines and cameras planned |
 | `UI` | S3 | HUD, subtitles, chapter card, results screen, leaderboard | Planned |
 | `ModelShowcase` | S3 | Model turntable. Not in the build | In use |
 
@@ -495,6 +517,7 @@ The alarm colours belong to `LightingState`. A Timeline can frame or activate th
 | 2026-10-06 | Spawn points follow the level layout's room plan, with short patrol routes on open floor checked against the built grid | Spawn every agent near the player start; long patrols through doorways | Each chapter meets its own threat in its own room, as the level plan intends, and short routes inside one room keep agents from bunching at doors before the player arrives. Checking against the real grid catches a point placed inside a press or shelf before it fails at runtime | S4 |
 | 2026-10-06 | Agents are hit through their capsule on the Agents layer; shots are a body-side 0.3 s telegraph then one hitscan, with no friendly fire; the brains only decide when to shoot | Per-part hitboxes; projectiles; each brain timing its own aim | The capsule is already there and is skipped by S2's cover check, so hits need no new colliders. Hitscan is cheap and deterministic, and the shared telegraph is what makes it fair: the player always gets 0.3 s to take cover. One implementation means every agent telegraphs the same way, and the brains stay pure decisions | S4 |
 | 2026-10-06 | Agents fall apart by detaching S3's rigid mesh parts as Debris physics bodies and flying them back on a smoothstep in the last second of the knock-out; the "?"/"!" icon reads an optional `AlertLevel` on `AgentIntent`, with a state-name fallback | Pre-made broken prefabs or a fall-apart clip; icons only from state names | The parts and their colliders already exist, so nothing is spawned and every model works the same way; physics makes each fall different. An explicit level survives state renames, and the fallback means no brain owner is blocked. Adding a field with a default changes no existing brain | S4 |
+| 2026-10-07 | A pluggable in-game debug overlay (F3): a base layer for every agent and one layer per brain, registered from each owner's own file; layers draw into a canvas that the overlay renders with GL lines and IMGUI labels | Scene-view gizmos only; one overlay class that knows every brain | The overlay must work in the Game view during play and in the demo video, where gizmos do not show. Registration keeps each owner's layer in their own file and history, so nobody edits the overlay to add an agent. Drawing into a canvas keeps layers testable without a camera | S4 |
 | 2026-10-06 | The objective beacon shows while the game clock is Playing and no cutscene runs; its target rule lives in `ChapterFlow`, and `ChapterManager` exposes the result as `CurrentBeaconTarget` | Show it only after `OnCutsceneEnded("intro")`; let the beacon or the HUD each work out the target | Nothing plays the intro yet, so an intro-only gate would hide the beacon in every current build; the intro is a cutscene, so the game-state rule still hides it until the intro ends. One rule in the plain C# flow is tested without a scene, and the beacon and the HUD can never point at different things | S1 |
 | 2026-10-06 | The Control Room alarm beacons sit on the lintels of the two sealed doors, each with a red real-time light, as in the prototype; the Painting accent light becomes baked | Keep the beacons on the Control Room's back wall; add the door alarms as a fourth and fifth real-time light | The alarm marks the locked doors from the rooms the player is in, and the unlock is visible on camera in `ch3`. The plan allows 2-3 real-time point lights: Storage lamp plus two alarms is three, and the pink Painting fill looks the same baked | S1 |
 | 2026-10-06 | `LightingState` reacts to Critical signals only, swaps shared materials for the alarm, and never goes back to an earlier mood | Animate the lights in the Timelines; tint with a MaterialPropertyBlock | Signals also fire on skip, so the lights cannot be left red after a skipped `ch3`. A property block breaks the SRP Batcher (S3 measured +10 SetPass for four Saboteurs); two shared materials keep it. Moving forward only means a late or repeated signal cannot relock the doors' lights | S1 |
