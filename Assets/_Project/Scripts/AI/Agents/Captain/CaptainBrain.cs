@@ -274,6 +274,26 @@ namespace ToyFactory.AI.Agents.Captain
         /// <summary>The intercept from the last decision; <see cref="InterceptPlan.HasPlan"/> is false with none.</summary>
         public InterceptPlan Plan => _plan;
 
+        /// <summary>Candidate goals of the last decision, for the debug overlay.</summary>
+        public IReadOnlyList<CandidateGoal> Goals => _goals;
+
+        /// <summary>
+        /// P(g | movement) of the goal at <paramref name="index"/> in <see cref="Goals"/> from the
+        /// last decision; 0 when there is no prediction.
+        /// </summary>
+        public float GoalProbability(int index) =>
+            _prediction.IsKnown && index >= 0 && index < _inference.GoalCount && index < _goals.Count
+                ? _inference.Posterior(index) : 0f;
+
+        /// <summary>The player's predicted route (player first, g* last) from the last plan.</summary>
+        public IReadOnlyList<Vector2Int> PredictedRoute => _planner.PredictedRoute;
+
+        /// <summary>True while committed to a cell (Intercept or Ambush); the cell is <see cref="TargetCell"/>.</summary>
+        public bool HasTarget => _targetGoalId != NoGoal && (_machine.Current == _intercept || _machine.Current == _ambush);
+
+        /// <summary>The cell the Captain is heading for or holding, when <see cref="HasTarget"/>.</summary>
+        public Vector2Int TargetCell => _targetCell;
+
         /// <summary>The full transition table, highest priority first: for the debug overlay and the viva.</summary>
         public string DescribeTransitions()
         {
