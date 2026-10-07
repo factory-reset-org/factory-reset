@@ -54,7 +54,16 @@ namespace ToyFactory.AI.Agents.Tracker
         /// is required by <see cref="IPathfinder"/> but not used for ordering: greedy search
         /// ranks cells by the heuristic alone, which is what makes it fast and non-optimal.
         /// </summary>
-        public PathResult FindPath(Vector2Int start, Vector2Int goal, ICostModel cost)
+        public PathResult FindPath(Vector2Int start, Vector2Int goal, ICostModel cost) =>
+            FindPath(start, goal, cost, throughClosedDoors: false);
+
+        /// <summary>
+        /// As <see cref="FindPath(Vector2Int, Vector2Int, ICostModel)"/>, but with
+        /// <paramref name="throughClosedDoors"/> a closed door counts as open (walls and boxes
+        /// still block). The result is not a walkable route: the Tracker uses it to find the
+        /// closed door that stands between it and its goal, and walks only the part before it.
+        /// </summary>
+        public PathResult FindPath(Vector2Int start, Vector2Int goal, ICostModel cost, bool throughClosedDoors)
         {
             if (cost == null)
                 throw new ArgumentNullException(nameof(cost));
@@ -66,7 +75,7 @@ namespace ToyFactory.AI.Agents.Tracker
                     AllocateForGridSize();
 
                 int version = _grid.Version;
-                if (!_grid.IsTraversable(start) || !_grid.IsTraversable(goal))
+                if (!CanEnter(start, throughClosedDoors) || !CanEnter(goal, throughClosedDoors))
                     return PathResult.NotFound(0, ElapsedMs(), version);
 
                 NextStamp();
@@ -88,7 +97,7 @@ namespace ToyFactory.AI.Agents.Tracker
                         return new PathResult(BuildPath(goalIndex), true, expanded, ElapsedMs(), version);
 
                     Vector2Int currentCell = _grid.FromIndex(current);
-                    int neighbourCount = _grid.GetNeighboursNonAlloc(currentCell, _neighbourBuffer);
+                    int neighbourCount = _grid.GetNeighboursNonAlloc(currentCell, _neighbourBuffer, throughClosedDoors);
 
                     for (int i = 0; i < neighbourCount; i++)
                     {
@@ -109,6 +118,9 @@ namespace ToyFactory.AI.Agents.Tracker
                 return PathResult.NotFound(expanded, ElapsedMs(), version);
             }
         }
+
+        bool CanEnter(Vector2Int cell, bool throughClosedDoors) =>
+            _grid.Contains(cell) && (throughClosedDoors ? _grid.GetNode(cell).IsSoundTraversable : _grid.IsTraversable(cell));
 
         List<Vector2Int> BuildPath(int goalIndex)
         {

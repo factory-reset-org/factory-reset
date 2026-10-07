@@ -13,10 +13,19 @@ namespace ToyFactory.AI.Agents.Tracker
         abstract class TrackerState : IState<TrackerBrain>
         {
             readonly string _name;
+            readonly AlertLevel _alert;
 
-            protected TrackerState(string name) { _name = name; }
+            protected TrackerState(string name, AlertLevel alert)
+            {
+                _name = name;
+                _alert = alert;
+            }
 
-            public virtual void Enter(TrackerBrain b) { b._debugState = _name; }
+            public virtual void Enter(TrackerBrain b)
+            {
+                b._debugState = _name;
+                b._alert = _alert;
+            }
             public abstract void Tick(TrackerBrain b);
             public virtual void Exit(TrackerBrain b) { }
 
@@ -26,7 +35,7 @@ namespace ToyFactory.AI.Agents.Tracker
         /// <summary>Walks the patrol loop with GBFS, one point at a time.</summary>
         sealed class PatrolState : TrackerState
         {
-            public PatrolState() : base("Patrol") { }
+            public PatrolState() : base("Patrol", AlertLevel.None) { }
 
             public override void Enter(TrackerBrain b)
             {
@@ -52,14 +61,17 @@ namespace ToyFactory.AI.Agents.Tracker
             }
         }
 
-        /// <summary>Goes to the best one-off noise, looks around for 2.4 s, then marks it handled.</summary>
+        /// <summary>
+        /// Goes to the best one-off noise, looks around for 2.4 s, then marks it handled. A noise
+        /// heard through a closed door is checked from the near side of that door.
+        /// </summary>
         sealed class InvestigateState : TrackerState
         {
             int _sourceId;
             Vector3 _target;
             float _arrivedAt;
 
-            public InvestigateState() : base("Investigate") { }
+            public InvestigateState() : base("Investigate", AlertLevel.Suspicious) { }
 
             public override void Enter(TrackerBrain b)
             {
@@ -107,7 +119,7 @@ namespace ToyFactory.AI.Agents.Tracker
             {
                 _sourceId = noise.SourceId;
                 _target = noise.Position;
-                b.MoveTo(_target);
+                b.MoveToOrDoor(_target);
             }
         }
 
@@ -121,7 +133,7 @@ namespace ToyFactory.AI.Agents.Tracker
             int _step;
             float _nextStepAt;
 
-            public DistractedState() : base("Distracted") { }
+            public DistractedState() : base("Distracted", AlertLevel.Suspicious) { }
 
             public override void Enter(TrackerBrain b)
             {
@@ -158,17 +170,22 @@ namespace ToyFactory.AI.Agents.Tracker
             }
         }
 
-        /// <summary>Runs at the player, replanning every 0.5 s to where it sees them (or last saw them).</summary>
+        /// <summary>
+        /// Runs at the player, replanning every 0.5 s to where it sees them (or last saw them).
+        /// If a closed door is in the way it runs to the door, and the table moves it to WaitAtDoor.
+        /// </summary>
         sealed class ChaseState : TrackerState
         {
             float _nextRepathAt;
 
-            public ChaseState() : base("Chase") { }
+            public ChaseState() : base("Chase", AlertLevel.Alert) { }
 
             public override void Enter(TrackerBrain b)
             {
                 base.Enter(b);
                 b._inChase = true;
+                b._doorBlocked = false;
+                b._searchCentre = null;
                 _nextRepathAt = b.Now;
             }
 
@@ -179,7 +196,7 @@ namespace ToyFactory.AI.Agents.Tracker
                 b._outLook = target;
                 if (b.Now < _nextRepathAt)
                     return;
-                b.MoveTo(target);
+                b.MoveToOrDoor(target);
                 _nextRepathAt = b.Now + ChaseRepathInterval;
             }
 
@@ -188,7 +205,8 @@ namespace ToyFactory.AI.Agents.Tracker
 
         /// <summary>
         /// Sweeps rings round the last known position (1.5, 3 and 4.5 m, 8 points each, starting
-        /// in the direction the player was heading) for 8 s, then gives up.
+        /// in the direction the player was heading) for 8 s, then gives up. After waiting at a shut
+        /// door it sweeps round the near side of the door instead, the side it can reach.
         /// </summary>
         sealed class SearchState : TrackerState
         {
@@ -199,8 +217,9 @@ namespace ToyFactory.AI.Agents.Tracker
             float _enteredAt;
             int _point;
             float _headingDeg;
+            Vector3 _centre;
 
-            public SearchState() : base("Search") { }
+            public SearchState() : base("Search", AlertLevel.Suspicious) { }
 
             public override void Enter(TrackerBrain b)
             {
@@ -208,6 +227,8 @@ namespace ToyFactory.AI.Agents.Tracker
                 b._searchTimedOut = false;
                 _enteredAt = b.Now;
                 _point = -1;
+                _centre = b._searchCentre ?? b._lastKnown;
+                b._searchCentre = null;
                 Vector3 v = b._lastKnownVelocity;
                 _headingDeg = v.x * v.x + v.z * v.z > 0.01f ? Mathf.Atan2(v.x, v.z) * Mathf.Rad2Deg : 0f;
                 b.StopMoving();
@@ -239,14 +260,55 @@ namespace ToyFactory.AI.Agents.Tracker
                 int ring = index / PointsPerRing;
                 float radius = CircleRadius * (ring + 1);
                 float angle = (_headingDeg + (index % PointsPerRing) * 45f) * Mathf.Deg2Rad;
-                return b._lastKnown + new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle)) * radius;
+                return _centre + new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle)) * radius;
+            }
+        }
+
+        /// <summary>
+        /// The player got away through a door and shut it. Runs to the near side of the door,
+        /// stares at it for 2.5 s (the toy has no hands to open it), then the table hands over to
+        /// Search round this side. If the door opens, or the player shows up, it chases again.
+        /// </summary>
+        sealed class WaitAtDoorState : TrackerState
+        {
+            float _arrivedAt;
+
+            public WaitAtDoorState() : base("WaitAtDoor", AlertLevel.Alert) { }
+
+            public override void Enter(TrackerBrain b)
+            {
+                base.Enter(b);
+                b._doorWaitOver = false;
+                _arrivedAt = float.NegativeInfinity;   // keeps the route Chase planned to the door
+            }
+
+            public override void Tick(TrackerBrain b)
+            {
+                b._outSpeed = ChaseSpeed;
+                b._outLook = b._grid.CellToWorld(b._doorCell);
+                if (float.IsNegativeInfinity(_arrivedAt))
+                {
+                    if (b._routeCells != null && !b.Arrived())
+                        return;
+                    _arrivedAt = b.Now;
+                    b.StopMoving();
+                }
+                if (b.Now - _arrivedAt >= DoorWaitTime)
+                    b._doorWaitOver = true;
+            }
+
+            public override void Exit(TrackerBrain b)
+            {
+                if (b._doorWaitOver)
+                    b._searchCentre = b._grid.CellToWorld(b._doorApproach);
+                b._doorWaitOver = false;
             }
         }
 
         /// <summary>Energy ran out: stand still and wind back up for 3 s. Hits count double meanwhile.</summary>
         sealed class RewindState : TrackerState
         {
-            public RewindState(string name) : base(name) { }
+            public RewindState(string name) : base(name, AlertLevel.None) { }
 
             public override void Enter(TrackerBrain b)
             {
@@ -268,7 +330,7 @@ namespace ToyFactory.AI.Agents.Tracker
         /// </summary>
         sealed class StunnedState : TrackerState
         {
-            public StunnedState() : base("Stunned") { }
+            public StunnedState() : base("Stunned", AlertLevel.None) { }
 
             public override void Enter(TrackerBrain b)
             {

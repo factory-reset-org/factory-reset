@@ -17,7 +17,7 @@ namespace ToyFactory.AI.Agents.Tracker
     /// </summary>
     /// <remarks>
     /// <para><b>Hierarchy.</b> The top machine holds two parent states and two interrupts:
-    /// <c>Calm</c> (Patrol, Investigate, Distracted), <c>Hunting</c> (Chase, Search),
+    /// <c>Calm</c> (Patrol, Investigate, Distracted), <c>Hunting</c> (Chase, WaitAtDoor, Search),
     /// <c>Rewind</c> and <c>Stunned</c>. Calm and Hunting are <see cref="CompositeState{T}"/>s
     /// with their own child transitions, so "the player is visible" is one Calm-to-Hunting
     /// transition instead of one per calm state, and an interrupt beats every child.
@@ -26,6 +26,10 @@ namespace ToyFactory.AI.Agents.Tracker
     /// <para><b>Senses.</b> Vision is pure C#: S2's <see cref="VisionQuery"/> cone with line of
     /// sight traced on the grid (<see cref="GridLineCheck"/>). Hearing reads the propagated
     /// noise the runtime puts in <see cref="SensorSnapshot"/> into a <see cref="NoiseMemory"/>.</para>
+    /// <para><b>Closed doors.</b> The toy cannot open doors. When only a closed door stands
+    /// between it and its goal it walks to the near side of the door (a second GBFS that treats
+    /// closed doors as open shows which door, and the part of that route before it is walkable).
+    /// Hunting, it then waits there in WaitAtDoor before searching its own side.</para>
     /// <para><b>Time.</b> Every timer uses <c>ctx.Time</c> (game time), so cutscenes and pause
     /// freeze them. Stuns are owned by the controller: see <see cref="OnStunned"/>.</para>
     /// </remarks>
@@ -50,6 +54,7 @@ namespace ToyFactory.AI.Agents.Tracker
         public const float SearchDuration = 8f;
         public const float InvestigateLookTime = 2.4f;
         public const float CircleStepInterval = 1.2f;
+        public const float DoorWaitTime = 2.5f;     // staring at the door the player escaped through
 
         // Distances, metres.
         public const float ArrivalRadius = 0.5f;
@@ -90,16 +95,25 @@ namespace ToyFactory.AI.Agents.Tracker
         bool _investigationDone;
         bool _distractionOver;
         bool _searchTimedOut;
+        bool _doorWaitOver;
+
+        // The closed door between the Tracker and its goal, found by MoveToOrDoor.
+        bool _doorBlocked;
+        Vector2Int _doorCell;
+        Vector2Int _doorApproach;
+        Vector3? _searchCentre;   // Search rings round this instead of the last known position, once
 
         // Current route and this tick's output.
         List<Vector2Int> _routeCells;
         Vector2Int _routeGoal;
+        bool _routeViaDoors;
         bool _replanRequested;
         List<Vector3> _outPath;
         float _outSpeed;
         Vector3? _outLook;
         AgentAction _outAction;
         string _debugState = "Patrol";
+        AlertLevel _alert = AlertLevel.None;
 
         public TrackerBrain(GridGraph grid, WorldBlackboard blackboard, IReadOnlyList<Vector3> patrolPoints)
         {
@@ -119,6 +133,7 @@ namespace ToyFactory.AI.Agents.Tracker
             var distracted = new DistractedState();
             var chase = new ChaseState();
             var search = new SearchState();
+            var waitAtDoor = new WaitAtDoorState();
 
             // Calm children: a repeating lure beats a one-off noise.
             var calmRules = new List<Transition<TrackerBrain>>();
@@ -132,6 +147,11 @@ namespace ToyFactory.AI.Agents.Tracker
             // Hunting children.
             var huntRules = new List<Transition<TrackerBrain>>();
             Rule(huntRules, "Hunting", search, chase, 30, "sees the player", b => b._seesPlayer);
+            Rule(huntRules, "Hunting", waitAtDoor, chase, 30, "sees the player", b => b._seesPlayer);
+            Rule(huntRules, "Hunting", waitAtDoor, chase, 28, "the door opened", b => !b._grid.GetNode(b._doorCell).IsDoorClosed);
+            Rule(huntRules, "Hunting", chase, waitAtDoor, 25, "a closed door stands between it and the player",
+                b => b._doorBlocked);
+            Rule(huntRules, "Hunting", waitAtDoor, search, 22, "waited 2.5 s at the shut door", b => b._doorWaitOver);
             Rule(huntRules, "Hunting", chase, search, 20, "lost sight for 0.7 s", b => b.LostSightFor(LoseSightDelay));
             _hunting = new CompositeState<TrackerBrain>("Hunting", chase, huntRules);
 
@@ -184,7 +204,12 @@ namespace ToyFactory.AI.Agents.Tracker
                 _machine.Tick(this);
 
             if (_replanRequested && _outPath == null && _routeCells != null)
-                MoveTo(_routeGoal);
+            {
+                if (_routeViaDoors)
+                    MoveToOrDoor(_routeGoal);
+                else
+                    MoveTo(_routeGoal);
+            }
             _replanRequested = false;
 
             return new AgentIntent
@@ -194,18 +219,22 @@ namespace ToyFactory.AI.Agents.Tracker
                 LookTarget = _outLook,
                 Action = _outAction,
                 ActionTargetId = 0,
-                DebugState = _debugState
+                DebugState = _debugState,
+                Alert = _alert
             };
         }
 
-        /// <summary>Replans only if a changed cell lies on the remaining route.</summary>
+        /// <summary>
+        /// Replans only if a changed cell lies on the remaining route, or is the closed door
+        /// the route stops at (it may have opened).
+        /// </summary>
         public void OnGraphChanged(IReadOnlyList<Vector2Int> changedCells)
         {
             if (_routeCells == null || changedCells == null)
                 return;
             for (int i = 0; i < changedCells.Count; i++)
             {
-                if (_routeCells.Contains(changedCells[i]))
+                if (_routeCells.Contains(changedCells[i]) || (_doorBlocked && changedCells[i] == _doorCell))
                 {
                     _replanRequested = true;
                     return;
@@ -242,6 +271,12 @@ namespace ToyFactory.AI.Agents.Tracker
             _machine.Current == _calm ? "Calm" :
             _machine.Current == _hunting ? "Hunting" :
             _machine.Current == _stunned ? "Stunned" : "Rewind";
+
+        /// <summary>The "?"/"!" level this tick: Alert while chasing or waiting at a door, Suspicious while following a noise or searching.</summary>
+        public AlertLevel Alert => _alert;
+
+        /// <summary>True while the last route stops at a closed door instead of reaching its goal.</summary>
+        public bool IsBlockedByDoor => _doorBlocked;
 
         /// <summary>Wind-up energy 0..1, for the key-spin animation.</summary>
         public float Energy01 => _energy.Energy01;
@@ -350,6 +385,8 @@ namespace ToyFactory.AI.Agents.Tracker
         bool MoveTo(Vector2Int goal)
         {
             _routeGoal = goal;
+            _routeViaDoors = false;
+            _doorBlocked = false;
             if (!TryWalkable(_ctx.Cell, out Vector2Int start) || !TryWalkable(goal, out Vector2Int end))
             {
                 StopMoving();
@@ -363,15 +400,54 @@ namespace ToyFactory.AI.Agents.Tracker
                 return false;
             }
 
-            _routeCells = result.Cells;
-            var world = new List<Vector3>(result.Cells.Count);
-            for (int i = 0; i < result.Cells.Count; i++)
-                world.Add(_grid.CellToWorld(result.Cells[i]));
-            _outPath = world;
+            Follow(result.Cells, result.Cells.Count);
             return true;
         }
 
         bool MoveTo(Vector3 worldGoal) => MoveTo(_grid.WorldToCell(worldGoal));
+
+        /// <summary>
+        /// Like <see cref="MoveTo(Vector2Int)"/>, but when the only thing in the way is a closed
+        /// door, walks to the near side of that door and sets <c>_doorBlocked</c>. A second GBFS
+        /// that treats closed doors as open finds the route; the part before its first closed
+        /// door is a real, walkable route. Walls and boxes still block both searches.
+        /// </summary>
+        bool MoveToOrDoor(Vector2Int goal)
+        {
+            bool moving = MoveTo(goal);
+            _routeViaDoors = true;   // replans after a graph change keep checking the door
+            if (moving)
+                return true;
+            if (!TryWalkable(_ctx.Cell, out Vector2Int start) || !TryWalkable(goal, out Vector2Int end))
+                return false;
+
+            PathResult through = _search.FindPath(start, end, BaseCostModel.Instance, throughClosedDoors: true);
+            if (!through.Found)
+                return false;
+            for (int i = 1; i < through.Cells.Count; i++)
+            {
+                if (!_grid.GetNode(through.Cells[i]).IsDoorClosed)
+                    continue;
+                _doorBlocked = true;
+                _doorCell = through.Cells[i];
+                _doorApproach = through.Cells[i - 1];
+                Follow(through.Cells, i);
+                return true;
+            }
+            return false;
+        }
+
+        bool MoveToOrDoor(Vector3 worldGoal) => MoveToOrDoor(_grid.WorldToCell(worldGoal));
+
+        // Outputs the first <paramref name="count"/> cells of a planned route as this tick's path.
+        void Follow(List<Vector2Int> cells, int count)
+        {
+            _routeCells = count == cells.Count ? cells : cells.GetRange(0, count);
+            var world = new List<Vector3>(count);
+            for (int i = 0; i < count; i++)
+                world.Add(_grid.CellToWorld(_routeCells[i]));
+            _outPath = world;
+        }
 
         void StopMoving()
         {
