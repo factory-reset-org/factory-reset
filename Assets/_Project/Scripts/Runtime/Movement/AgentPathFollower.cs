@@ -32,6 +32,12 @@ namespace ToyFactory.Runtime.Movement
         /// <summary>True while there are waypoints left to walk to.</summary>
         public bool HasPath => _targetIndex < _path.Count;
 
+        /// <summary>Waypoints still to walk, for the debug overlay.</summary>
+        public int RemainingWaypointCount => Mathf.Max(0, _path.Count - _targetIndex);
+
+        /// <summary>The <paramref name="index"/>-th waypoint still to walk (0 = the next one).</summary>
+        public Vector3 RemainingWaypoint(int index) => _path[_targetIndex + index];
+
         /// <summary>Horizontal speed this frame in metres per second, for animation.</summary>
         public float CurrentSpeed { get; private set; }
 

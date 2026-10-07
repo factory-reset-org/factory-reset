@@ -57,6 +57,16 @@ namespace ToyFactory.Runtime.Agents
         /// <summary>True once a brain has been given to this agent.</summary>
         public bool IsInitialised => _brain != null;
 
+        /// <summary>
+        /// The brain, for debug tools only (the overlay draws what a brain is thinking). Game
+        /// code must not use it: the journey and UI talk to agents through events and the
+        /// blackboard, never through a brain.
+        /// </summary>
+        public IAgentBrain Brain => _brain;
+
+        /// <summary>The body's path follower, for debug tools (the overlay draws the route left to walk).</summary>
+        public AgentPathFollower Follower => _follower;
+
         /// <summary>The brain's current state name, for the debug overlay and "!"/"?" icons.</summary>
         public string DebugState { get; private set; } = string.Empty;
 
