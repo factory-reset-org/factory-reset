@@ -50,6 +50,11 @@ namespace ToyFactory.Player
         float _verticalVelocity;
         float _pitch;
 
+        // What the player is standing on, and its belt if it is one. Looked up only when
+        // the ground collider changes, never every frame.
+        Collider _groundCollider;
+        ConveyorBelt _groundBelt;
+
         /// <summary>Current world position, for the blackboard.</summary>
         public Vector3 Position => transform.position;
 
@@ -118,6 +123,12 @@ namespace ToyFactory.Player
         // never receives force outside the physics step.
         void OnControllerColliderHit(ControllerColliderHit hit)
         {
+            if (hit.normal.y > 0.5f && hit.collider != _groundCollider)
+            {
+                _groundCollider = hit.collider;
+                hit.collider.TryGetComponent(out _groundBelt);
+            }
+
             if (!hit.collider.CompareTag("Pushable"))
                 return;
             if (hit.moveDirection.y < -0.3f)
@@ -165,6 +176,10 @@ namespace ToyFactory.Player
             float speed = _sprintAction.IsPressed() ? sprintSpeed : walkSpeed;
 
             Vector3 horizontal = (transform.right * moveInput.x + transform.forward * moveInput.y) * speed;
+
+            // A running belt carries the player along with it.
+            if (_controller.isGrounded && _groundBelt != null)
+                horizontal += _groundBelt.Velocity;
 
             // CharacterController has no gravity of its own, so it is applied by hand.
             // isGrounded reflects the previous Move call.
