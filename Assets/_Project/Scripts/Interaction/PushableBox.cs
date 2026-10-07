@@ -1,22 +1,30 @@
 using System;
 using UnityEngine;
+using ToyFactory.Runtime.World;
 
 namespace ToyFactory.Interaction
 {
     /// <summary>
-    /// A box the player can push around. Settling and moving are reported as events
-    /// rather than written to the grid directly, so this stays decoupled from
-    /// GridManager; whoever owns grid blocking subscribes to react.
+    /// A box the player can push around. While it rests it blocks the grid cells under it,
+    /// so agents route round it and the Guard can use it as cover; while it moves it blocks
+    /// nothing. Settling and moving are also raised as events.
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
     public sealed class PushableBox : MonoBehaviour
     {
+        // Grid blocker owner ids: positive and unique per box (static props use negative ids).
+        static int s_nextBlockerId;
+
         [Tooltip("Below this speed (m/s) the box is considered settled.")]
         [SerializeField, Min(0f)] float settleSpeed = 0.05f;
 
         Rigidbody _rb;
+        Collider _collider;
         Vector3 _pendingPush;
-        bool _isSettled = true;
+        int _blockerId;
+
+        /// <summary>True while the box is at rest.</summary>
+        public bool IsSettled { get; private set; } = true;
 
         /// <summary>Raised once, when the box's speed drops below the settle threshold.</summary>
         public event Action<PushableBox> OnBoxSettled;
@@ -24,7 +32,17 @@ namespace ToyFactory.Interaction
         /// <summary>Raised once, when a settled box starts moving again.</summary>
         public event Action<PushableBox> OnBoxMoved;
 
-        void Awake() => _rb = GetComponent<Rigidbody>();
+        void Awake()
+        {
+            _rb = GetComponent<Rigidbody>();
+            _collider = GetComponent<Collider>();
+            _blockerId = ++s_nextBlockerId;
+        }
+
+        // A box placed in the scene starts at rest. The grid keeps the request if it is not built yet.
+        void Start() => BlockGrid();
+
+        void OnDisable() => GridManager.ClearBlocker(_blockerId);
 
         /// <summary>Queues a push force, applied on the next physics step.</summary>
         public void AddPush(Vector3 force) => _pendingPush += force;
@@ -38,16 +56,24 @@ namespace ToyFactory.Interaction
             }
 
             bool settledNow = _rb.linearVelocity.sqrMagnitude < settleSpeed * settleSpeed;
-            if (settledNow && !_isSettled)
+            if (settledNow && !IsSettled)
             {
-                _isSettled = true;
+                IsSettled = true;
+                BlockGrid();
                 OnBoxSettled?.Invoke(this);
             }
-            else if (!settledNow && _isSettled)
+            else if (!settledNow && IsSettled)
             {
-                _isSettled = false;
+                IsSettled = false;
+                GridManager.ClearBlocker(_blockerId);
                 OnBoxMoved?.Invoke(this);
             }
+        }
+
+        void BlockGrid()
+        {
+            if (_collider != null)
+                GridManager.SetBlocker(_blockerId, _collider.bounds);
         }
     }
 }
