@@ -102,6 +102,7 @@ namespace ToyFactory.AI.Agents.Tracker
         Vector2Int _doorCell;
         Vector2Int _doorApproach;
         Vector3? _searchCentre;   // Search rings round this instead of the last known position, once
+        Vector3 _activeSearchCentre;
 
         // Current route and this tick's output.
         List<Vector2Int> _routeCells;
@@ -277,6 +278,27 @@ namespace ToyFactory.AI.Agents.Tracker
 
         /// <summary>True while the last route stops at a closed door instead of reaching its goal.</summary>
         public bool IsBlockedByDoor => _doorBlocked;
+
+        /// <summary>The closed door the route stops at; meaningful while <see cref="IsBlockedByDoor"/>.</summary>
+        public Vector2Int BlockingDoorCell => _doorCell;
+
+        /// <summary>The cells of the last GBFS route still being followed, or null.</summary>
+        public IReadOnlyList<Vector2Int> RouteCells => _routeCells;
+
+        /// <summary>Whether the player has been seen at least once (the last known position, LKP).</summary>
+        public bool HasLastKnownPosition => _hasLastKnown;
+
+        /// <summary>Where the player was last seen.</summary>
+        public Vector3 LastKnownPosition => _lastKnown;
+
+        /// <summary>True in Search; <see cref="SearchCentre"/> is then the middle of its rings.</summary>
+        public bool IsSearching => _debugState == "Search";
+
+        /// <summary>The point Search rings round: the LKP, or the near side of a shut door.</summary>
+        public Vector3 SearchCentre => _activeSearchCentre;
+
+        /// <summary>Adds every noise still remembered at the last tick to <paramref name="into"/> (read-only, for the overlay).</summary>
+        public void GetRememberedNoises(List<RememberedNoise> into) => _noises.CopyTo(Now, into);
 
         /// <summary>Wind-up energy 0..1, for the key-spin animation.</summary>
         public float Energy01 => _energy.Energy01;

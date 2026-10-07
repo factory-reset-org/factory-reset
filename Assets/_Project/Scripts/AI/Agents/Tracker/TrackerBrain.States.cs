@@ -229,6 +229,7 @@ namespace ToyFactory.AI.Agents.Tracker
                 _point = -1;
                 _centre = b._searchCentre ?? b._lastKnown;
                 b._searchCentre = null;
+                b._activeSearchCentre = _centre;
                 Vector3 v = b._lastKnownVelocity;
                 _headingDeg = v.x * v.x + v.z * v.z > 0.01f ? Mathf.Atan2(v.x, v.z) * Mathf.Rad2Deg : 0f;
                 b.StopMoving();
