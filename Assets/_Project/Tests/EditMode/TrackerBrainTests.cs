@@ -387,6 +387,8 @@ namespace ToyFactory.Tests.EditMode
             StringAssert.Contains("Top | 100 | any -> Stunned", firstTopRow);
             StringAssert.Contains("Calm | 30 | any -> Distracted", table);
             StringAssert.Contains("Hunting | 20 | Chase -> Search", table);
+            StringAssert.Contains("Hunting | 25 | Chase -> WaitAtDoor", table);
+            StringAssert.Contains("Hunting | 22 | WaitAtDoor -> Search", table);
         }
 
         // ---- Graph changes --------------------------------------------------------------
@@ -417,6 +419,154 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual(PatrolA, EndCell(intent));
             foreach (Vector3 point in intent.Path)
                 Assert.AreNotEqual(blocked, _grid.WorldToCell(point));
+        }
+
+        // ---- Closed doors ---------------------------------------------------------------
+
+        // A wall along column 20 with a three-cell door (rows 9-11), like a doorway in the level.
+        static readonly Vector2Int DoorMiddle = new Vector2Int(20, 10);
+        static readonly Vector2Int BeyondTheDoor = new Vector2Int(25, 10);
+
+        void DoorWall(bool closed)
+        {
+            for (int y = 0; y < _grid.Height; y++)
+            {
+                var cell = new Vector2Int(20, y);
+                if (y >= 9 && y <= 11)
+                    _grid.SetDoor(cell, 1, closed);
+                else
+                    _grid.SetWalkable(cell, false);
+            }
+        }
+
+        void SetDoorClosed(bool closed)
+        {
+            for (int y = 9; y <= 11; y++)
+                _grid.SetDoor(new Vector2Int(20, y), 1, closed);
+        }
+
+        // Chases the player through the open door, then the door shuts between them.
+        TrackerBrain ChaseUntilTheDoorShuts()
+        {
+            DoorWall(closed: false);
+            TrackerBrain brain = Brain(new Vector2Int(10, 2), new Vector2Int(14, 2));
+            brain.Tick(At(Start, 0f));
+            PlacePlayer(BeyondTheDoor);
+            Assert.AreEqual("Chase", brain.Tick(At(Start, 1f)).DebugState);
+
+            SetDoorClosed(true);
+            return brain;
+        }
+
+        [Test]
+        public void AClosedDoorSendsTheChaseToTheNearSideOfTheDoor()
+        {
+            TrackerBrain brain = ChaseUntilTheDoorShuts();
+
+            AgentIntent intent = brain.Tick(At(Start, 1.5f));   // the next 0.5 s repath
+
+            Assert.IsTrue(brain.IsBlockedByDoor);
+            Assert.IsNotNull(intent.Path);
+            Vector2Int end = EndCell(intent);
+            Assert.AreEqual(19, end.x, "Stops on the cell before the door.");
+            Assert.AreEqual(DoorMiddle.y, end.y, 1);
+            Assert.AreEqual("WaitAtDoor", brain.Tick(At(Start, 1.6f)).DebugState, "The door beats losing sight (priority 25 > 20).");
+        }
+
+        [Test]
+        public void ItWaitsAtTheShutDoorThenSearchesItsOwnSide()
+        {
+            TrackerBrain brain = ChaseUntilTheDoorShuts();
+            AgentIntent planned = brain.Tick(At(Start, 1.5f));
+            Vector2Int approach = EndCell(planned);
+            brain.Tick(At(Start, 1.6f));
+
+            AgentIntent waiting = brain.Tick(At(approach, 3f));   // arrived
+            Assert.AreEqual("WaitAtDoor", waiting.DebugState);
+            Assert.AreEqual(AlertLevel.Alert, waiting.Alert);
+            Assert.AreEqual(0, waiting.Path.Count, "Stands at the door.");
+            Assert.AreEqual(DoorMiddle.x, _grid.WorldToCell(waiting.LookTarget.Value).x, "Stares at the door.");
+
+            Assert.AreEqual("WaitAtDoor", brain.Tick(At(approach, 5.4f)).DebugState);
+            brain.Tick(At(approach, 5.5f));   // 2.5 s at the door
+            AgentIntent search = brain.Tick(At(approach, 5.6f));
+
+            Assert.AreEqual("Search", search.DebugState);
+            Assert.AreEqual(AlertLevel.Suspicious, search.Alert);
+            Assert.IsNotNull(search.Path);
+            Assert.Less(EndCell(search).x, 20, "Searches the side it can reach.");
+        }
+
+        [Test]
+        public void TheDoorOpeningResumesTheChase()
+        {
+            TrackerBrain brain = ChaseUntilTheDoorShuts();
+            AgentIntent planned = brain.Tick(At(Start, 1.5f));
+            Vector2Int approach = EndCell(planned);
+            brain.Tick(At(Start, 1.6f));
+            brain.Tick(At(approach, 3f));
+            PlacePlayer(new Vector2Int(22, 2));   // beyond the door, out of the cone and behind the wall
+
+            SetDoorClosed(false);
+            AgentIntent intent = brain.Tick(At(approach, 3.2f));
+
+            Assert.AreEqual("Chase", intent.DebugState);
+            Assert.IsFalse(brain.IsBlockedByDoor);
+            Assert.AreEqual(BeyondTheDoor, EndCell(intent), "Runs on through the door to where it last saw the player.");
+        }
+
+        [Test]
+        public void ANoiseThroughAClosedDoorIsCheckedFromTheDoor()
+        {
+            DoorWall(closed: true);
+            TrackerBrain brain = Brain(new Vector2Int(10, 2), new Vector2Int(14, 2));
+            brain.Tick(At(Start, 0f));
+
+            AgentIntent intent = brain.Tick(At(Start, 0.1f, Noise(BeyondTheDoor, 60f, 7, 0.1f)));
+
+            Assert.AreEqual("Investigate", intent.DebugState);
+            Assert.AreEqual(AlertLevel.Suspicious, intent.Alert);
+            Assert.IsTrue(brain.IsBlockedByDoor);
+            Assert.AreEqual(19, EndCell(intent).x);
+
+            Vector2Int approach = EndCell(intent);
+            brain.Tick(At(approach, 2f));   // arrived: looks around at the door
+            brain.Tick(At(approach, 2f + TrackerBrain.InvestigateLookTime + 0.05f));
+            Assert.AreEqual("Patrol", brain.Tick(At(approach, 4.6f)).DebugState);
+        }
+
+        [Test]
+        public void ANoiseBehindAWallWithNoDoorIsLookedForFromWhereItStands()
+        {
+            for (int y = 0; y < _grid.Height; y++)
+                _grid.SetWalkable(new Vector2Int(20, y), false);
+            TrackerBrain brain = Brain(new Vector2Int(10, 2), new Vector2Int(14, 2));
+            brain.Tick(At(Start, 0f));
+
+            AgentIntent intent = brain.Tick(At(Start, 0.1f, Noise(BeyondTheDoor, 60f, 7, 0.1f)));
+
+            Assert.AreEqual("Investigate", intent.DebugState);
+            Assert.IsFalse(brain.IsBlockedByDoor, "A wall is not a door: there is nothing to wait at.");
+            Assert.AreEqual(0, intent.Path.Count, "Unreachable: it stops and looks from here.");
+        }
+
+        // ---- Alert level ----------------------------------------------------------------
+
+        [Test]
+        public void TheAlertLevelFollowsTheState()
+        {
+            TrackerBrain brain = Brain();
+            Assert.AreEqual(AlertLevel.None, brain.Tick(At(Start, 0f)).Alert, "Patrol");
+
+            Assert.AreEqual(AlertLevel.Suspicious, brain.Tick(At(Start, 0.1f, Noise(new Vector2Int(12, 18), 60f, 5, 0.1f))).Alert, "Investigate");
+
+            PlacePlayer(new Vector2Int(25, 10));
+            Assert.AreEqual(AlertLevel.Alert, brain.Tick(At(Start, 0.2f)).Alert, "Chase");
+
+            PlacePlayer(new Vector2Int(2, 10));
+            brain.Tick(At(Start, 0.5f));
+            Assert.AreEqual(AlertLevel.Suspicious, brain.Tick(At(Start, 1f)).Alert, "Search");
+            Assert.AreEqual(AlertLevel.Suspicious, brain.Alert);
         }
 
         [Test]

@@ -181,6 +181,41 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void ThroughClosedDoorsTheRouteCrossesTheDoor()
+        {
+            GridGraph grid = GridFromRows(".....");
+            var door = new Vector2Int(2, 0);
+            grid.SetDoor(door, doorId: 1, isClosed: true);
+
+            PathResult result = new GreedyBestFirstSearch(grid).FindPath(new Vector2Int(0, 0), new Vector2Int(4, 0),
+                BaseCostModel.Instance, throughClosedDoors: true);
+
+            Assert.IsTrue(result.Found);
+            CollectionAssert.Contains(result.Cells, door);
+        }
+
+        [Test]
+        public void ThroughClosedDoorsWallsStillBlock()
+        {
+            GridGraph grid = GridFromRows("..#..");
+            var search = new GreedyBestFirstSearch(grid);
+
+            Assert.IsFalse(search.FindPath(new Vector2Int(0, 0), new Vector2Int(4, 0), BaseCostModel.Instance, throughClosedDoors: true).Found);
+        }
+
+        [Test]
+        public void ThroughClosedDoorsAGoalOnTheDoorIsAllowed()
+        {
+            GridGraph grid = GridFromRows(".....");
+            var door = new Vector2Int(2, 0);
+            grid.SetDoor(door, doorId: 1, isClosed: true);
+            var search = new GreedyBestFirstSearch(grid);
+
+            Assert.IsFalse(search.FindPath(new Vector2Int(0, 0), door, BaseCostModel.Instance).Found);
+            Assert.IsTrue(search.FindPath(new Vector2Int(0, 0), door, BaseCostModel.Instance, throughClosedDoors: true).Found);
+        }
+
+        [Test]
         public void FindsAPathWheneverAStarDoesOnFiftyRandomGrids()
         {
             // Completeness: GBFS may take a longer route, but never misses one that exists.
