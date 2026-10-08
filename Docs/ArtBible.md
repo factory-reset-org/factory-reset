@@ -70,8 +70,13 @@ Baked GI + 2-3 real-time point lights. Bloom, colour grading (warm factory), vig
 As built in `Env.unity` (S1, Week 12):
 - Materials are `Materials/Environment/M_Env_*`. Floors use a lighter tint of the room key colour (Assembly `#7FE3C6`, Painting `#FF9CC8`, Storage `#FFC170`, Control `#A592FF`); the full key colour over a 20 m floor drowns the props.
 - A ninth material, `M_Env_GlowAlarm` (red `#FF5A4E` emission), is used on the Control Room alarm beacons. It is left out of the bake so the lighting state can turn it amber at runtime.
-- Lights, under `Lighting`: the sun is Mixed (Baked Indirect). Each room has one baked fill light. Three real-time accents remain: a pink light in Painting, an orange lamp in Storage and the red alarm in Control. Lighting settings are in `Settings/Lighting/LS_Env`.
-- Ambient is Trilight. Fog is exponential, density 0.006.
+- Lights, under `Lighting` (relit in Week 13 for the ceiling, as in the prototype):
+  - Every room is closed by a dark plum ceiling at 6 m (`M_Env_Ceiling`, `#2B2450`) with nine glowing panels (`M_Env_CeilingPanel`, warm white `#FFF3D6`, emission x2.2).
+  - Under each panel is a baked rectangle area light, 2.4 x 0.8 m (`CeilingLights_Baked`, 36 lights). They are tinted with the room colour: Assembly `#D8FFF1`, Painting `#FFE1EF`, Storage `#FFE6C4`, Control `#B8A8FF`. Intensity is 32, except Control at 14, which keeps the final room cold and dim.
+  - The sun and the four point fills are switched off: the ceiling would block the sun anyway, and the panels now light the rooms the way the prototype does. Painting keeps its baked pink accent.
+  - Three real-time lights remain: the orange lamp in Storage and the two red Control Room door alarms.
+  - Lighting settings are in `Settings/Lighting/LS_Env`.
+- Ambient is Trilight, but with the ceiling closed it no longer reaches inside the rooms; the panels and their bounce light do the work. Fog is exponential, density 0.006.
 - 629 light probes: a 3 m grid at 0.5, 2 and 4 m, six probes at each doorway, and 118 more along the agents' patrol routes and the player's route through the four doorways (pairs at 0.75 m and 2 m wherever a route point was more than 1.25 m from a probe).
 - Post-processing is one global Volume (`Settings/PostProcessing/PP_Factory`):
   - Bloom: threshold 1.1, intensity 0.6.
