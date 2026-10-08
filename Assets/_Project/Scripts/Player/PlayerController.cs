@@ -10,7 +10,9 @@ namespace ToyFactory.Player
     /// from the shared Input Actions asset, moves a CharacterController with manual
     /// gravity, and exposes position, velocity and grid cell for later use on the
     /// shared world blackboard. Shooting, interacting and throwing are separate
-    /// components; this one only moves and looks.
+    /// components; this one only moves and looks, and reports the player's health,
+    /// battery and last shot to the agents from <see cref="PlayerHealth"/>,
+    /// <see cref="PlayerBattery"/> and <see cref="PlayerBlaster"/>.
     /// </summary>
     [RequireComponent(typeof(CharacterController))]
     public sealed class PlayerController : MonoBehaviour, IPlayerState
@@ -43,6 +45,9 @@ namespace ToyFactory.Player
         [SerializeField] float pushForce = 400f;
 
         CharacterController _controller;
+        PlayerHealth _health;
+        PlayerBattery _battery;
+        PlayerBlaster _blaster;
         InputAction _moveAction;
         InputAction _lookAction;
         InputAction _sprintAction;
@@ -65,17 +70,19 @@ namespace ToyFactory.Player
 
         public float SprintSpeed => sprintSpeed;
 
-        // No health, ammo, reload, overcharge or shooting exists yet, so these report
-        // their defaults and TakeDamage is a no-op until those systems land.
-        public bool IsAlive => true;
-        public float HealthFraction => 1f;
-        public float AmmoFraction => 1f;
-        public bool IsReloading => false;
-        public float OverchargeTimeLeft => 0f;
-        public float LastShotTime => -1f;
+        // Health, battery and blaster are their own components on the player. One that is
+        // missing (a bare test player) reports as full, idle and unhurt.
+        public bool IsAlive => _health == null || _health.IsAlive;
+        public float HealthFraction => _health != null ? _health.Fraction : 1f;
+        public float AmmoFraction => _battery != null ? _battery.Fraction : 1f;
+        public bool IsReloading => _battery != null && _battery.IsReloading;
+        public float OverchargeTimeLeft => _battery != null ? _battery.OverchargeTimeLeft : 0f;
+        public float LastShotTime => _blaster != null ? _blaster.LastShotTime : -1f;
 
         public void TakeDamage(float amount, int sourceAgentId)
         {
+            if (_health != null)
+                _health.TakeDamage(amount, sourceAgentId);
         }
 
         /// <summary>Current grid cell, computed from position using the shared cell size.</summary>
@@ -86,6 +93,9 @@ namespace ToyFactory.Player
         void Awake()
         {
             _controller = GetComponent<CharacterController>();
+            _health = GetComponent<PlayerHealth>();
+            _battery = GetComponent<PlayerBattery>();
+            _blaster = GetComponent<PlayerBlaster>();
 
             InputActionMap map = inputActions.FindActionMap("Player");
             _moveAction = map.FindAction("Move");
