@@ -56,15 +56,87 @@ namespace ToyFactory.Tests
         }
 
         // No start delay, so tests do not wait 1.3 s.
-        CutsceneDirector CreateDirector(params CutsceneDefinition[] cutscenes)
+        CutsceneDirector CreateDirector(params CutsceneDefinition[] cutscenes) => CreateDirector(false, cutscenes);
+
+        // The intro is off unless a test is about it, so it never shows up in other tests' logs.
+        CutsceneDirector CreateDirector(bool playIntro, params CutsceneDefinition[] cutscenes)
         {
             var go = Track(new GameObject("Cutscene Director"));
             go.SetActive(false);   // so Awake runs after the fields are set
             CutsceneDirector director = go.AddComponent<CutsceneDirector>();
             SetField(director, "cutscenes", cutscenes);
             SetField(director, "startDelay", 0f);
+            SetField(director, "playIntroOnStart", playIntro);
             go.SetActive(true);
             return director;
+        }
+
+        sealed class FakeClock : IGameClock
+        {
+            public GameState State { get; set; }
+            public float GameTime => Time.time;
+            public void AddListener(IGameStateListener listener) { }
+            public void RemoveListener(IGameStateListener listener) { }
+            public void RequestState(GameState state) => State = state;
+        }
+
+        static CutsceneDefinition Intro() =>
+            new CutsceneDefinition("intro", CutsceneTrigger.Manual, placeholderSeconds: 0.1f);
+
+        [UnityTest]
+        public IEnumerator IntroPlaysByItselfOnceAtTheStart()
+        {
+            CutsceneDirector director = CreateDirector(true, Intro());
+
+            yield return Frames(2);
+            Assert.IsTrue(director.IntroRequested);
+            Assert.AreEqual("intro", director.CurrentCutsceneId);
+
+            float until = Time.time + 0.5f;
+            while (Time.time < until)
+                yield return null;
+            CollectionAssert.AreEqual(new[] { "started:intro", "ended:intro" }, _log, "Played once, never again.");
+        }
+
+        [UnityTest]
+        public IEnumerator IntroWaitsForTheFirstPlayingState()
+        {
+            var clock = new FakeClock { State = GameState.Title };
+            GameClock.Publish(clock);
+            try
+            {
+                CutsceneDirector director = CreateDirector(true, Intro());
+
+                yield return Frames(3);
+                Assert.IsFalse(director.IntroRequested, "Still loading (or on a title screen).");
+                Assert.IsEmpty(_log);
+
+                clock.State = GameState.Playing;
+                yield return Frames(2);
+                Assert.AreEqual("intro", director.CurrentCutsceneId);
+                Assert.AreEqual(GameState.Cutscene, clock.State, "The intro freezes the game like any cutscene.");
+
+                float until = Time.time + 0.5f;
+                while (Time.time < until)
+                    yield return null;
+                Assert.AreEqual(GameState.Playing, clock.State);
+                CollectionAssert.AreEqual(new[] { "started:intro", "ended:intro" }, _log, "Back to Playing does not replay it.");
+            }
+            finally
+            {
+                GameClock.Publish(null);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator IntroCanBeSwitchedOff()
+        {
+            CutsceneDirector director = CreateDirector(false, Intro());
+
+            yield return Frames(3);
+
+            Assert.IsFalse(director.IntroRequested);
+            Assert.IsEmpty(_log);
         }
 
         static IEnumerator Frames(int count)
