@@ -14,7 +14,9 @@ namespace ToyFactory.Interaction
 
         [SerializeField, Range(1, ChapterEvents.SwitchCount)] int switchNumber = 1;
 
-        string _id;
+        // Not serialized: after a script reload in the Editor, Unity would otherwise bring
+        // this back as an empty string, which is not null, and the id would stay empty.
+        [System.NonSerialized] string _id;
 
         public override string Id => _id ??= IdPrefix + switchNumber;
 
