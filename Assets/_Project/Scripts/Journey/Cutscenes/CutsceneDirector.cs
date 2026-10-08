@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using Unity.Cinemachine;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Playables;
@@ -16,7 +18,10 @@ namespace ToyFactory.Journey.Cutscenes
     /// Lives in the Agents scene. Critical signals come from <see cref="CriticalSignalMarker"/>s
     /// on the Timelines, which notify this component because it sits on the same object as
     /// the PlayableDirector. A cutscene without a Timeline holds for its placeholder time,
-    /// so the journey plays through before the real Timelines exist.
+    /// so the journey plays through before the real Timelines exist. When a Timeline starts,
+    /// its unbound tracks are bound to objects in other scenes by <see cref="CutsceneBindingId"/>
+    /// (<see cref="CutsceneBindings"/>) and the gameplay camera is handed to Cinemachine
+    /// (<see cref="CutsceneCameraRig"/>) until the cutscene ends.
     /// </remarks>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(PlayableDirector))]
@@ -44,10 +49,15 @@ namespace ToyFactory.Journey.Cutscenes
         [Tooltip("Plays the voice blips as lines type out. Optional.")]
         [SerializeField] AudioSource blipSource;
 
+        [Tooltip("Blend between cameras that a Timeline does not time itself. Shot blends are set on the Timeline's Cinemachine clips.")]
+        [SerializeField] CinemachineBlendDefinition cameraBlend = new CinemachineBlendDefinition(CinemachineBlendDefinition.Styles.EaseInOut, 0.8f);
+
         PlayableDirector _director;
         CutsceneRunner _runner;
         DialogueRunner _dialogue;
         VoiceBlips _blips;
+        CutsceneCameraRig _camera;
+        readonly List<string> _missingBindings = new List<string>();
         CutsceneDefinition _playing;
         bool _usingTimeline;
         bool _timelineFinished;
@@ -68,6 +78,12 @@ namespace ToyFactory.Journey.Cutscenes
         /// <summary>The cutscene dialogue, for tests and the debug overlay.</summary>
         public DialogueRunner Dialogue => _dialogue;
 
+        /// <summary>The gameplay camera hand-over, for tests.</summary>
+        public CutsceneCameraRig CameraRig => _camera;
+
+        /// <summary>Track names of the playing Timeline that found no object with that binding id.</summary>
+        public IReadOnlyList<string> MissingBindings => _missingBindings;
+
         void Awake()
         {
             if (Current != null && Current != this)
@@ -81,6 +97,7 @@ namespace ToyFactory.Journey.Cutscenes
 
             _runner = new CutsceneRunner(cutscenes, this, () => GameClock.Current);
             _dialogue = new DialogueRunner(ConditionHolds);
+            _camera = new CutsceneCameraRig(transform, cameraBlend);
             if (blipSource != null)
             {
                 _blips = new VoiceBlips(blipSource);
@@ -93,6 +110,7 @@ namespace ToyFactory.Journey.Cutscenes
             ChapterEvents.OnSwitchRestored += HandleSwitchRestored;
             ChapterEvents.OnTaskCompleted += HandleTaskCompleted;
             AgentEvents.OnDestroyed += HandleAgentDestroyed;
+            CutsceneEvents.OnCutsceneEnded += HandleCutsceneEnded;
         }
 
         void OnDisable()
@@ -100,12 +118,14 @@ namespace ToyFactory.Journey.Cutscenes
             ChapterEvents.OnSwitchRestored -= HandleSwitchRestored;
             ChapterEvents.OnTaskCompleted -= HandleTaskCompleted;
             AgentEvents.OnDestroyed -= HandleAgentDestroyed;
+            CutsceneEvents.OnCutsceneEnded -= HandleCutsceneEnded;
         }
 
         void OnDestroy()
         {
             if (_director != null)
                 _director.stopped -= HandleTimelineStopped;
+            _camera?.Dispose();
             if (Current == this)
                 Current = null;
         }
@@ -202,6 +222,11 @@ namespace ToyFactory.Journey.Cutscenes
             {
                 _timelineFinished = false;
                 _director.playableAsset = cutscene.Timeline;
+                _camera.Begin();
+                _missingBindings.Clear();
+                _missingBindings.AddRange(CutsceneBindings.Resolve(_director, _camera.Brain));
+                if (_missingBindings.Count > 0)
+                    Debug.LogWarning($"Cutscene \"{cutscene.Id}\": no loaded object has the binding id of track(s) {string.Join(", ", _missingBindings)}. Those tracks do nothing.", this);
                 _director.time = 0;
                 _director.Play();
                 return true;
@@ -236,6 +261,9 @@ namespace ToyFactory.Journey.Cutscenes
 
         // Finished once the Timeline (if any) has ended and the last line has been said.
         bool ICutscenePlayback.IsFinished => (!_usingTimeline || _timelineFinished) && !_dialogue.IsBusy;
+
+        // The camera goes back to the player once the cutscene is over (watched or skipped).
+        void HandleCutsceneEnded(string cutsceneId) => _camera.End();
 
         // With the wrap mode set to None, the director stops by itself at the Timeline's end.
         void HandleTimelineStopped(PlayableDirector director) => _timelineFinished = true;
