@@ -102,11 +102,13 @@ namespace ToyFactory.Tests
             CinemachineCamera vcam = shotCamera.AddComponent<CinemachineCamera>();
             vcam.Lens.FieldOfView = 40f;
 
-            TimelineAsset timeline = Timeline(0.6);
+            // Long enough that the check at 0.25 s still falls inside the shot after one slow frame
+            // (up to the 0.33 s maximum timestep).
+            TimelineAsset timeline = Timeline(1.0);
             var cameraTrack = timeline.CreateTrack<CinemachineTrack>(null, "Camera");
             TimelineClip clip = cameraTrack.CreateClip<CinemachineShot>();
             clip.start = 0;
-            clip.duration = 0.6;
+            clip.duration = 1.0;
             var shot = (CinemachineShot)clip.asset;
             shot.VirtualCamera.exposedName = "shot-1";
 
@@ -121,7 +123,7 @@ namespace ToyFactory.Tests
             Assert.Less(Vector3.Distance(camera.transform.position, shotCamera.transform.position), 0.01f, "The shot camera is live.");
             Assert.AreEqual(40f, camera.fieldOfView, 0.01f);
 
-            yield return Seconds(0.8f);
+            yield return Seconds(1.2f);
 
             Assert.IsFalse(director.IsPlaying);
             Assert.IsFalse(director.CameraRig.IsActive);
@@ -166,11 +168,13 @@ namespace ToyFactory.Tests
             var lamp = Track(new GameObject("Storage Lamp"));
             BindingId(lamp, "TestLamp");
 
-            TimelineAsset timeline = Timeline(0.4);
+            // The clip starts well after the check: one slow frame can last up to Unity's maximum
+            // timestep (0.33 s), so a "0.1 s" wait can end past 0.4 s. A clip at 0.3 s was flaky.
+            TimelineAsset timeline = Timeline(2.0);
             var activation = timeline.CreateTrack<ActivationTrack>(null, "TestLamp");
             TimelineClip on = activation.CreateDefaultClip();
-            on.start = 0.3;
-            on.duration = 0.1;
+            on.start = 1.5;
+            on.duration = 0.5;
             timeline.CreateTrack<ActivationTrack>(null, "NoSuchObject");
 
             CutsceneDirector director = Director(new CutsceneDefinition("ch2", CutsceneTrigger.SwitchRestored, 1, timeline: timeline));
