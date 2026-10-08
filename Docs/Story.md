@@ -192,4 +192,4 @@ Shot 3's second line has two versions. The cutscene picks one when it plays, dep
 | `ch3`, shot 2 | `ControlRoomUnlock` | The door alarms and their beacons turn steady amber. |
 | `ending`, shot 1 | `FactoryShutdown` | The real-time lights fade to warm and the emissives dim. |
 
-`LightingState` listens to the signals, never to the Timeline, so a skipped cutscene leaves the lights in the right state too. Objects a Timeline can bind to carry a `CutsceneBindingId`: `LightingRig`, `Sun`, `StorageLamp`, `AlarmDoor3`, `AlarmDoor4`, `ControlScreens` and `ObjectiveBeacon` (see DesignDoc 6.3).
+`LightingState` listens to the signals, never to the Timeline, so a skipped cutscene leaves the lights in the right state too. Objects a Timeline can bind to carry a `CutsceneBindingId`: `LightingRig`, `Sun` (switched off since the ceiling), `StorageLamp`, `AlarmDoor3`, `AlarmDoor4`, `ControlScreens` and `ObjectiveBeacon` (see DesignDoc 6.3).

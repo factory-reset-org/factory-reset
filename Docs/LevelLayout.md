@@ -38,10 +38,10 @@ Four 20 x 20 m rooms in a 2 x 2 ring, 41.5 x 41.5 m including walls. The journey
 | Rule | Minimum | Used |
 | --- | --- | --- |
 | Doorway width | 2.5 m | 3.0 m |
-| Doorway height | 3.5 m (Captain is 3.23 m) | 4.0 m, lintel 4-5 m |
+| Doorway height | 3.5 m (Captain is 3.23 m) | 4.0 m, lintel 4-6 m |
 | Passage width | 2.2 m | narrowest gap 4.5 m (Storage aisles) |
 | Wall thickness | 0.5 m | 0.5 m |
-| Wall height | 4 m | 5 m |
+| Wall height | 4 m | 6 m, closed by the ceiling |
 | Grid snap | 0.5 m | every wall, door and obstacle edge |
 
 Obstacles: two 2.8 m presses (Assembly), four 1.2 m cover blocks (Painting; low enough to shoot over when standing, high enough to hide a crouched player), three 3.2 m shelf rows (Storage; occluders for the later Occlusion Culling pass), three 3 m pillars carrying the cores (Control).
@@ -49,6 +49,15 @@ Obstacles: two 2.8 m presses (Assembly), four 1.2 m cover blocks (Painting; low 
 Only the `Level` hierarchy is Static (GI, occluder, occludee, batching, reflection probe). Doorway markers, area volumes and anchors are not geometry and are not static.
 
 **Smooth plastic style:** walls, lintels and obstacles use chamfered meshes from `BevelledBoxMesh` (0.06 m chamfer on walls, 0.08 m on obstacles; 44 triangles per box), saved per size in `Prefabs/Environment/Meshes` with lightmap UVs. Their box colliders keep the exact original size, so the NavMesh and grid are unchanged (still 5,318 walkable cells). Floors stay flat. One baked reflection probe per room (box projection, 128 px) gives the glossy materials something to reflect; it is re-baked after the lighting pass.
+
+## Ceiling
+
+Every room has a ceiling at 6 m, as in the prototype. The walls were raised from 5 m to 6 m to meet it, and the door lintels now fill 4-6 m, so the doorway openings are unchanged. S4's cutscene cameras are checked against this height (`CutsceneShotPlan.CeilingHeight`, at least 1 m under it).
+
+- One slab per room (`Level/Ceilings/Ceiling_<Room>`), 20.75 x 0.2 x 20.75 m like the floors, in dark plum (`M_Env_Ceiling`).
+- **No collider.** Nothing can reach 6 m, and a collider would put the slab's top into the NavMesh bake as a walkable roof. The NavMesh and grid are unchanged: no doorway, wall foot or obstacle under 4 m moved.
+- Nine light panels per room (`Panels_<Room>`), 2.4 x 0.8 m in a 3 x 3 grid 6.5 m apart, with a baked rectangle area light under each (`Lighting/CeilingLights_Baked`). See the Art Bible for the lighting.
+- Static like the rest of `Level`. The ceiling casts shadows on purpose: in the bake, an object that casts no shadows lets light through, so the sky would leak into the rooms.
 
 ## NavMesh and grid
 
@@ -117,5 +126,5 @@ Tracker: Assembly. Guard: Painting. Saboteur A: Storage. B: Assembly. C: Paintin
 
 ## Not done yet
 
-- Materials are greybox tints with the plastic smoothness values; the final Art Bible materials, lighting and the reflection-probe re-bake come in Task I.
-- Play from `Bootstrap.unity` needs S2's SceneLoader, which calls `GridManager.BuildGrid()`.
+- Room dressing from the prototype: a denser Storage shelf maze with toys, paint mixers and paint puddles in Painting, more server pillars in Control, wall trims and gears.
+- Floor detail (tiles, stripes, paint splats) and the prototype's darker fog.
