@@ -9,7 +9,8 @@
         "ToyFactory.Interfaces",
         "ToyFactory.Journey",
         "Unity.AI.Navigation",
-        "Unity.Timeline"
+        "Unity.Timeline",
+        "Unity.Cinemachine"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
