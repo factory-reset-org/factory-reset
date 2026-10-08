@@ -4,7 +4,9 @@
   "references": [
     "ToyFactory.Runtime",
     "ToyFactory.Interfaces",
-    "ToyFactory.Journey"
+    "ToyFactory.Journey",
+    "Unity.Timeline",
+    "Unity.Cinemachine"
   ],
   "includePlatforms": [
     "Editor"

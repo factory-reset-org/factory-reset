@@ -27,6 +27,9 @@ namespace ToyFactory.Journey.Cutscenes
 
         public PropertyName id => new PropertyName(signalId);
 
+        /// <summary>Sets the signal from code, for tests and the Timeline builder.</summary>
+        public void Configure(string signal) => signalId = signal;
+
         // Once per play, and still sent if playback starts past the marker.
         NotificationFlags INotificationOptionProvider.flags =>
             NotificationFlags.TriggerOnce | NotificationFlags.Retroactive;

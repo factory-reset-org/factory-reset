@@ -35,6 +35,21 @@ namespace ToyFactory.Tests.EditMode
         DialogueLineView Last => _shown[_shown.Count - 1];
 
         [Test]
+        public void ShotLastsItsTypingAndHoldsCountingOnlyTheLongestVersionOfAConditionalLine()
+        {
+            Assert.AreEqual(38f / 38f + 1.3f + 0.025f * 38f, DialogueRunner.LineSeconds(38), 1e-4f);
+
+            float shot = DialogueRunner.ShotSeconds(new[]
+            {
+                Line("Always said."),
+                Line("Short.", when: DialogueCondition.IfSaboteurAActive),
+                Line("A longer version.", when: DialogueCondition.IfSaboteurAScrapped),
+            });
+            Assert.AreEqual(DialogueRunner.LineSeconds(12) + DialogueRunner.LineSeconds(17), shot, 1e-4f,
+                "Only one of the two keycard lines is said, so only the longer one counts.");
+        }
+
+        [Test]
         public void LineTypesOutAtThirtyEightCharactersPerSecond()
         {
             var runner = new DialogueRunner();
