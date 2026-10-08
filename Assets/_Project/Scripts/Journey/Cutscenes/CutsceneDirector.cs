@@ -6,9 +6,9 @@ using ToyFactory.Interfaces;
 namespace ToyFactory.Journey.Cutscenes
 {
     /// <summary>
-    /// Plays the journey's cutscenes. A restored switch plays its cutscene after a short
-    /// delay, the console hold plays the ending, and <see cref="Play"/> plays any other
-    /// (the intro). While one plays the game is in the Cutscene state, so agents and the
+    /// Plays the journey's cutscenes. The intro plays by itself the first time the game is
+    /// Playing, a restored switch plays its cutscene after a short delay, the console hold
+    /// plays the ending, and <see cref="Play"/> plays any other. While one plays the game is in the Cutscene state, so agents and the
     /// game clock stop. Escape skips. The rules live in <see cref="CutsceneRunner"/>; this
     /// component connects them to the scene, the PlayableDirector and the input.
     /// </summary>
@@ -35,9 +35,19 @@ namespace ToyFactory.Journey.Cutscenes
         [Tooltip("Let the player skip a playing cutscene with Escape.")]
         [SerializeField] bool allowSkip = true;
 
+        [Tooltip("Play the intro the first time the game is in the Playing state (straight away in scenes without a game clock). Once per run.")]
+        [SerializeField] bool playIntroOnStart = true;
+
+        [Tooltip("Id of the cutscene played on start.")]
+        [SerializeField] string introId = "intro";
+
         PlayableDirector _director;
         CutsceneRunner _runner;
         bool _timelineFinished;
+        bool _introRequested;
+
+        /// <summary>True once the intro has been asked for this run (it is never asked for twice).</summary>
+        public bool IntroRequested => _introRequested;
 
         /// <summary>True while a cutscene is on screen.</summary>
         public bool IsPlaying => _runner != null && _runner.IsPlaying;
@@ -81,9 +91,24 @@ namespace ToyFactory.Journey.Cutscenes
 
         void Update()
         {
+            RequestIntroOnce();
             if (allowSkip && _runner.IsPlaying && SkipPressed())
                 _runner.Skip();
             _runner.Tick(Time.deltaTime);
+        }
+
+        // The intro waits for the first Playing state, so it starts after the scene loader has
+        // finished (and after a title screen, once there is one), and never again in this run:
+        // not after the pause menu, not after another cutscene hands the game back.
+        void RequestIntroOnce()
+        {
+            if (!playIntroOnStart || _introRequested)
+                return;
+            IGameClock clock = GameClock.Current;
+            if (clock != null && clock.State != GameState.Playing)
+                return;
+            _introRequested = true;
+            _runner.Request(introId, 0f);
         }
 
         static bool SkipPressed() =>
