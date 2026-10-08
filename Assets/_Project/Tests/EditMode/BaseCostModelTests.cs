@@ -68,10 +68,11 @@ namespace ToyFactory.Tests.EditMode
             float checksum = 0;
             for (int i = 0; i < 100; i++)
                 checksum += BaseCostModel.Instance.StepCost(from, to) + BaseCostModel.OctileDistance(from, to);
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 1000; i++)
-                checksum += BaseCostModel.Instance.StepCost(from, to) + BaseCostModel.OctileDistance(from, to);
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            int allocated = GcAllocations.Count(() =>
+            {
+                for (int i = 0; i < 1000; i++)
+                    checksum += BaseCostModel.Instance.StepCost(from, to) + BaseCostModel.OctileDistance(from, to);
+            });
             Assert.AreEqual(0, allocated);
             Assert.Greater(checksum, 0);
         }

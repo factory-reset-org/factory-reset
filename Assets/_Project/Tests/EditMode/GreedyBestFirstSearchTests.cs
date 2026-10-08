@@ -290,12 +290,35 @@ namespace ToyFactory.Tests.EditMode
             for (int i = 0; i < 10; i++)
                 search.FindPath(start, goal, BaseCostModel.Instance);
 
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 100; i++)
-                search.FindPath(start, goal, BaseCostModel.Instance);
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            int allocated = GcAllocations.Count(() =>
+            {
+                for (int i = 0; i < 100; i++)
+                    search.FindPath(start, goal, BaseCostModel.Instance);
+            });
 
             Assert.AreEqual(0, allocated);
+        }
+
+        [Test]
+        public void AFoundPathCostsOnlyItsListAndArray()
+        {
+            GridGraph grid = GridFromRows(
+                "..............",
+                "..........#...",
+                "..........#...");
+            var search = new GreedyBestFirstSearch(grid);
+            var start = new Vector2Int(0, 2);
+            var goal = new Vector2Int(12, 2);
+            for (int i = 0; i < 10; i++)
+                search.FindPath(start, goal, BaseCostModel.Instance);
+
+            int allocated = GcAllocations.Count(() =>
+            {
+                for (int i = 0; i < 100; i++)
+                    search.FindPath(start, goal, BaseCostModel.Instance);
+            });
+
+            Assert.AreEqual(100 * 2, allocated, "The returned path's list and array, sized exactly; nothing in the search loop.");
         }
 
         [Test]

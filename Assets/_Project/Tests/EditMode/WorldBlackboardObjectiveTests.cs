@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using NUnit.Framework;
 using ToyFactory.AI.Core.Blackboard;
+using ToyFactory.Tests.EditMode;
 using UnityEngine;
 
 namespace ToyFactory.Tests
@@ -118,14 +119,15 @@ namespace ToyFactory.Tests
             GC.Collect();
 
             int checksum = 0;
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 1000; i++)
+            int allocated = GcAllocations.Count(() =>
             {
-                IReadOnlyList<ObjectiveTarget> actual = blackboard.ObjectiveTargets;
-                checksum += actual[0].Id;
-            }
+                for (int i = 0; i < 1000; i++)
+                {
+                    IReadOnlyList<ObjectiveTarget> actual = blackboard.ObjectiveTargets;
+                    checksum += actual[0].Id;
+                }
 
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            });
             Assert.That(blackboard.ObjectiveTargets, Is.SameAs(expected));
             Assert.That(checksum, Is.EqualTo(1000));
             Assert.That(allocated, Is.Zero);

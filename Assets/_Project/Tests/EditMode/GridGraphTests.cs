@@ -538,13 +538,14 @@ namespace ToyFactory.Tests.EditMode
                 checksum += graph.GetNeighboursNonAlloc(graph.FromIndex(graph.ToIndex(Centre)), buffer);
                 checksum += graph.GetNeighboursNonAlloc(Centre, buffer, true);
             }
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 1000; i++)
+            int allocated = GcAllocations.Count(() =>
             {
-                checksum += graph.GetNeighboursNonAlloc(graph.FromIndex(graph.ToIndex(Centre)), buffer);
-                checksum += graph.GetNeighboursNonAlloc(Centre, buffer, true);
-            }
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+                for (int i = 0; i < 1000; i++)
+                {
+                    checksum += graph.GetNeighboursNonAlloc(graph.FromIndex(graph.ToIndex(Centre)), buffer);
+                    checksum += graph.GetNeighboursNonAlloc(Centre, buffer, true);
+                }
+            });
             Assert.AreEqual(0, allocated);
             Assert.Greater(checksum, 0);
         }
@@ -716,14 +717,15 @@ namespace ToyFactory.Tests.EditMode
                 graph.TryFindNearestTraversable(new Vector2Int(-5, 0), 1, out _);
                 graph.TryFindNearestTraversable(Vector2Int.zero, 0, out _);
             }
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 1000; i++)
+            int allocated = GcAllocations.Count(() =>
             {
-                if (graph.TryFindNearestTraversable(Centre, 2, out _)) successes++;
-                if (graph.TryFindNearestTraversable(new Vector2Int(-5, 0), 1, out _)) successes++;
-                if (graph.TryFindNearestTraversable(Vector2Int.zero, 0, out _)) successes++;
-            }
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+                for (int i = 0; i < 1000; i++)
+                {
+                    if (graph.TryFindNearestTraversable(Centre, 2, out _)) successes++;
+                    if (graph.TryFindNearestTraversable(new Vector2Int(-5, 0), 1, out _)) successes++;
+                    if (graph.TryFindNearestTraversable(Vector2Int.zero, 0, out _)) successes++;
+                }
+            });
             Assert.AreEqual(0, allocated);
             Assert.AreEqual(2000, successes);
             Assert.AreEqual(version, graph.Version);

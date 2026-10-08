@@ -269,10 +269,11 @@ namespace ToyFactory.Tests.EditMode
             Wall(10, doorId: 1);
             _noise.Propagate(Source, 100f);   // warm up
 
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 100; i++)
-                _noise.Propagate(Source, 100f);
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            int allocated = GcAllocations.Count(() =>
+            {
+                for (int i = 0; i < 100; i++)
+                    _noise.Propagate(Source, 100f);
+            });
 
             Assert.AreEqual(0, allocated);
         }
