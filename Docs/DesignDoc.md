@@ -120,12 +120,15 @@ A read-only view of an agent's body, in `Scripts/Interfaces/`. `AgentController`
 | --- | --- | --- |
 | `Type` | Tracker, Guard, Saboteur or Captain (`AgentType`, also in `Interfaces`) | `Identity.Type` |
 | `Identity` | `AgentIdentity`: type, unique `Id` and `SquadIndex` (`SquadLetter` gives A-D). Fixed for the agent's life | The spawner, through `Initialise` |
+| `Position` | World position of the body's root, on the floor under its feet, in metres. A scrapped agent reports where it went down; after its body is destroyed, the last position it had | The root `Transform`, read live; saved in `OnDestroy` |
 | `Speed` | Ground speed in m/s | `AgentPathFollower.CurrentSpeed` |
 | `TurnRate` | Degrees per second, positive = turning right | `AgentPathFollower.TurnRate` |
 | `IsAttacking` | True while the brain's action is `Shoot` | The latest `AgentIntent` |
 | `IsDead` | True once the agent is scrapped; never becomes false again | Set by `AgentController.Scrap` |
 
 **Why it lives in `Interfaces`:** that assembly references nothing, so animation, the HUD, scoring and the journey can read an agent without being able to see its brain. Readers get it once with `GetComponent<IAgentState>()` when they set up, never in `Update`.
+
+**Following an agent:** `Position` is what lets the journey use an agent's whereabouts without reaching for its `GameObject`. Chapter 3's beacon follows Saboteur A (the agent whose `Identity` is a Saboteur with `SquadIndex` 0) while it is alive, and the keycard drops where `AgentEvents.OnDestroyed` says A fell. Keep the reference from the event or from `GetComponent` and read `Position` each frame; the lookup is the only part that belongs in set-up.
 
 ### 2.7 Knock-outs and scrapping: `AgentEvents` (implemented)
 
@@ -561,6 +564,7 @@ The alarm colours belong to `LightingState`. A Timeline can frame or activate th
 | 2026-10-06 | The objective beacon shows while the game clock is Playing and no cutscene runs; its target rule lives in `ChapterFlow`, and `ChapterManager` exposes the result as `CurrentBeaconTarget` | Show it only after `OnCutsceneEnded("intro")`; let the beacon or the HUD each work out the target | Nothing plays the intro yet, so an intro-only gate would hide the beacon in every current build; the intro is a cutscene, so the game-state rule still hides it until the intro ends. One rule in the plain C# flow is tested without a scene, and the beacon and the HUD can never point at different things | S1 |
 | 2026-10-06 | The Control Room alarm beacons sit on the lintels of the two sealed doors, each with a red real-time light, as in the prototype; the Painting accent light becomes baked | Keep the beacons on the Control Room's back wall; add the door alarms as a fourth and fifth real-time light | The alarm marks the locked doors from the rooms the player is in, and the unlock is visible on camera in `ch3`. The plan allows 2-3 real-time point lights: Storage lamp plus two alarms is three, and the pink Painting fill looks the same baked | S1 |
 | 2026-10-06 | `LightingState` reacts to Critical signals only, swaps shared materials for the alarm, and never goes back to an earlier mood | Animate the lights in the Timelines; tint with a MaterialPropertyBlock | Signals also fire on skip, so the lights cannot be left red after a skipped `ch3`. A property block breaks the SRP Batcher (S3 measured +10 SetPass for four Saboteurs); two shared materials keep it. Moving forward only means a late or repeated signal cannot relock the doors' lights | S1 |
+| 2026-10-08 | `IAgentState` gains `Position`, the body root's world position, read live and kept after the body is destroyed | Cast the agent to `Component` and read its transform; a registry of agent positions in `Interfaces`; publish positions on the blackboard | S1's Chapter 3 beacon must follow Saboteur A while it moves, and S2's keycard must drop where it fell. Both already receive the agent as an `IAgentState`, so one read-only property serves both without a new system. A cast to `Component` ties `Interfaces` users to Unity objects and fails for a test fake; the blackboard is for brains and only Runtime writes it. A frozen interface changes only with all four reviewers | S4 (agreed with S1 on 2026-10-08) |
 
 ## 8. Greybox character model contract (S3)
 

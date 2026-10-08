@@ -24,6 +24,7 @@ namespace ToyFactory.Tests
         {
             public AgentType Type { get; set; }
             public AgentIdentity Identity { get; set; }
+            public Vector3 Position => Vector3.zero;
             public float Speed => 0f;
             public float TurnRate => 0f;
             public bool IsAttacking => false;

@@ -77,6 +77,16 @@ namespace ToyFactory.Runtime.Agents
         public AgentType Type => Identity.Type;
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// The root's transform, read live: a scrapped body is switched off, not destroyed, so it
+        /// still answers. Only if the body itself has been destroyed (its scene unloaded) does
+        /// this fall back to the position saved in <c>OnDestroy</c>.
+        /// </remarks>
+        public Vector3 Position => this != null ? transform.position : _lastPosition;
+
+        Vector3 _lastPosition;
+
+        /// <inheritdoc/>
         public float Speed => _follower.CurrentSpeed;
 
         /// <inheritdoc/>
@@ -304,6 +314,9 @@ namespace ToyFactory.Runtime.Agents
 
         void OnDestroy()
         {
+            // A listener may still hold this agent as an IAgentState after its scene unloads.
+            _lastPosition = transform.position;
+
             // The game clock outlives agents too.
             _clock?.RemoveListener(this);
 
