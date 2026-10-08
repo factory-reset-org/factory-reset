@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d0051ff1d385226429b945c0f92e61ab, type: 3}
+  m_Name: ch3
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.DialogueScript
+  shots:
+  - lines:
+    - speaker: 0
+      text: Two switches lost. Waking the Captain.
+      condition: 0
+    - speaker: 3
+      text: Unit 047. I do not chase. I predict.
+      condition: 0
+    - speaker: 3
+      text: Wherever you are going next, I will already be there.
+      condition: 0
+  - lines:
+    - speaker: 1
+      text: Uh oh. The Control Room doors just opened. Keep moving, and do not be predictable.
+      condition: 0
+  - lines:
+    - speaker: 1
+      text: The last switch is in the Storage vault, and it needs the master keycard.
+      condition: 0
+    - speaker: 1
+      text: Saboteur A has it. The purple one with the card spinning over its head. Scrap it.
+      condition: 1
+    - speaker: 1
+      text: You already knocked the keycard loose from Saboteur A. Nice. Go grab it.
+      condition: 2
+    - speaker: 1
+      text: Then read the relay board up there and hit the relays in that order. Wrong order sets off the alarm.
+      condition: 0

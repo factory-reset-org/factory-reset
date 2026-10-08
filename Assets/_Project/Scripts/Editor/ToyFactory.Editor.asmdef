@@ -3,7 +3,8 @@
   "rootNamespace": "ToyFactory.Editor",
   "references": [
     "ToyFactory.Runtime",
-    "ToyFactory.Interfaces"
+    "ToyFactory.Interfaces",
+    "ToyFactory.Journey"
   ],
   "includePlatforms": [
     "Editor"

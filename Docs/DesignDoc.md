@@ -359,6 +359,7 @@ Systems talk through events and the blackboard, not direct references. The journ
 | Objective changed (`ObjectiveEvents`) | Chapter manager (S1) | `ObjectiveTargetWriter` → blackboard `ObjectiveTargets`, then Captain, Saboteurs, beacon and HUD | Implemented: the chapter manager publishes after every change |
 | Switch unsealed, switch restored, chapter started (`ChapterEvents`) | Chapter manager | Switch cage (opens on unseal), cutscene director (next cutscene 1.3 s after a restore), blackboard writer (`ChapterIndex`), HUD, scoring | Raised by the chapter manager; cutscene director and `ChapterIndex` writer implemented, other listeners planned |
 | Cutscene started, ended (`CutsceneEvents`) | Cutscene director | Chapter manager (starts the next chapter on ended), HUD | Implemented. The director itself sets the Cutscene state through `IGameClock.RequestState` |
+| Dialogue line shown, cleared (`DialogueEvents`) | Cutscene director (`DialogueRunner`) | Subtitles (S3's UI; `PlaceholderSubtitles` until then) | Implemented in the director; S3's subtitles planned |
 | Critical cutscene signal (`CutsceneEvents.OnCriticalSignal`) | Cutscene Timeline (`CriticalSignalMarker`), through the director | Captain wake (`CaptainWakeWriter` sets `CaptainAwake`), Control Room door unlock, core shields drop, factory shutdown (S1's lighting goes to its shutdown state). Also fired when a cutscene is skipped | Implemented in the director; Captain wake implemented, other listeners planned |
 | Agent disabled, destroyed, rebooted (`AgentEvents`) | `AgentController` | Scoring, Saboteur squad, HUD | Events and raising implemented; nothing calls `Disable` or `Scrap` yet |
 | Game state changed (Title, Playing, Cutscene, Paused, Results) | Game manager (`IGameClock`, published as `GameClock.Current`) | `AgentController` (freezes brain and body outside Playing), player input, timers, HUD | Game clock and agent freezing implemented |
@@ -415,6 +416,28 @@ The ids `ch2` to `ch4` are the ones S1's chapter data waits for. The table is th
 **Why ended comes before Playing:** the chapter manager starts the next chapter on `OnCutsceneEnded`. Raising it while still in the Cutscene state means the next chapter's objectives are on the blackboard before any agent unfreezes and plans.
 
 **Why a missing cutscene still ends:** an unknown id logs a warning but still raises started and ended. A missing or misnamed cutscene then costs a cutscene, not the whole journey.
+
+#### Cutscene dialogue (S4, implemented)
+
+Every cutscene has a **dialogue script** (`Data/Dialogue/<cutscene id>.asset`), its lines grouped by shot, built from the Cutscenes section of `Docs/Story.md` by *Factory Reset → Cutscenes → Build Dialogue Scripts*. A line has a speaker (Factory OS, Pip, Unit 047, Captain), its text and an optional condition: the Chapter 3 keycard line has two versions, picked by whether Saboteur A has been scrapped (the director watches `AgentEvents.OnDestroyed`).
+
+**Playing a line** (`DialogueRunner`, plain C#):
+
+| Step | Rule |
+| --- | --- |
+| Typing | 38 characters per second |
+| Hold | 1.3 s + 0.025 s per character after the line is typed, then the next line |
+| Click, Space or E | Finishes the typing; on a typed line, goes straight to the next |
+| Esc | Skips the whole cutscene; the subtitle clears |
+| Pause menu | Holds the dialogue with the cutscene |
+
+**With a Timeline:** a `DialogueMarker` on the marker track starts one shot's lines. With "Wait For Lines" on, the Timeline holds at the marker until they are said, so the camera never cuts away mid-line however fast or slow the player reads. The cutscene ends when the Timeline has ended *and* the last line is done.
+
+**Without a Timeline (now):** every shot is said in order and the cutscene ends with its last line, so all five cutscenes are already watchable, with their real words.
+
+**Subtitles:** the runner raises `DialogueEvents.OnLineShown(DialogueLineView)` (speaker tag, tag colour, whole line, characters typed so far) whenever more is typed, and `OnLineCleared()` at the end or on skip. S3's UI draws the subtitle bar from these; until it exists, `PlaceholderSubtitles` on the director draws a plain bar from the same events, and is switched off when the UI lands.
+
+**Voice blips:** built in code, no audio files. Each speaker has a short tone in their waveform and pitch from the cast table (Factory OS low square, Pip high triangle, Captain sawtooth, Unit 047 sine), played on every second typed letter and slightly detuned each time.
 
 ### 6.2 Chapter contracts (S1, implemented)
 
@@ -519,6 +542,7 @@ The alarm colours belong to `LightingState`. A Timeline can frame or activate th
 | 2026-10-06 | Agents fall apart by detaching S3's rigid mesh parts as Debris physics bodies and flying them back on a smoothstep in the last second of the knock-out; the "?"/"!" icon reads an optional `AlertLevel` on `AgentIntent`, with a state-name fallback | Pre-made broken prefabs or a fall-apart clip; icons only from state names | The parts and their colliders already exist, so nothing is spawned and every model works the same way; physics makes each fall different. An explicit level survives state renames, and the fallback means no brain owner is blocked. Adding a field with a default changes no existing brain | S4 |
 | 2026-10-07 | A pluggable in-game debug overlay (F3): a base layer for every agent and one layer per brain, registered from each owner's own file; layers draw into a canvas that the overlay renders with GL lines and IMGUI labels | Scene-view gizmos only; one overlay class that knows every brain | The overlay must work in the Game view during play and in the demo video, where gizmos do not show. Registration keeps each owner's layer in their own file and history, so nobody edits the overlay to add an agent. Drawing into a canvas keeps layers testable without a camera | S4 |
 | 2026-10-08 | The cutscene director plays the intro itself on the first Playing state, once per run | The scene loader calls `Play("intro")` | The director already owns every other cutscene trigger, so the intro needs no change in S2's loader. Waiting for Playing (not Awake) means it starts after loading and after a future title screen, and the beacon appears when it ends, as S1's lighting expects | S4 |
+| 2026-10-08 | Cutscene dialogue is a per-cutscene script asset of shots, played by a plain C# runner; Timelines start shots with markers that can hold the Timeline until the lines are said; subtitles are events; blips are generated tones | Lines as Timeline text clips; fixed shot lengths; audio files per blip | The words live in one place, built from Story.md, so the script and the game cannot drift. Holding at a marker makes reading speed the player's choice instead of cutting lines off. Events keep S3's UI free of any reference to the director, and a placeholder bar lets the cutscenes be watched now. Generated tones need no assets and match the cast table exactly | S4 |
 | 2026-10-06 | The objective beacon shows while the game clock is Playing and no cutscene runs; its target rule lives in `ChapterFlow`, and `ChapterManager` exposes the result as `CurrentBeaconTarget` | Show it only after `OnCutsceneEnded("intro")`; let the beacon or the HUD each work out the target | Nothing plays the intro yet, so an intro-only gate would hide the beacon in every current build; the intro is a cutscene, so the game-state rule still hides it until the intro ends. One rule in the plain C# flow is tested without a scene, and the beacon and the HUD can never point at different things | S1 |
 | 2026-10-06 | The Control Room alarm beacons sit on the lintels of the two sealed doors, each with a red real-time light, as in the prototype; the Painting accent light becomes baked | Keep the beacons on the Control Room's back wall; add the door alarms as a fourth and fifth real-time light | The alarm marks the locked doors from the rooms the player is in, and the unlock is visible on camera in `ch3`. The plan allows 2-3 real-time point lights: Storage lamp plus two alarms is three, and the pink Painting fill looks the same baked | S1 |
 | 2026-10-06 | `LightingState` reacts to Critical signals only, swaps shared materials for the alarm, and never goes back to an earlier mood | Animate the lights in the Timelines; tint with a MaterialPropertyBlock | Signals also fire on skip, so the lights cannot be left red after a skipped `ch3`. A property block breaks the SRP Batcher (S3 measured +10 SetPass for four Saboteurs); two shared materials keep it. Moving forward only means a late or repeated signal cannot relock the doors' lights | S1 |

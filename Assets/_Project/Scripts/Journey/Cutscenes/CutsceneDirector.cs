@@ -41,9 +41,19 @@ namespace ToyFactory.Journey.Cutscenes
         [Tooltip("Id of the cutscene played on start.")]
         [SerializeField] string introId = "intro";
 
+        [Tooltip("Plays the voice blips as lines type out. Optional.")]
+        [SerializeField] AudioSource blipSource;
+
         PlayableDirector _director;
         CutsceneRunner _runner;
+        DialogueRunner _dialogue;
+        VoiceBlips _blips;
+        CutsceneDefinition _playing;
+        bool _usingTimeline;
         bool _timelineFinished;
+        bool _waitingForLines;
+        bool _held;
+        bool _saboteurAScrapped;
         bool _introRequested;
 
         /// <summary>True once the intro has been asked for this run (it is never asked for twice).</summary>
@@ -54,6 +64,9 @@ namespace ToyFactory.Journey.Cutscenes
 
         /// <summary>The cutscene on screen, or null.</summary>
         public string CurrentCutsceneId => _runner?.CurrentId;
+
+        /// <summary>The cutscene dialogue, for tests and the debug overlay.</summary>
+        public DialogueRunner Dialogue => _dialogue;
 
         void Awake()
         {
@@ -67,18 +80,26 @@ namespace ToyFactory.Journey.Cutscenes
             _director.stopped += HandleTimelineStopped;
 
             _runner = new CutsceneRunner(cutscenes, this, () => GameClock.Current);
+            _dialogue = new DialogueRunner(ConditionHolds);
+            if (blipSource != null)
+            {
+                _blips = new VoiceBlips(blipSource);
+                _dialogue.Typed += _blips.OnTyped;
+            }
         }
 
         void OnEnable()
         {
             ChapterEvents.OnSwitchRestored += HandleSwitchRestored;
             ChapterEvents.OnTaskCompleted += HandleTaskCompleted;
+            AgentEvents.OnDestroyed += HandleAgentDestroyed;
         }
 
         void OnDisable()
         {
             ChapterEvents.OnSwitchRestored -= HandleSwitchRestored;
             ChapterEvents.OnTaskCompleted -= HandleTaskCompleted;
+            AgentEvents.OnDestroyed -= HandleAgentDestroyed;
         }
 
         void OnDestroy()
@@ -94,7 +115,43 @@ namespace ToyFactory.Journey.Cutscenes
             RequestIntroOnce();
             if (allowSkip && _runner.IsPlaying && SkipPressed())
                 _runner.Skip();
+            else if (_runner.IsPlaying && AdvancePressed())
+                _dialogue.Advance();
+
+            // Dialogue runs in real time while a cutscene plays, and holds with the pause menu.
+            if (!_held)
+                _dialogue.Tick(Time.deltaTime);
+
+            // A Timeline waiting at a dialogue marker carries on once those lines are said.
+            if (_waitingForLines && !_dialogue.IsBusy && !_held)
+            {
+                _waitingForLines = false;
+                _director.Resume();
+            }
+
             _runner.Tick(Time.deltaTime);
+        }
+
+        // Click, Space or E: finish typing the line, then advance to the next one.
+        static bool AdvancePressed() =>
+            (Keyboard.current != null && (Keyboard.current.spaceKey.wasPressedThisFrame || Keyboard.current.eKey.wasPressedThisFrame))
+            || (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame);
+
+        bool ConditionHolds(DialogueCondition condition)
+        {
+            switch (condition)
+            {
+                case DialogueCondition.IfSaboteurAActive: return !_saboteurAScrapped;
+                case DialogueCondition.IfSaboteurAScrapped: return _saboteurAScrapped;
+                default: return true;
+            }
+        }
+
+        // Saboteur A carries the keycard; the Chapter 3 cutscene words its line by whether it is gone.
+        void HandleAgentDestroyed(IAgentState agent)
+        {
+            if (agent != null && agent.Type == AgentType.Saboteur && agent.Identity.SquadIndex == 0)
+                _saboteurAScrapped = true;
         }
 
         // The intro waits for the first Playing state, so it starts after the scene loader has
@@ -130,29 +187,55 @@ namespace ToyFactory.Journey.Cutscenes
 
         // ---- Timeline playback, for the runner ----
 
+        // With a Timeline, its dialogue markers start each shot's lines. Without one, but with a
+        // dialogue script, every shot is said in order and the cutscene ends with the last line,
+        // so a cutscene is watchable before its Timeline exists. With neither, the runner holds
+        // for the placeholder time.
         bool ICutscenePlayback.Play(CutsceneDefinition cutscene)
         {
-            if (cutscene.Timeline == null)
-                return false;
+            _playing = cutscene;
+            _held = false;
+            _waitingForLines = false;
+            _usingTimeline = cutscene.Timeline != null;
 
-            _timelineFinished = false;
-            _director.playableAsset = cutscene.Timeline;
-            _director.time = 0;
-            _director.Play();
+            if (_usingTimeline)
+            {
+                _timelineFinished = false;
+                _director.playableAsset = cutscene.Timeline;
+                _director.time = 0;
+                _director.Play();
+                return true;
+            }
+
+            DialogueScript script = cutscene.Dialogue;
+            if (script == null || script.ShotCount == 0)
+                return false;
+            for (int i = 0; i < script.ShotCount; i++)
+                _dialogue.Enqueue(script.LinesOf(i));
             return true;
         }
 
         void ICutscenePlayback.SetHeld(bool held)
         {
+            _held = held;
+            if (!_usingTimeline)
+                return;
             if (held)
                 _director.Pause();
-            else
+            else if (!_waitingForLines)
                 _director.Resume();
         }
 
-        void ICutscenePlayback.Stop() => _director.Stop();
+        void ICutscenePlayback.Stop()
+        {
+            _waitingForLines = false;
+            _dialogue.Clear();
+            if (_usingTimeline)
+                _director.Stop();
+        }
 
-        bool ICutscenePlayback.IsFinished => _timelineFinished;
+        // Finished once the Timeline (if any) has ended and the last line has been said.
+        bool ICutscenePlayback.IsFinished => (!_usingTimeline || _timelineFinished) && !_dialogue.IsBusy;
 
         // With the wrap mode set to None, the director stops by itself at the Timeline's end.
         void HandleTimelineStopped(PlayableDirector director) => _timelineFinished = true;
@@ -161,7 +244,20 @@ namespace ToyFactory.Journey.Cutscenes
         public void OnNotify(Playable origin, INotification notification, object context)
         {
             if (notification is CriticalSignalMarker marker)
+            {
                 _runner.SignalReached(marker.SignalId);
+                return;
+            }
+
+            if (notification is DialogueMarker line && _playing?.Dialogue != null && line.Shot < _playing.Dialogue.ShotCount)
+            {
+                _dialogue.Enqueue(_playing.Dialogue.LinesOf(line.Shot));
+                if (line.WaitForLines && _dialogue.IsBusy)
+                {
+                    _waitingForLines = true;
+                    _director.Pause();
+                }
+            }
         }
     }
 }

@@ -38,6 +38,9 @@ namespace ToyFactory.Journey.Cutscenes
         [Tooltip("Game state after the cutscene: Playing, or Results for the ending.")]
         [SerializeField] GameState stateAfter = GameState.Playing;
 
+        [Tooltip("The cutscene's lines, by shot (Data/Dialogue). Without a Timeline, every shot is said in order and the cutscene ends when the last line is done.")]
+        [SerializeField] DialogueScript dialogue;
+
         public string Id => id;
         public CutsceneTrigger Trigger => trigger;
         public int SwitchNumber => switchNumber;
@@ -45,10 +48,11 @@ namespace ToyFactory.Journey.Cutscenes
         public float PlaceholderSeconds => placeholderSeconds;
         public string[] CriticalSignals => criticalSignals;
         public GameState StateAfter => stateAfter;
+        public DialogueScript Dialogue => dialogue;
 
         public CutsceneDefinition(string id, CutsceneTrigger trigger, int switchNumber = 0,
             string[] criticalSignals = null, GameState stateAfter = GameState.Playing,
-            float placeholderSeconds = 2f, PlayableAsset timeline = null)
+            float placeholderSeconds = 2f, PlayableAsset timeline = null, DialogueScript dialogue = null)
         {
             this.id = id;
             this.trigger = trigger;
@@ -57,6 +61,7 @@ namespace ToyFactory.Journey.Cutscenes
             this.stateAfter = stateAfter;
             this.placeholderSeconds = placeholderSeconds;
             this.timeline = timeline;
+            this.dialogue = dialogue;
         }
 
         /// <summary>
