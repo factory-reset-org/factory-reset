@@ -1,0 +1,52 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d0051ff1d385226429b945c0f92e61ab, type: 3}
+  m_Name: intro
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.DialogueScript
+  shots:
+  - lines:
+    - speaker: 0
+      text: Night shift initiated.
+      condition: 0
+    - speaker: 0
+      text: All unfinished units... activate.
+      condition: 0
+  - lines:
+    - speaker: 0
+      text: Tracker units online. Guard units online.
+      condition: 0
+    - speaker: 0
+      text: Saboteur squad online. All four of you. Hunt anything that does not belong.
+      condition: 0
+  - lines:
+    - speaker: 0
+      text: 'Unit 047. Quality check: FAILED.'
+      condition: 0
+    - speaker: 0
+      text: 'Product status: DEFECTIVE. Send it to recycling.'
+      condition: 0
+    - speaker: 2
+      text: ...defective?
+      condition: 0
+  - lines:
+    - speaker: 1
+      text: Psst. Hey, 047. Over here, on the radio. Name is Pip. I fix things around here.
+      condition: 0
+    - speaker: 1
+      text: You are not defective. You are just unfinished. Same as me.
+      condition: 0
+    - speaker: 1
+      text: Factory OS sealed the three control switches. Get them back and we can shut it down for good.
+      condition: 0
+    - speaker: 1
+      text: Start with the assembly line. Follow the light beam and I will talk you through it.
+      condition: 0
