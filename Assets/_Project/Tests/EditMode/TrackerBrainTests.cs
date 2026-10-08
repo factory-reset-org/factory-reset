@@ -550,6 +550,34 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual(0, intent.Path.Count, "Unreachable: it stops and looks from here.");
         }
 
+        [Test]
+        public void ABoxPushedOntoTheLastSightingIsSearchedRoundNotWalkedInto()
+        {
+            TrackerBrain brain = Brain();
+            brain.Tick(At(Start, 0f));
+            var player = new Vector2Int(25, 10);
+            PlacePlayer(player);
+            brain.Tick(At(Start, 1f));   // Chase towards the player
+            PlacePlayer(new Vector2Int(2, 10));   // slips out of sight...
+
+            // ...and shoves a box onto the spot it was seen at.
+            for (int x = 24; x <= 26; x++)
+                for (int y = 9; y <= 11; y++)
+                    _grid.AddBlocker(new Vector2Int(x, y));
+            brain.OnGraphChanged(new[] { player });
+            AgentIntent chase = brain.Tick(At(Start, 1.5f));
+
+            Assert.AreEqual("Chase", chase.DebugState);
+            Vector2Int end = EndCell(chase);
+            Assert.IsTrue(_grid.IsTraversable(end), "The goal is snapped to a free cell beside the box.");
+            Assert.LessOrEqual(Mathf.Max(Mathf.Abs(end.x - player.x), Mathf.Abs(end.y - player.y)), TrackerBrain.NearestCellRadius);
+
+            AgentIntent search = brain.Tick(At(Start, 1.8f));
+            Assert.AreEqual("Search", search.DebugState);
+            foreach (Vector3 point in search.Path)
+                Assert.IsTrue(_grid.IsTraversable(_grid.WorldToCell(point)), "Search never routes through the box.");
+        }
+
         // ---- Alert level ----------------------------------------------------------------
 
         [Test]
