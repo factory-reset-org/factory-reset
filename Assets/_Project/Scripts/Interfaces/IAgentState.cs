@@ -1,3 +1,5 @@
+using UnityEngine;
+
 namespace ToyFactory.Interfaces
 {
     /// <summary>
@@ -11,6 +13,15 @@ namespace ToyFactory.Interfaces
 
         /// <summary>This agent's unique id and squad position, fixed at spawn.</summary>
         AgentIdentity Identity { get; }
+
+        /// <summary>
+        /// Where the agent's body stands right now: the world-space position of its root, on
+        /// the floor under its feet, in metres. Lets the journey follow an agent (the Chapter 3
+        /// beacon on Saboteur A) and drop things where one fell. A scrapped agent keeps
+        /// reporting the spot where it went down; after its body is destroyed this is the last
+        /// position it had.
+        /// </summary>
+        Vector3 Position { get; }
 
         /// <summary>Current ground speed in metres per second.</summary>
         float Speed { get; }
