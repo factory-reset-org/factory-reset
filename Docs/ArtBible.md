@@ -61,6 +61,11 @@ Modelling rules for the style: bevel every visible edge (2 segments for parts la
 ## Textures
 Power-of-two, BC7. Props atlas 1024×1024. Plastic needs no detail textures: flat base colours plus a smoothness value; decals (stickers, the 047 tag) go on the props atlas.
 
+The environment has three small tiling textures from the prototype, each 256 x 256, BC7, mipmapped, trilinear, anisotropic 8, in `Textures/Environment`:
+- `T_Env_HazardStripes`: yellow and plum 45 degree bands, four per metre, seamless both ways. Used on the wall skirting and the press outlines (`M_Env_HazardStripe`).
+- `T_Env_FloorTiles`: a 2 m tile of 4 x 4 grey tiles with darker grout, multiplied by each room's floor tint (`M_Env_FloorTiled_<Room>`, tiling 10.375 over a 20.75 m floor).
+- `T_Env_FloorGlowGrid`: thin outlines inset in each tile, used as the Control Room floor's emission map (cyan `#3DD9FF`).
+
 ## Lighting and post-processing
 Baked GI + 2-3 real-time point lights. Bloom, colour grading (warm factory), vignette, exponential fog. For glossy plastic:
 - One baked reflection probe per room, box projection on, so highlights show the room's own colours.
@@ -76,8 +81,10 @@ As built in `Env.unity` (S1, Week 12):
   - The sun and the four point fills are switched off: the ceiling would block the sun anyway, and the panels now light the rooms the way the prototype does. Painting keeps its baked pink accent.
   - Three real-time lights remain: the orange lamp in Storage and the two red Control Room door alarms.
   - Lighting settings are in `Settings/Lighting/LS_Env`.
+- The plain `M_Env_Floor_<Room>` tints are now used by the dressing (toys, puddles, rack trims); the floors themselves use the tiled `M_Env_FloorTiled_<Room>` copies, so the tile texture never lands on a toy.
+- Wall trims, as in the prototype: a 0.6 m hazard-stripe skirting along the foot of every room wall (broken at the doorways), and a 0.3 m dark plum band under the ceiling.
 - Room dressing (Week 13) adds no new materials. Toys reuse the red, yellow and blue plastics and the four floor tints; puddles reuse the plastics, whose 0.8 smoothness reads as wet paint; server racks are the ceiling plum with Control trims; server lights reuse `M_Env_GlowCircuit`; gears are yellow, red, blue or chrome. Small or moving pieces (toys, gears, server lights) are lit by light probes instead of lightmaps.
-- Ambient is Trilight, but with the ceiling closed it no longer reaches inside the rooms; the panels and their bounce light do the work. Fog is exponential, density 0.006.
+- Ambient is Trilight, but with the ceiling closed it no longer reaches inside the rooms; the panels and their bounce light do the work. Fog is exponential, density 0.006, in dark plum `#2B2450` like the prototype (it was pale lavender, which looked like haze under a ceiling).
 - 629 light probes: a 3 m grid at 0.5, 2 and 4 m, six probes at each doorway, and 118 more along the agents' patrol routes and the player's route through the four doorways (pairs at 0.75 m and 2 m wherever a route point was more than 1.25 m from a probe).
 - Post-processing is one global Volume (`Settings/PostProcessing/PP_Factory`):
   - Bloom: threshold 1.1, intensity 0.6.
