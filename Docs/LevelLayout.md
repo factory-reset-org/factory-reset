@@ -59,6 +59,19 @@ Every room has a ceiling at 6 m, as in the prototype. The walls were raised from
 - Nine light panels per room (`Panels_<Room>`), 2.4 x 0.8 m in a 3 x 3 grid 6.5 m apart, with a baked rectangle area light under each (`Lighting/CeilingLights_Baked`). See the Art Bible for the lighting.
 - Static like the rest of `Level`. The ceiling casts shadows on purpose: in the bake, an object that casts no shadows lets light through, so the sky would leak into the rooms.
 
+## Room dressing
+
+Dressing from the prototype that makes each room read as its own part of the factory. None of it has a collider and nothing new stands on the floor, so the NavMesh, the grid (5,318 walkable cells) and the agents' routes are unchanged, and the shelf colliders keep their exact 9 x 3.2 x 1 m size.
+
+| Room | Dressing | Notes |
+| --- | --- | --- |
+| Storage | The three shelf rows are now shelving units: a thin spine, four blue posts, four white boards and 104 toys on the lower three boards | Toys stay inside the shelf's 1 m depth. They are lit by light probes, not lightmaps, to keep the lightmaps small |
+| Painting | Eight glossy paint puddles, flat on the floor | Purely visual: the prototype's slippery paint would be S2's player physics |
+| Control | Nine server racks against the walls, each with 24 status lights that blink (`DressingBlinker`) | 0.25 m deep, inside the 0.55 m wall clearance, clear of the doors, console, battery and overcharge anchors |
+| Assembly (and one pair in Painting) | Eight wall gears in meshing pairs that turn (`DressingSpinner`); a small gear turns faster than its partner, at the tooth ratio | `GearMesh` builds the toothed discs |
+
+**At the shutdown:** the gears wind down to a stop and every server light goes dark on `CutsceneSignals.FactoryShutdown`, in step with `LightingState`.
+
 ## NavMesh and grid
 
 - NavMesh agent type 0: **radius 0.55 m, height 3.25 m** (the largest measured capsules, decision D3). Slope 45, climb 0.75 unchanged.
@@ -126,5 +139,6 @@ Tracker: Assembly. Guard: Painting. Saboteur A: Storage. B: Assembly. C: Paintin
 
 ## Not done yet
 
-- Room dressing from the prototype: a denser Storage shelf maze with toys, paint mixers and paint puddles in Painting, more server pillars in Control, wall trims and gears.
+- More prototype dressing that would change the grid: a denser Storage shelf maze, paint mixers in Painting, more server pillars in Control. Each needs the grid, the agents' routes and the evidence tables redone, so it is left out for now.
+- Wall trims (the prototype's hazard skirting and dark top band).
 - Floor detail (tiles, stripes, paint splats) and the prototype's darker fog.

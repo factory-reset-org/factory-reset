@@ -76,6 +76,7 @@ As built in `Env.unity` (S1, Week 12):
   - The sun and the four point fills are switched off: the ceiling would block the sun anyway, and the panels now light the rooms the way the prototype does. Painting keeps its baked pink accent.
   - Three real-time lights remain: the orange lamp in Storage and the two red Control Room door alarms.
   - Lighting settings are in `Settings/Lighting/LS_Env`.
+- Room dressing (Week 13) adds no new materials. Toys reuse the red, yellow and blue plastics and the four floor tints; puddles reuse the plastics, whose 0.8 smoothness reads as wet paint; server racks are the ceiling plum with Control trims; server lights reuse `M_Env_GlowCircuit`; gears are yellow, red, blue or chrome. Small or moving pieces (toys, gears, server lights) are lit by light probes instead of lightmaps.
 - Ambient is Trilight, but with the ceiling closed it no longer reaches inside the rooms; the panels and their bounce light do the work. Fog is exponential, density 0.006.
 - 629 light probes: a 3 m grid at 0.5, 2 and 4 m, six probes at each doorway, and 118 more along the agents' patrol routes and the player's route through the four doorways (pairs at 0.75 m and 2 m wherever a route point was more than 1.25 m from a probe).
 - Post-processing is one global Volume (`Settings/PostProcessing/PP_Factory`):
