@@ -35,7 +35,9 @@ namespace ToyFactory.Tests
         static void SetField(object target, string name, object value) =>
             target.GetType().GetField(name, BindingFlags.NonPublic | BindingFlags.Instance).SetValue(target, value);
 
-        // Saboteur A: one hit scraps it, as in the game.
+        // Saboteur A: one hit scraps it, as in the game. There is no floor, so the body falls a
+        // little every frame under the follower's gravity: each test compares Position with the
+        // transform read in the same frame, never with the spawn point after a frame has passed.
         AgentController SaboteurA(Vector3 at)
         {
             var root = new GameObject("Saboteur A");
@@ -57,7 +59,7 @@ namespace ToyFactory.Tests
             AgentController agent = SaboteurA(new Vector3(31f, 0f, 35f));
             yield return null;
             IAgentState state = agent;
-            Assert.AreEqual(new Vector3(31f, 0f, 35f), state.Position);
+            Assert.AreEqual(agent.transform.position, state.Position);
 
             agent.transform.position = new Vector3(36f, 0f, 38.5f);
             Assert.AreEqual(new Vector3(36f, 0f, 38.5f), state.Position, "Read live, not cached.");
@@ -76,6 +78,7 @@ namespace ToyFactory.Tests
                 fell = scrapped.Position;
                 letter = scrapped.Identity.SquadLetter;
             }
+            Vector3 at = agent.transform.position;
             AgentEvents.OnDestroyed += Handle;
             try
             {
@@ -88,7 +91,7 @@ namespace ToyFactory.Tests
 
             Assert.IsTrue(agent.IsDead);
             Assert.AreEqual('A', letter, "Listeners still tell Saboteur A apart by its identity.");
-            Assert.AreEqual(new Vector3(28.5f, 0f, 33f), fell);
+            Assert.AreEqual(at, fell, "Where it went down.");
         }
 
         [UnityTest]
@@ -98,11 +101,13 @@ namespace ToyFactory.Tests
             yield return null;
             IAgentState state = agent;
 
+            // Destroy happens at the end of this frame, after the follower's last Update.
+            Vector3 last = agent.transform.position;
             Object.Destroy(agent.gameObject);
             yield return null;
 
             Assert.IsTrue(agent == null, "The body is gone.");
-            Assert.AreEqual(new Vector3(23.5f, 0f, 23f), state.Position, "The last position, not an exception.");
+            Assert.AreEqual(last, state.Position, "The last position, not an exception.");
         }
     }
 }
