@@ -55,6 +55,32 @@ namespace ToyFactory.Journey.Cutscenes
         /// <summary>Seconds a fully typed line of <paramref name="characters"/> characters stays up.</summary>
         public static float HoldSeconds(int characters) => HoldBase + HoldPerCharacter * characters;
 
+        /// <summary>Seconds a line of <paramref name="characters"/> characters is on screen when nobody clicks: typing, then the hold.</summary>
+        public static float LineSeconds(int characters) => characters / CharactersPerSecond + HoldSeconds(characters);
+
+        /// <summary>
+        /// Seconds a shot's lines take when nobody clicks. Lines with a condition are
+        /// alternatives (only one version is said), so only the longest version is counted.
+        /// </summary>
+        public static float ShotSeconds(IEnumerable<DialogueLine> lines)
+        {
+            float always = 0f;
+            var byCondition = new Dictionary<DialogueCondition, float>();
+            foreach (DialogueLine line in lines)
+            {
+                float seconds = LineSeconds(line.text?.Length ?? 0);
+                if (line.condition == DialogueCondition.Always)
+                    always += seconds;
+                else
+                    byCondition[line.condition] = (byCondition.TryGetValue(line.condition, out float sum) ? sum : 0f) + seconds;
+            }
+
+            float longestVersion = 0f;
+            foreach (float seconds in byCondition.Values)
+                longestVersion = Math.Max(longestVersion, seconds);
+            return always + longestVersion;
+        }
+
         /// <summary>Queues lines to be said after any already waiting.</summary>
         public void Enqueue(IEnumerable<DialogueLine> lines)
         {

@@ -3,6 +3,7 @@ using Unity.Cinemachine;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Playables;
+using UnityEngine.Timeline;
 using ToyFactory.Interfaces;
 
 namespace ToyFactory.Journey.Cutscenes
@@ -62,6 +63,8 @@ namespace ToyFactory.Journey.Cutscenes
         bool _usingTimeline;
         bool _timelineFinished;
         bool _waitingForLines;
+        bool _shotOpen;
+        readonly HashSet<int> _shotsStarted = new HashSet<int>();
         bool _held;
         bool _saboteurAScrapped;
         bool _introRequested;
@@ -146,8 +149,12 @@ namespace ToyFactory.Journey.Cutscenes
             if (_waitingForLines && !_dialogue.IsBusy && !_held)
             {
                 _waitingForLines = false;
-                _director.Resume();
+                HoldTimeline(false);
             }
+            // A shot whose lines are over before its end (the player clicked through them) moves
+            // the Timeline straight to that end, so the camera never lingers on an empty subtitle.
+            else if (_shotOpen && !_dialogue.IsBusy && !_held && !_waitingForLines)
+                SkipToShotEnd();
 
             _runner.Tick(Time.deltaTime);
         }
@@ -216,6 +223,8 @@ namespace ToyFactory.Journey.Cutscenes
             _playing = cutscene;
             _held = false;
             _waitingForLines = false;
+            _shotOpen = false;
+            _shotsStarted.Clear();
             _usingTimeline = cutscene.Timeline != null;
 
             if (_usingTimeline)
@@ -229,6 +238,9 @@ namespace ToyFactory.Journey.Cutscenes
                     Debug.LogWarning($"Cutscene \"{cutscene.Id}\": no loaded object has the binding id of track(s) {string.Join(", ", _missingBindings)}. Those tracks do nothing.", this);
                 _director.time = 0;
                 _director.Play();
+                // Show the first shot this frame: until the Timeline is evaluated the brain would
+                // render the gameplay view, inside the Unit 047 stand-in.
+                _director.Evaluate();
                 return true;
             }
 
@@ -246,14 +258,15 @@ namespace ToyFactory.Journey.Cutscenes
             if (!_usingTimeline)
                 return;
             if (held)
-                _director.Pause();
+                HoldTimeline(true);
             else if (!_waitingForLines)
-                _director.Resume();
+                HoldTimeline(false);
         }
 
         void ICutscenePlayback.Stop()
         {
             _waitingForLines = false;
+            _shotOpen = false;
             _dialogue.Clear();
             if (_usingTimeline)
                 _director.Stop();
@@ -277,15 +290,61 @@ namespace ToyFactory.Journey.Cutscenes
                 return;
             }
 
-            if (notification is DialogueMarker line && _playing?.Dialogue != null && line.Shot < _playing.Dialogue.ShotCount)
+            if (notification is ShotEndMarker)
+            {
+                _shotOpen = false;
+                if (_dialogue.IsBusy)
+                {
+                    _waitingForLines = true;
+                    HoldTimeline(true);
+                }
+                return;
+            }
+
+            // Each shot is said once, even if the playhead is moved back over its marker.
+            if (notification is DialogueMarker line && _playing?.Dialogue != null && line.Shot < _playing.Dialogue.ShotCount
+                && _shotsStarted.Add(line.Shot))
             {
                 _dialogue.Enqueue(_playing.Dialogue.LinesOf(line.Shot));
                 if (line.WaitForLines && _dialogue.IsBusy)
                 {
                     _waitingForLines = true;
-                    _director.Pause();
+                    HoldTimeline(true);
+                }
+                else if (!line.WaitForLines)
+                {
+                    _shotOpen = true;
                 }
             }
+        }
+
+        // Holds the Timeline on its current frame without stopping it: the graph keeps being
+        // evaluated at speed 0, so the shot camera and every other track stay as they are.
+        // PlayableDirector.Pause() stops evaluating, and Cinemachine then loses the shot and
+        // shows another camera for as long as the hold lasts.
+        void HoldTimeline(bool hold)
+        {
+            if (_director.playableGraph.IsValid() && _director.playableGraph.GetRootPlayableCount() > 0)
+                _director.playableGraph.GetRootPlayable(0).SetSpeed(hold ? 0d : 1d);
+        }
+
+        // Moves the playhead to the next shot end. Timeline does not notify markers it jumps
+        // over, so they are passed on here in order: a Critical signal inside the shot still
+        // fires (the runner ignores one it has already raised).
+        void SkipToShotEnd()
+        {
+            _shotOpen = false;
+            if (!(_director.playableAsset is TimelineAsset timeline))
+                return;
+            double now = _director.time;
+            if (!TimelineMarkers.NextShotEnd(timeline, now, out double end))
+                return;
+
+            List<IMarker> skipped = TimelineMarkers.Between(timeline, now, end);
+            _director.time = end;
+            foreach (IMarker marker in skipped)
+                if (marker is INotification notification)
+                    OnNotify(Playable.Null, notification, null);
         }
     }
 }
