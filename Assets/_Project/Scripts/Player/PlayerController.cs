@@ -115,10 +115,11 @@ namespace ToyFactory.Player
 
         void Update()
         {
-            HandleCursorLock();
-
             // Title, cutscenes, pause and results all take the controls away.
-            if (GameClock.Current != null && GameClock.Current.State != GameState.Playing)
+            bool playing = GameClock.Current == null || GameClock.Current.State == GameState.Playing;
+            HandleCursorLock(playing);
+
+            if (!playing)
             {
                 Velocity = Vector3.zero;
                 return;
@@ -153,14 +154,13 @@ namespace ToyFactory.Player
         }
 
         // Locks and hides the cursor so mouse movement only ever reports a look
-        // delta, not an on-screen pointer. Escape frees it (to click other Unity
-        // panels without stopping Play); clicking back into the view relocks it.
-        void HandleCursorLock()
+        // delta, not an on-screen pointer. The pause menu frees it and locks it again;
+        // if it is freed any other way, clicking back into the view relocks it, but only
+        // while playing, so a click on the pause panel leaves the cursor free.
+        void HandleCursorLock(bool playing)
         {
-            if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
-                SetCursorLocked(false);
-            else if (Cursor.lockState != CursorLockMode.Locked
-                     && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+            if (playing && Cursor.lockState != CursorLockMode.Locked
+                && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
                 SetCursorLocked(true);
         }
 

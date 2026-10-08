@@ -47,6 +47,24 @@ namespace ToyFactory.Interaction
         /// <summary>Queues a push force, applied on the next physics step.</summary>
         public void AddPush(Vector3 force) => _pendingPush += force;
 
+        /// <summary>Moves the box somewhere else at once and leaves it at rest there.</summary>
+        public void Teleport(Vector3 position, Quaternion rotation)
+        {
+            GridManager.ClearBlocker(_blockerId);
+
+            _pendingPush = Vector3.zero;
+            _rb.linearVelocity = Vector3.zero;
+            _rb.angularVelocity = Vector3.zero;
+            _rb.position = position;
+            _rb.rotation = rotation;
+            transform.SetPositionAndRotation(position, rotation);
+
+            // The collider's bounds only follow the move once physics has been told about it.
+            Physics.SyncTransforms();
+            IsSettled = true;
+            BlockGrid();
+        }
+
         void FixedUpdate()
         {
             if (_pendingPush != Vector3.zero)

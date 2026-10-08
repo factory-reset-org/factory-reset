@@ -94,6 +94,10 @@ namespace ToyFactory.Player
             if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
                 _battery.StartReload();
 
+            // A free cursor means the click is for something else (it relocks the view).
+            if (Cursor.lockState != CursorLockMode.Locked)
+                return;
+
             if (!_attackAction.IsPressed() || Now < _nextShotTime)
                 return;
 
