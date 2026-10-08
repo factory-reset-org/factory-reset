@@ -450,11 +450,48 @@ Every cutscene has a **dialogue script** (`Data/Dialogue/<cutscene id>.asset`), 
 2. adds a `CinemachineBrain` to it at runtime (or re-enables the one it added before), so the player prefab is never edited;
 3. parks a "gameplay view" Cinemachine camera exactly at the player's eyes, at priority 100.
 
-The Timeline's shot cameras override it while their clips play. A shot clip's ease-in blends *from* the gameplay view and the last clip's ease-out blends back *to* it, so entering and leaving a cutscene is a blend, not a cut. When the cutscene ends (watched or skipped) the brain is switched off and the camera's local pose and lens are put back, so mouse look carries on exactly where it stopped. Skipping cuts straight back. Between cutscenes no brain and no Cinemachine camera run at all.
+The Timeline's shot cameras override it while their clips play. A shot clip's ease-in can blend *from* the gameplay view and the last clip's ease-out back *to* it. The journey's five Timelines do not use this: they cut in and out, as the prototype does, because the Unit 047 stand-in stands where the player's eyes are and a blend back would pass through its body. When the cutscene ends (watched or skipped) the brain is switched off and the camera's local pose and lens are put back, so mouse look carries on exactly where it stopped. Skipping cuts straight back. Between cutscenes no brain and no Cinemachine camera run at all.
 
 **Binding across scenes** (`CutsceneBindings`). Timelines live in the Agents scene and cannot keep a reference to an object in Env or Interactables. A track that drives such an object is left unbound and named after the object's `CutsceneBindingId` (a track named `AlarmDoor3` drives the object with that id). When the Timeline starts, every unbound track is looked up by its name once and bound to the right thing for its type: the GameObject for an activation track, the `Animator` (on the object or a child) for an animation track, the component otherwise. Cinemachine tracks are bound to the brain on the gameplay camera. Tracks already bound in the Agents scene (Unit 047, shot cameras) are left alone. A name with no matching object is logged once per cutscene and that track does nothing; the cutscene still plays and its Critical signals still fire. Only enabled objects register their id, so something a cutscene switches on must be bound through an active parent.
 
 **Letterbox** (`Letterbox`, on the director). Two black bars, each 11% of the screen height, close in over 0.6 s (smoothstep) on `CutsceneEvents.OnCutsceneStarted` and open on `OnCutsceneEnded`, so a skip opens them too. It builds its own screen-space canvas at sorting order 40, with no assets. The subtitle view and the chapter card must sort above 40. The canvas is switched off once the bars are fully open, so gameplay pays nothing for it.
+
+#### Cutscene Timelines and shots (S4, implemented)
+
+**Built, not hand-edited.** `CutsceneTimelineBuilder` (menu *Factory Reset/Cutscenes/Build Timelines*, with `Agents.unity` open) writes the five Timelines to `Data/Cutscenes/` and their cameras under the director in the Agents scene, then sets each cutscene's `timeline`. Running it again rebuilds everything in place. The shots come from `CutsceneShotPlan` (Journey), the lines from the dialogue scripts, so a changed line or shot is one click away and the Timelines cannot drift from the script.
+
+**One shot, two cameras.** Each shot is a slow camera move: a Cinemachine camera at its start pose and one at its end pose, on two clips that overlap for all but 0.1 s at each end, so the whole shot is one ease-in-out blend from the first pose to the second. A shot lasts as long as its lines take when nobody clicks (`DialogueRunner.ShotSeconds`: typing at 38 characters per second, then 1.3 s + 0.025 s per character; of the two versions of the keycard line only the longer counts) plus 0.25 s. The cutscenes come to 45 s (intro), 26 s (ch2), 34 s (ch3), 15 s (ch4) and 19 s (ending), as in the prototype.
+
+**Shot pacing.** On the marker track each shot has a `DialogueMarker` at its start that does *not* wait, so the camera keeps moving while the lines are said, and a `ShotEndMarker` 0.05 s before the next shot. The director:
+
+- **holds** the Timeline at a shot end while a line is still on screen (the player paused, or a line ran a few frames long: the runner loses up to a frame or two per line at low frame rates). A hold sets the graph's speed to 0 instead of calling `PlayableDirector.Pause()`, so the graph keeps being evaluated and the shot camera stays on screen; pausing stopped the Cinemachine track and showed another camera for the length of the hold. The pause menu holds the same way;
+- **moves the playhead to the shot end** as soon as the shot's lines are over, if the player clicked through them, so the camera never lingers on an empty subtitle. Timeline does not notify markers it jumps over, so the director passes the skipped ones on itself, in order: a Critical signal inside the shot still fires (the runner ignores a signal it has already raised).
+
+A shot's lines are queued once, even if a marker is passed twice. The first shot is evaluated in the frame the cutscene starts, so the gameplay view (inside the stand-in) is never drawn.
+
+**The shots** (`CutsceneShotPlan`; subjects follow the prototype's shot list, positions are placed again for this level):
+
+| Cutscene | Shot | Camera | Height | Signal |
+| --- | --- | --- | --- | --- |
+| intro | Wide high shot across the Assembly Floor | fixed | 4.6 to 4.3 m | |
+| | Close-up on the Tracker at its spawn | fixed | 1.2 m | |
+| | Push-in on Unit 047's face | follows 047 | 2.0 to 1.9 m | |
+| | Beside 047, across the floor to the conveyor lever | follows 047 | 2.6 to 2.4 m | |
+| ch2 | The restored Assembly switch | fixed | 2.2 to 2.4 m | |
+| | High pan across the Painting Room to the Guard | fixed | 4.6 to 4.2 m | |
+| | The colour terminal | fixed | 2.6 to 2.4 m | |
+| ch3 | Looking up at the Captain as it wakes | fixed | 1.8 to 2.0 m | `CaptainWake` |
+| | The Storage-Control door unlocking, from Storage | fixed | 3.2 to 2.7 m | `ControlRoomUnlock` |
+| | High pan over the shelves to the relay board | fixed | 4.6 to 4.4 m | |
+| ch4 | Wide over the three power cores | fixed | 4.4 to 4.6 m | `CoreShieldsDown` |
+| ending | Behind 047, looking at the console | follows 047 | 2.2 to 2.5 m | `FactoryShutdown` |
+| | Crane back and up from 047 | follows 047 | 2.5 to 4.4 m | |
+
+Fixed shots use world positions; agents in them are at their spawn (the intro) or frozen where they are. Follow shots ride along with the Unit 047 stand-in with no damping, so they work wherever the player stands; the ending's crane ends 8.5 m behind 047, which stays inside the Control Room because the player must face the console to hold it.
+
+**Checked against the level** (`CutsceneShotPlanTests`): every camera is at least 1 m under the 6 m ceiling agreed with S1 (the highest is 4.6 m), fixed cameras are 0.5 m inside their room's walls and clear of the presses, pillars and cores, shelves and cover blocks, follow cameras stay within 9.5 m of 047, every dialogue shot has a camera shot, and each cutscene's signals are exactly its Critical signals. `CutsceneTimelineAssetTests` checks the built Timelines the same way.
+
+**Unit 047 stand-in** (`CutsceneActor`, "Unit 047 (cutscene)" under the director). The player is a first-person camera with no body, so while any cutscene plays the stand-in shows S3's Unit 047 prefab where the player stands, facing the player's way (`PlayerState.Current`), and hides it when the cutscene ends. It moves on `OnCutsceneStarted`, before the Timeline plays, so the follow cameras start in the right place. Its colliders are switched off: it is only seen. Its eyes and poses come in the cutscene animation branch.
 
 ### 6.2 Chapter contracts (S1, implemented)
 
@@ -565,6 +602,7 @@ The alarm colours belong to `LightingState`. A Timeline can frame or activate th
 | 2026-10-06 | The Control Room alarm beacons sit on the lintels of the two sealed doors, each with a red real-time light, as in the prototype; the Painting accent light becomes baked | Keep the beacons on the Control Room's back wall; add the door alarms as a fourth and fifth real-time light | The alarm marks the locked doors from the rooms the player is in, and the unlock is visible on camera in `ch3`. The plan allows 2-3 real-time point lights: Storage lamp plus two alarms is three, and the pink Painting fill looks the same baked | S1 |
 | 2026-10-06 | `LightingState` reacts to Critical signals only, swaps shared materials for the alarm, and never goes back to an earlier mood | Animate the lights in the Timelines; tint with a MaterialPropertyBlock | Signals also fire on skip, so the lights cannot be left red after a skipped `ch3`. A property block breaks the SRP Batcher (S3 measured +10 SetPass for four Saboteurs); two shared materials keep it. Moving forward only means a late or repeated signal cannot relock the doors' lights | S1 |
 | 2026-10-08 | `IAgentState` gains `Position`, the body root's world position, read live and kept after the body is destroyed | Cast the agent to `Component` and read its transform; a registry of agent positions in `Interfaces`; publish positions on the blackboard | S1's Chapter 3 beacon must follow Saboteur A while it moves, and S2's keycard must drop where it fell. Both already receive the agent as an `IAgentState`, so one read-only property serves both without a new system. A cast to `Component` ties `Interfaces` users to Unity objects and fails for a test fake; the blackboard is for brains and only Runtime writes it. A frozen interface changes only with all four reviewers | S4 (agreed with S1 on 2026-10-08) |
+| 2026-10-08 | The cutscene Timelines are built by an editor script from a shot plan in code and the dialogue scripts; each shot is two cameras blended over the shot, timed by its lines; a shot end marker holds the camera for a line still on screen and jumps to the shot end when the lines are clicked through | Hand-authored Timelines; one animated camera per shot; Timelines that stop at every dialogue marker | A plan in code can be checked by tests against the 6 m ceiling, the walls and the obstacles, and a rebuild keeps the Timelines in step with the script. Two cameras and a blend need no animation clips and give the ease-in-out move of the prototype. Stopping at each marker froze the camera while the lines were said; pacing the shot by its lines keeps it moving and still never cuts a line off | S4 |
 
 ## 8. Greybox character model contract (S3)
 
