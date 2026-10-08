@@ -193,7 +193,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a94b738ef2a51a745a17fc0502a332d5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Managers.SceneLoader
-  beginJourney: 0
+  beginJourney: 1
   stateAfterLoad: 1
 --- !u!4 &875900644
 Transform:

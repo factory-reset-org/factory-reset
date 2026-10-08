@@ -10,7 +10,8 @@ namespace ToyFactory.Player
     /// <summary>
     /// Lets the player use what they are looking at: on Interact it sweeps a small sphere
     /// from the camera and calls <see cref="IInteractable.Interact"/> on the nearest usable
-    /// thing it touches.
+    /// thing it touches. If that thing is an <see cref="IHoldable"/>, it goes on being held for
+    /// as long as the key stays down and the player stays in reach.
     /// </summary>
     /// <remarks>
     /// A sphere, not a thin ray, so a small prop below eye level (a lever, a switch) does not
@@ -40,6 +41,10 @@ namespace ToyFactory.Player
         readonly RaycastHit[] _hits = new RaycastHit[16];
         InputAction _interactAction;
 
+        // What is being held, and the collider the sweep found it by.
+        IHoldable _held;
+        Collider _heldCollider;
+
         void Awake()
         {
             InputActionMap map = inputActions.FindActionMap("Player");
@@ -49,11 +54,27 @@ namespace ToyFactory.Player
 
         void Update()
         {
-            // The lookups below only run on the frame the key goes down, never every frame.
-            if (!_interactAction.WasPressedThisFrame())
-                return;
             if (GameClock.Current != null && GameClock.Current.State != GameState.Playing)
+            {
+                _held = null;
                 return;
+            }
+
+            // The lookups in Press only run on the frame the key goes down, never every frame.
+            if (_interactAction.WasPressedThisFrame())
+                Press();
+
+            if (_held == null)
+                return;
+            if (_interactAction.IsPressed() && InReach(_heldCollider))
+                _held.Hold(Time.deltaTime);
+            else
+                _held = null;
+        }
+
+        void Press()
+        {
+            _held = null;
 
             Vector3 origin = aim.position;
             int count = Physics.SphereCastNonAlloc(origin, aimRadius, aim.forward, _hits, reach, interactMask,
@@ -72,8 +93,21 @@ namespace ToyFactory.Player
                     continue;
 
                 target.Interact();
+                _held = target as IHoldable;
+                _heldCollider = _hits[i].collider;
                 return;
             }
+        }
+
+        // A hold only needs the player to stay next to the prop, not to keep aiming at it.
+        bool InReach(Collider held)
+        {
+            if (held == null || !held.enabled || !held.gameObject.activeInHierarchy)
+                return false;
+
+            Vector3 origin = aim.position;
+            float limit = reach + aimRadius;
+            return (held.ClosestPoint(origin) - origin).sqrMagnitude <= limit * limit;
         }
 
         // True if a thin ray from the camera to the touched point reaches the target without

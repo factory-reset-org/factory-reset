@@ -20,6 +20,10 @@ namespace ToyFactory.Interaction
     /// The player toggles it with Interact. It tells the level grid when it stops being
     /// passable, so agents never plan a route through a closed door.
     /// </summary>
+    /// <remarks>
+    /// A door with an unlock signal (the two Control Room doors) starts locked: the player
+    /// cannot use it until a cutscene raises that signal, which unlocks it and opens it.
+    /// </remarks>
     public sealed class Door : MonoBehaviour, IDoor, ISabotageable, IInteractable
     {
         enum State
@@ -57,6 +61,11 @@ namespace ToyFactory.Interaction
         [Tooltip("Start fully open. Must match the doorway marker's Initially Closed setting, which is what the grid starts from.")]
         [SerializeField] bool startOpen;
 
+        [Header("Lock")]
+        [Tooltip("A CutsceneSignals id, e.g. ControlRoomUnlock. The door stays locked until a cutscene " +
+                 "raises it, then opens. Empty: never locked.")]
+        [SerializeField] string unlockSignal;
+
         State _state = State.Closed;
         Quaternion _closedRotation;
         Quaternion _openRotation;
@@ -69,6 +78,12 @@ namespace ToyFactory.Interaction
 
         public bool IsOpen => _state == State.Open;
 
+        /// <summary>True while the door is waiting for its unlock signal.</summary>
+        public bool IsLocked { get; private set; }
+
+        /// <summary>Raised when the player tries to use the door while it is locked.</summary>
+        public event Action<Door> LockedUseAttempted;
+
         void Awake()
         {
             if (movingPart == null)
@@ -78,6 +93,7 @@ namespace ToyFactory.Interaction
             _openRotation = _closedRotation * Quaternion.Euler(0f, openAngle, 0f);
             _closedPosition = movingPart.localPosition;
             _openPosition = _closedPosition + openOffset;
+            IsLocked = !string.IsNullOrEmpty(unlockSignal);
             CreateUseZone();
 
             // The panel is placed closed in the scene; a door that starts open jumps to its
@@ -90,6 +106,19 @@ namespace ToyFactory.Interaction
                     MoveSlide(target: true, maxStep: float.PositiveInfinity);
                 _state = State.Open;
             }
+        }
+
+        void OnEnable() => CutsceneEvents.OnCriticalSignal += HandleSignal;
+
+        void OnDisable() => CutsceneEvents.OnCriticalSignal -= HandleSignal;
+
+        void HandleSignal(string signalId)
+        {
+            if (!IsLocked || signalId != unlockSignal)
+                return;
+
+            IsLocked = false;
+            Open();
         }
 
         [ContextMenu("Open")]
@@ -113,6 +142,12 @@ namespace ToyFactory.Interaction
         /// <summary>Player use: opens a closed door and closes an open one.</summary>
         public void Interact()
         {
+            if (IsLocked)
+            {
+                LockedUseAttempted?.Invoke(this);
+                return;
+            }
+
             if (_state == State.Closed || _state == State.Closing)
                 Open();
             else
