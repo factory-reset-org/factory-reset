@@ -56,9 +56,39 @@ Greybox level grid (`Env.unity`, 83 x 83 cells of 0.5 m, 5,318 walkable, Control
 | Running footsteps | 25 | 3.75 m | 128 | 0.33 ms |
 
 - The cost scales with the audible area, not the level size: the threshold bound stops the spread, so footsteps touch 128 cells while a shot touches 1,980 of the 5,318 walkable cells. Quiet noises (footsteps every few frames) stay cheap; loud ones are rare events.
-- **0 bytes** allocated over 100 blaster-shot propagations (stamped arrays and a reused heap).
+- **No allocations** over 100 blaster-shot propagations (stamped arrays and a reused heap), checked with the GC.Alloc recorder (see the note under Tracker brain tick).
 - Closed-door check at door 4: 47 behind the closed door, 82 with it open (difference exactly 35).
 - Lab-machine and player-build timings still to record; the editor's per-cell cost (about 2.7 µs) matches A*'s on the same grid (about 2.3 µs per expanded node).
+
+### Tracker brain tick (S1, and S1's share of the stress test)
+
+**Setup:**
+- `TrackerBrain.Tick` driven on the real level grid: 83 x 83 cells, 5,310 walkable, doors 3 and 4 closed as in Chapter 1.
+- 60 s of game time at 30 ticks/s. A simple body walks each route at the brain's speed.
+- Script:
+  - patrol on the Assembly Floor
+  - from 10 s, the colour terminal beeps from the Painting Room (60, every 0.8 s for 6.4 s)
+  - at 30 s, a blaster shot (100)
+  - from 40 s to 46 s, the player is in sight, then gone
+- The brains went through every state: Patrol, Investigate, Distracted, Chase, Rewind and Search.
+- Only `Tick` is timed. Noise propagation runs in S4's runtime once per noise, so it is excluded (its cost is in the table above).
+- Unity editor (Mono), 2026-10-08, Intel Core Ultra 7 155H. Allocations are counted with the "GC.Alloc" profiler recorder (see the note below).
+
+| Trackers | Ticks | Tick mean | Median | p99 | Max | Whole frame, all Trackers: mean / p99 / max | Ticks that allocate |
+| ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| 1 | 1,800 | 2.7 µs | 0.8 µs | 18.7 µs | 1.66 ms | 2.7 / 18.7 µs / 1.66 ms | 23 (1.3%), 99 allocations |
+| 7 | 12,600 | 1.3 µs | 0.9 µs | 7.8 µs | 0.13 ms | 8.9 / 95.5 µs / 0.43 ms | 154 (1.2%), 665 allocations |
+
+- **Allocations happen only when the brain hands the body a new route.** That covers 21 replans plus 2 stops for one Tracker; every allocating tick returned a path. Each one allocates the route cells and the world-space path, about 4 small allocations. Every other tick allocates nothing.
+- **Seven Trackers at once** (the plan's stress test has 7 agents) cost under 0.1 ms per frame at p99. That is about 0.6% of a 16.7 ms frame.
+- **Outlier:** the one 1.66 ms tick is the first time a new state's code runs in the editor (JIT). The second run, with 7 Trackers, has no tick over 0.13 ms.
+- **Limits:** these are editor timings for the brain alone, not a player build. The full stress test (`Test_FourAgentsStress`, below) is S4's, with all agent types and the bodies.
+
+**Measuring allocations: `GC.GetAllocatedBytesForCurrentThread()` does not work in Unity.**
+- Under Unity's Mono it always returns 0: allocating a 100 KB array shows a change of 0. So any "allocates nothing" test built on it can never fail.
+- S1's tests now count allocations with Unity's "GC.Alloc" profiler recorder, through `Tests/EditMode/GcAllocations.Count`. That covers GBFS, noise propagation, grid, FSM, cost model, wind-up energy and the blackboard. They all still pass, so those claims are now verified.
+- One claim was made exact rather than "zero": a successful GBFS search costs exactly 2 allocations, its path list and the list's array. `BuildPath` now sizes the list up front, so it never regrows.
+- S3's and S4's tests that still use the old counter are listed in the PR for their owners.
 
 ## Stress test (`Test_FourAgentsStress`)
 

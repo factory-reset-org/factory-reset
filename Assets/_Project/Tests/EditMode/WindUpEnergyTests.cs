@@ -110,10 +110,11 @@ namespace ToyFactory.Tests.EditMode
             for (int i = 0; i < 100; i++)
                 energy.Tick(i * 0.1f, true);
 
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 100; i < 1100; i++)
-                energy.Tick(i * 0.1f, i % 2 == 0);
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            int allocated = GcAllocations.Count(() =>
+            {
+                for (int i = 100; i < 1100; i++)
+                    energy.Tick(i * 0.1f, i % 2 == 0);
+            });
 
             Assert.AreEqual(0, allocated);
         }

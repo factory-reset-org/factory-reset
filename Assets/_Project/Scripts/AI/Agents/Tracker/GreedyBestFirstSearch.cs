@@ -122,9 +122,14 @@ namespace ToyFactory.AI.Agents.Tracker
         bool CanEnter(Vector2Int cell, bool throughClosedDoors) =>
             _grid.Contains(cell) && (throughClosedDoors ? _grid.GetNode(cell).IsSoundTraversable : _grid.IsTraversable(cell));
 
+        // Sized exactly, so a found path costs two allocations (the list and its array) and
+        // never a regrow.
         List<Vector2Int> BuildPath(int goalIndex)
         {
-            var path = new List<Vector2Int>();
+            int length = 0;
+            for (int index = goalIndex; index != -1; index = _parent[index])
+                length++;
+            var path = new List<Vector2Int>(length);
             for (int index = goalIndex; index != -1; index = _parent[index])
                 path.Add(_grid.FromIndex(index));
             path.Reverse();

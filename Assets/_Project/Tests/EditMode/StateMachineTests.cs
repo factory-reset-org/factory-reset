@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using ToyFactory.AI.Core.FSM;
+using ToyFactory.Tests.EditMode;
 
 namespace ToyFactory.Tests
 {
@@ -279,13 +280,14 @@ namespace ToyFactory.Tests
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 1000; i++)
+            int allocated = GcAllocations.Count(() =>
             {
-                machine.Tick(i);
-            }
+                for (int i = 0; i < 1000; i++)
+                {
+                    machine.Tick(i);
+                }
 
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            });
             Assert.That(allocated, Is.Zero);
         }
 

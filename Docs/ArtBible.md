@@ -72,7 +72,7 @@ As built in `Env.unity` (S1, Week 12):
 - A ninth material, `M_Env_GlowAlarm` (red `#FF5A4E` emission), is used on the Control Room alarm beacons. It is left out of the bake so the lighting state can turn it amber at runtime.
 - Lights, under `Lighting`: the sun is Mixed (Baked Indirect). Each room has one baked fill light. Three real-time accents remain: a pink light in Painting, an orange lamp in Storage and the red alarm in Control. Lighting settings are in `Settings/Lighting/LS_Env`.
 - Ambient is Trilight. Fog is exponential, density 0.006.
-- 511 light probes: a 3 m grid at 0.5, 2 and 4 m, plus six probes at each doorway.
+- 629 light probes: a 3 m grid at 0.5, 2 and 4 m, six probes at each doorway, and 118 more along the agents' patrol routes and the player's route through the four doorways (pairs at 0.75 m and 2 m wherever a route point was more than 1.25 m from a probe).
 - Post-processing is one global Volume (`Settings/PostProcessing/PP_Factory`):
   - Bloom: threshold 1.1, intensity 0.6.
   - Neutral tonemapping. ACES was not used because it greys out the pastels.

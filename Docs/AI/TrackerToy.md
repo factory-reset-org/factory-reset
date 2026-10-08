@@ -184,7 +184,7 @@ GBFS does not include accumulated cost `g(n)` in its selection priority. It must
 - **Closed set:** a cell is stamped when it is first pushed and never pushed again. Because `h(n)` of a cell never changes, its first priority is final, so there is nothing for `DecreaseKey` to improve (unlike A*, where a cheaper `g` can lower a cell's priority). Every cell is therefore expanded at most once, which bounds the search by the number of cells: this is the completeness argument.
 - Neighbours come from `GridGraph.GetNeighboursNonAlloc`, so the no-corner-cutting rule and closed doors apply exactly as for A*.
 - The `ICostModel` argument is required by `IPathfinder` but not used for ordering; ignoring `g(n)` is what makes the search greedy.
-- Arrays are reused between searches with a stamp (the same trick as `AStarSearch` and `DijkstraField`), so a search allocates nothing but the returned path list. Wrapped in the `AI.Tracker.GBFS` ProfilerMarker.
+- Arrays are reused between searches with a stamp (the same trick as `AStarSearch` and `DijkstraField`), so a search allocates nothing but the returned path list. That list is sized exactly: a found path costs 2 allocations, a failed search none. Wrapped in the `AI.Tracker.GBFS` ProfilerMarker.
 
 ### Propagated sound level
 
@@ -215,7 +215,7 @@ The loudness table is in `Interfaces/NoiseLoudness.cs` so every emitter uses the
 | Pressure plate click (Ch1) | 40 | 7.5 m |
 | Running footsteps | 25 | 3.75 m |
 
-**Implementation.** A bounded Dijkstra over the *sound* graph (`GetNeighboursNonAlloc(..., allowClosedDoors: true)`, so closed doors connect but walls and box blockers do not). The path cost is the level lost: 2 per orthogonal 0.5 m step, 2.83 per diagonal, plus 35 when a step enters a closed door from outside it. Charging on entry means a door two cells deep still costs 35 once, and a door slam made *on* the door is heard on both sides without the penalty. Dijkstra pops cells in increasing loss, so each cell gets the loudest level any route can bring, which is the shortest sound path. A cell whose level would be at or below 10 is never queued, so the work is bounded by the audible area. A source inside a wall or box spreads from the nearest open cell within 2 cells. Arrays are reused with a stamp (as in `DijkstraField`): 0 bytes per noise. `Level(cell)` returns 0 where the noise is not heard. Profiler marker `AI.NoisePropagation.Propagate`.
+**Implementation.** A bounded Dijkstra over the *sound* graph (`GetNeighboursNonAlloc(..., allowClosedDoors: true)`, so closed doors connect but walls and box blockers do not). The path cost is the level lost: 2 per orthogonal 0.5 m step, 2.83 per diagonal, plus 35 when a step enters a closed door from outside it. Charging on entry means a door two cells deep still costs 35 once, and a door slam made *on* the door is heard on both sides without the penalty. Dijkstra pops cells in increasing loss, so each cell gets the loudest level any route can bring, which is the shortest sound path. A cell whose level would be at or below 10 is never queued, so the work is bounded by the audible area. A source inside a wall or box spreads from the nearest open cell within 2 cells. Arrays are reused with a stamp (as in `DijkstraField`): no allocation per noise. `Level(cell)` returns 0 where the noise is not heard. Profiler marker `AI.NoisePropagation.Propagate`.
 
 **Hearing contract for S4.** For each `NoiseEvents.OnNoise`: `Propagate(grid.WorldToCell(e.Position), e.Loudness)`, then for each agent with `Level(agentCell) > 10`, merge `new SensorSnapshot(e.Position, level, e.SourceId, e.Time)` into its pending snapshot with `SensorSnapshot.Loudest`, so the loudest noise since the last tick wins.
 
@@ -241,7 +241,7 @@ For an otherwise equivalent noise aged 5 seconds, the multiplier is `exp(-0.3 * 
 | Case | Handling now | Status |
 | --- | --- | --- |
 | Noise source is in an unreachable/blocked cell | Every goal is snapped to the nearest traversable cell within 6 cells (3 m). If no route exists, Investigate looks around from where it stands, then marks the noise handled. | Implemented; snapping covered indirectly by the Investigate tests |
-| LKP becomes blocked by a pushed box | Chase and Search goals are snapped the same way; Search skips ring points it cannot reach (at most 3 searches per tick). | Implemented; no dedicated test yet |
+| LKP becomes blocked by a pushed box | Chase and Search goals are snapped the same way; Search skips ring points it cannot reach (at most 3 searches per tick). | `ABoxPushedOntoTheLastSightingIsSearchedRoundNotWalkedInto` |
 | A closed door makes the goal unreachable | Runs to the near side of the door (found by a GBFS through closed doors), waits there 2.5 s staring at it, then searches its own side. If the door opens it chases again; a noise heard through the door is investigated from the door. A wall with no door still just stops it. | `AClosedDoorSendsTheChaseToTheNearSideOfTheDoor`, `ItWaitsAtTheShutDoorThenSearchesItsOwnSide`, `TheDoorOpeningResumesTheChase`, `ANoiseThroughAClosedDoorIsCheckedFromTheDoor`, `ANoiseBehindAWallWithNoDoorIsLookedForFromWhereItStands` |
 | Two noises have equal scores | Prefer the closer one (flat distance, see the deviation above). | `EqualScoresPreferTheCloserNoise` |
 | Tracker is stunned during Chase | LKP is kept; the first tick after the reboot resumes the hunt towards it. | `AStunWhileHuntingResumesTheHunt` |
@@ -258,31 +258,31 @@ For an otherwise equivalent noise aged 5 seconds, the multiplier is `exp(-0.3 * 
 | Enclosed/unreachable region | GBFS returns `Found = false` when the goal cannot be reached. | Passing: `WalledOffGoalIsNotFound`, `ClosedDoorBlocksMovement`, `BlockedStartOrGoalIsNotFoundWithoutExpanding` |
 | Through closed doors | With `throughClosedDoors`, a closed door counts as open but walls still block. | Passing: `ThroughClosedDoorsTheRouteCrossesTheDoor`, `ThroughClosedDoorsWallsStillBlock`, `ThroughClosedDoorsAGoalOnTheDoorIsAllowed` |
 | Closed-set behaviour | GBFS never expands the same node twice. | Passing: `ExpandsEachReachableCellExactlyOnceWhenTheGoalIsUnreachable` (expanded count equals the reachable region's size exactly) |
-| Fewer expansions than A*; no allocation | GBFS expands fewer nodes than A* on open grids and allocates nothing on reuse. | Passing: `ExpandsFewerNodesThanAStarOnOpenGrids`, `ReusedSearchAllocatesNothing` |
+| Fewer expansions than A*; no allocation | GBFS expands fewer nodes than A* on open grids; a reused failed search allocates nothing, a found one only its path (2 allocations). Counted with Unity's GC.Alloc recorder. | Passing: `ExpandsFewerNodesThanAStarOnOpenGrids`, `ReusedSearchAllocatesNothing`, `AFoundPathCostsOnlyItsListAndArray` |
 | Closed-door attenuation | Propagated noise through a closed door matches `L0 - 4 * pathDistance - sum(35 per closed door crossed)`. | Passing: `AClosedDoorCostsThirtyFive`, `ADoorSeveralCellsDeepCostsThirtyFiveOnce`, `EachClosedDoorCrossedCostsThirtyFive`; checked on the level at door 4 |
-| Tracker edge cases | The five cases above follow the planned handling. | Done: see Edge cases (the pushed-box case has no dedicated test yet) |
+| Tracker edge cases | The five cases above follow the planned handling. | Done: see Edge cases |
 | GBFS versus A* | Record nodes expanded and path length for both algorithms over the same 20 start/goal pairs. | Done: see Measured results |
 
 ### Brain tests (EditMode, all passing)
 
-`Tests/EditMode/TrackerBrainTests.cs` (29), on a 20 m x 10 m open grid driven tick by tick with game time:
+`Tests/EditMode/TrackerBrainTests.cs` (31), on a 20 m x 10 m open grid driven tick by tick with game time:
 - **Patrol:** `FirstTickPatrolsWithAGbfsRoute`, `PatrolKeepsItsRouteUntilArrivalThenGoesToTheNextPoint`.
 - **Hearing:** `ALoudNoiseStartsAnInvestigation`, `InvestigationLooksAroundThenReturnsToPatrolAndDoesNotRepeat`, `ARepeatingSourceDistractsUntilItGoesQuiet`.
 - **Vision and hunting:** `SeeingThePlayerStartsTheChase`, `APlayerBehindAWallIsNotSeen`, `APlayerBehindTheTrackerIsSeenOnlyUpClose`, `ChaseReplansEveryHalfSecond`, `LosingSightSwitchesToSearchAfterPointSevenSeconds`, `SearchGivesUpAfterEightSeconds`, `SeeingThePlayerAgainDuringSearchResumesTheChase`, `AMissingOrDeadPlayerEndsTheHunt`.
 - **Energy:** `RunningOutOfEnergyRewindsInPlaceThenCarriesOn` (empty path, `Action = Rewind`, double damage, back after 3 s), `ChasingDrainsEnergyFiveTimesFaster`, `ARewindFromTheHuntReturnsToTheHunt`.
 - **Stuns and priority:** `AStunDoesNotDrainEnergyAndAFreshRouteGoesOutOnTheFirstTickAfter`, `AStunWhileHuntingResumesTheHunt`, `AStunDuringARewindGoesBackToRewinding`, `TheStunInterruptHasTheHighestPriority` (every machine's rows are in descending priority and the stun is the top machine's first row).
-- **Graph changes:** `AGraphChangeOffTheRouteKeepsIt`, `AGraphChangeOnTheRouteReplansAroundIt`.
+- **Graph changes:** `AGraphChangeOffTheRouteKeepsIt`, `AGraphChangeOnTheRouteReplansAroundIt`, `ABoxPushedOntoTheLastSightingIsSearchedRoundNotWalkedInto`.
 - **Closed doors** (a wall with a three-cell door that shuts mid-chase): `AClosedDoorSendsTheChaseToTheNearSideOfTheDoor`, `ItWaitsAtTheShutDoorThenSearchesItsOwnSide`, `TheDoorOpeningResumesTheChase`, `ANoiseThroughAClosedDoorIsCheckedFromTheDoor`, `ANoiseBehindAWallWithNoDoorIsLookedForFromWhereItStands`.
 - **Alert icon:** `TheAlertLevelFollowsTheState` (None in Patrol, Suspicious in Investigate and Search, Alert in Chase).
 - `ConstructorRejectsMissingInputs`.
 
 `Tests/EditMode/NoiseMemoryTests.cs` (11): decay formula, a repeating beep beating an older louder shot, the 1.5 s repeat window, the closer-noise tie-break, handled noises, forgetting at the threshold, ignoring out-of-order noises, and replacing the weakest entry when full.
 
-`Tests/EditMode/NoisePropagationTests.cs` (25): full level at the source; 4 per metre along the grid, not the straight line; a closed door costs 35, an open one nothing, a deep door 35 once, two doors 70; a door slam is heard on both sides; walls and boxes block; sound goes round corners with exactly the A* route's loss; fades out at the threshold (footsteps 11 at 3.5 m, gone at 4 m) and exactly-10 is not heard; only audible cells are expanded; a source in a wall snaps out; off-grid sources are heard nowhere; 0 bytes on reuse; and `SensorSnapshot.Loudest`.
+`Tests/EditMode/NoisePropagationTests.cs` (25): full level at the source; 4 per metre along the grid, not the straight line; a closed door costs 35, an open one nothing, a deep door 35 once, two doors 70; a door slam is heard on both sides; walls and boxes block; sound goes round corners with exactly the A* route's loss; fades out at the threshold (footsteps 11 at 3.5 m, gone at 4 m) and exactly-10 is not heard; only audible cells are expanded; a source in a wall snaps out; off-grid sources are heard nowhere; no allocation on reuse; and `SensorSnapshot.Loudest`.
 
 `Tests/EditMode/CompositeStateTests.cs` (6): the child is entered and ticked inside the parent, child transitions run inside it, leaving exits the running child first, re-entry restarts at the initial child, and a child that never ran is never exited.
 
-Full suites after the debug overlay layer: EditMode 728/728, PlayMode 138/138.
+Full suites after the evidence branch: EditMode 730/730, PlayMode 138/138.
 
 ### Planned S1 delivery schedule
 
@@ -296,6 +296,29 @@ These are the Full Plan's schedule entries, not a completion checklist. See Curr
 | 14 | Tracker edge-case tests; GBFS versus A* comparison table. |
 
 ## Measured results
+
+### Brain cost
+
+Full table in [AIPerformanceLog.md](../AIPerformanceLog.md) (Tracker brain tick). The brain was run for 60 s of scripted game time on the level grid and went through every state:
+
+| | Per tick | Notes |
+| --- | --- | --- |
+| Median | 0.8 µs | |
+| p99 | 18.7 µs | |
+| Seven Trackers at once | 95.5 µs per frame at p99 | |
+| Allocations | Only on the 1.3% of ticks that hand the body a new route, about 4 each | Every other tick allocates nothing |
+
+### Evidence scenes
+
+Both scenes have the F3 overlay on from the start, a runtime NavMesh, and no player.
+
+| Scene | Set-up | What it shows | Screenshots |
+| --- | --- | --- | --- |
+| `Scenes/Test/Test_DoorClosedNoise.unity` | Two rooms and a closed door. A relay alarm (90) sounds 3 m past the door every 7 s. The Tracker patrols 5 m from the door. **O** toggles the door. | Closed: the heatmap is warm on the alarm's side and drops to cold past the door (the −35). The Tracker hears about 23, walks to the door, and looks around there ("?"). Open: the heatmap stays warm through the doorway, and the Tracker walks through to the alarm. | `Docs/Evidence/Tracker/door_closed_noise.png`, `door_open_noise.png` |
+| `Scenes/Test/Test_TerminalNoise.unity` | One room with two cover blocks. A colour-terminal stand-in beeps (60) every 0.8 s, 8 times (the 6.4 s hold), then is quiet for 10 s. | The Tracker turns Distracted ("?") and circles the terminal while it beeps, then goes back to Patrol 1.5 s after the last beep. The heatmap has gaps behind the cover. | `Docs/Evidence/Tracker/terminal_distracted.png` (taken with the terminal held on) |
+
+The noise sources are `ScriptedNoiseSource` and the door is `DebugDoorToggle` (`Runtime/Debug`), stand-ins until S2's terminal and relays exist. The screenshots are camera renders, so the overlay's on-screen labels (OnGUI) are not in them; in play they show above each cell.
+
 
 ### GBFS vs A* on the level grid
 
