@@ -52,8 +52,7 @@ namespace ToyFactory.Interaction
 
         void Latch()
         {
-            float time = GameClock.Current != null ? GameClock.Current.GameTime : Time.time;
-            NoiseEvents.Emit(new NoiseEvent(transform.position, NoiseLoudness.PlateClick, GetHashCode(), time));
+            EmitNoise(NoiseLoudness.PlateClick);
             Complete();
         }
 
