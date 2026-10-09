@@ -24,7 +24,7 @@ namespace ToyFactory.AI.Agents.Guard
 
         public bool CanPeek { get; }
 
-        /// <summary>Tactical A* cost of walking there, in grid units.</summary>
+        /// <summary>Tactical cost of walking there, in grid units, capped at the brain's MaxPathCost.</summary>
         public float PathCost { get; }
 
         /// <summary>The cover score S, 0 to 1.</summary>

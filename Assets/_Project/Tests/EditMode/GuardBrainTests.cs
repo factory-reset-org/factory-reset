@@ -483,7 +483,7 @@ namespace ToyFactory.Tests.EditMode
             foreach (ScoredCover cover in scored)
             {
                 Assert.That(cover.Score, Is.InRange(0f, 1f));
-                Assert.GreaterOrEqual(cover.PathCost, 0f);
+                Assert.That(cover.PathCost, Is.InRange(0f, GuardBrain.MaxPathCost));
             }
             Assert.Greater(brain.RouteCells.Count, 1);
             Assert.AreEqual(brain.CoverCell, brain.RouteCells[brain.RouteCells.Count - 1]);
