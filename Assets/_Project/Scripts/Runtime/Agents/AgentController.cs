@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Unity.Profiling;
 using UnityEngine;
 using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
@@ -39,6 +40,16 @@ namespace ToyFactory.Runtime.Agents
 
         AgentPathFollower _follower;
         AgentWeapon _weapon;
+
+        // One marker per agent type around the brain's Tick, for the Profiler and the
+        // four-agent stress test (AI time per frame, by brain). Indexed by AgentType.
+        static readonly ProfilerMarker[] TickMarkers =
+        {
+            new ProfilerMarker("AI.Brain.Tick.Tracker"),
+            new ProfilerMarker("AI.Brain.Tick.Guard"),
+            new ProfilerMarker("AI.Brain.Tick.Saboteur"),
+            new ProfilerMarker("AI.Brain.Tick.Captain"),
+        };
         IAgentBrain _brain;
         IGoalPredictor _predictor;
         WorldBlackboard _blackboard;
@@ -300,7 +311,10 @@ namespace ToyFactory.Runtime.Agents
                 Now, _blackboard, _heard);
             _heard = default; // each noise reaches the brain once
 
-            AgentIntent intent = _brain.Tick(context);
+            AgentIntent intent;
+            int type = (int)Type;
+            using (TickMarkers[type < TickMarkers.Length ? type : 0].Auto())
+                intent = _brain.Tick(context);
 
             // Brains never write the blackboard: copy the Captain's goal prediction for the others.
             if (_predictor != null)
