@@ -26,7 +26,7 @@ namespace ToyFactory.AI.Core.Search
         static readonly ProfilerMarker Marker = new ProfilerMarker("AI.AStarSearch.FindPath");
 
         readonly GridGraph _grid;
-        readonly Vector2Int[] _neighbourBuffer = new Vector2Int[8];
+        readonly GridAdjacency _adjacency;
         readonly Stopwatch _stopwatch = new Stopwatch();
 
         BinaryHeap _open;
@@ -40,6 +40,7 @@ namespace ToyFactory.AI.Core.Search
         public AStarSearch(GridGraph grid)
         {
             _grid = grid ?? throw new ArgumentNullException(nameof(grid));
+            _adjacency = GridAdjacency.For(grid);
             AllocateForGridSize();
         }
 
@@ -61,6 +62,12 @@ namespace ToyFactory.AI.Core.Search
                 NextStamp();
                 _open.Clear();
 
+                // The shared neighbour table: each cell's neighbours and base step costs are
+                // read from arrays instead of being worked out again for every expansion.
+                _adjacency.GetArrays(out int[] counts, out int[] neighbours, out float[] steps);
+                bool baseCost = cost is BaseCostModel;
+                int width = _grid.Width;
+
                 int startIndex = _grid.ToIndex(start);
                 int goalIndex = _grid.ToIndex(goal);
                 _costSoFar[startIndex] = 0f;
@@ -78,19 +85,21 @@ namespace ToyFactory.AI.Core.Search
                     if (current == goalIndex)
                         return new PathResult(BuildPath(goalIndex), true, expanded, ElapsedMs(), version);
 
-                    Vector2Int currentCell = _grid.FromIndex(current);
-                    int neighbourCount = _grid.GetNeighboursNonAlloc(currentCell, _neighbourBuffer);
+                    var currentCell = new Vector2Int(current % width, current / width);
+                    int firstSlot = current * GridAdjacency.Slots;
+                    int lastSlot = firstSlot + counts[current];
 
-                    for (int i = 0; i < neighbourCount; i++)
+                    for (int slot = firstSlot; slot < lastSlot; slot++)
                     {
-                        Vector2Int next = _neighbourBuffer[i];
-                        int nextIndex = _grid.ToIndex(next);
+                        int nextIndex = neighbours[slot];
 
                         // The heuristic is consistent, so a closed cell can never be improved.
                         if (_closedStamp[nextIndex] == _stamp)
                             continue;
 
-                        float newCost = _costSoFar[current] + cost.StepCost(currentCell, next);
+                        var next = new Vector2Int(nextIndex % width, nextIndex / width);
+                        float step = baseCost ? steps[slot] : cost.StepCost(currentCell, next);
+                        float newCost = _costSoFar[current] + step;
                         bool firstVisit = _seenStamp[nextIndex] != _stamp;
                         if (!firstVisit && newCost >= _costSoFar[nextIndex])
                             continue;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using Unity.Profiling;
 using UnityEngine;
 using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
@@ -42,6 +43,7 @@ namespace ToyFactory.AI.Agents.Guard
         public const float ReevaluateDistance = 2f;      // or when the player moves this far
         public const int TopCandidates = 3;              // candidates that get a real A*
         public const float MaxPathCost = 60f;            // grid units, about 30 m of hidden walking
+        public const int CostSearchCells = 400;          // effort allowed to cost one cover; past it the cover counts as far
         public const float CoverHysteresis = 0.1f;       // a new cover must beat the current one by this
         public const float Lambda = 3f;                  // an exposed step costs 4x a hidden one
 
@@ -84,6 +86,15 @@ namespace ToyFactory.AI.Agents.Guard
         static readonly Comparison<RankedCandidate> ByScoreDescending = (a, b) => b.Score.CompareTo(a.Score);
         static readonly Vector2Int[] NoRoute = new Vector2Int[0];
 
+        // Where a tick's time goes, for the profiler and the performance log.
+        static readonly ProfilerMarker PerceiveMarker = new ProfilerMarker("AI.Guard.Perceive");
+        static readonly ProfilerMarker EvaluateMarker = new ProfilerMarker("AI.Guard.EvaluateCover");
+        static readonly ProfilerMarker FindBestMarker = new ProfilerMarker("AI.Guard.FindBest");
+        static readonly ProfilerMarker PathCostMarker = new ProfilerMarker("AI.Guard.PathCost");
+        static readonly ProfilerMarker StatesMarker = new ProfilerMarker("AI.Guard.States");
+        static readonly ProfilerMarker MoveToMarker = new ProfilerMarker("AI.Guard.MoveTo");
+        static readonly ProfilerMarker RetreatMarker = new ProfilerMarker("AI.Guard.Retreat");
+
         // Cardinals first, so the Guard peeks sideways before it peeks diagonally.
         static readonly Vector2Int[] PeekOffsets =
         {
@@ -97,18 +108,22 @@ namespace ToyFactory.AI.Agents.Guard
         readonly ICoverVisibility _visibility;
         readonly CoverEvaluator _evaluator;
         readonly TacticalCostModel _tactical;
+        readonly OneToOneCost _costSearch;
+        readonly GridRegions _regions;
         readonly int _agentId;
         readonly IReadOnlyList<Vector3> _patrolPoints;
 
-        readonly List<CoverCandidate> _candidates = new List<CoverCandidate>();
-        readonly List<RankedCandidate> _ranked = new List<RankedCandidate>();
+        readonly List<RankedCover> _best = new List<RankedCover>(TopCandidates);
+        readonly Predicate<Vector2Int> _isAvailable;
         readonly List<RankedCandidate> _retreatOptions = new List<RankedCandidate>();
 
         // What the latest evaluation costed with a real path, kept for the debug overlay.
         readonly List<ScoredCover> _scored = new List<ScoredCover>(TopCandidates + 1);
-        readonly Dictionary<Vector2Int, bool> _exposure = new Dictionary<Vector2Int, bool>();
-        Vector2Int _exposureCell;
-        bool _exposureCellKnown;
+        // Line of sight remembered per cell while the player stays in one cell and the grid
+        // does not change. The cover search, the peek checks and the tactical A* all read it.
+        readonly CachedCoverVisibility _sight;
+        Vector2Int _sightCell;
+        bool _sightCellKnown;
 
         readonly StateMachine<GuardBrain> _machine;
         readonly IState<GuardBrain> _patrol;
@@ -180,8 +195,12 @@ namespace ToyFactory.AI.Agents.Guard
             _pathfinder = pathfinder ?? new AStarSearch(grid);
             _agentId = agentId;
             _patrolPoints = patrolPoints ?? Array.Empty<Vector3>();
-            _evaluator = new CoverEvaluator(grid, visibility, GridGraph.CellSize);
+            _sight = new CachedCoverVisibility(visibility, grid);
+            _evaluator = new CoverEvaluator(grid, _sight, GridGraph.CellSize);
+            _isAvailable = IsAvailable;
             _tactical = new TacticalCostModel(IsExposed, Lambda);
+            _costSearch = new OneToOneCost(grid);
+            _regions = GridRegions.For(grid);
 
             _patrol = new PatrolState();
             _takeCover = new TakeCoverState();
@@ -227,13 +246,17 @@ namespace ToyFactory.AI.Agents.Guard
             _outLook = null;
             _outAction = AgentAction.None;
 
-            Perceive();
+            using (PerceiveMarker.Auto())
+                Perceive();
 
-            _machine.Tick(this);
-            // Stunned and Relocate are pass-through states: entered and left on the same
-            // tick, so the Guard acts on its fresh cover choice straight away.
-            for (int i = 0; i < 3 && (_machine.Current == _stunned || _machine.Current == _relocate); i++)
+            using (StatesMarker.Auto())
+            {
                 _machine.Tick(this);
+                // Stunned and Relocate are pass-through states: entered and left on the same
+                // tick, so the Guard acts on its fresh cover choice straight away.
+                for (int i = 0; i < 3 && (_machine.Current == _stunned || _machine.Current == _relocate); i++)
+                    _machine.Tick(this);
+            }
 
             if (_replanRequested && _outPath == null && _routeCells != null)
                 MoveTo(_routeGoal, _routeCost);
@@ -260,6 +283,7 @@ namespace ToyFactory.AI.Agents.Guard
             if (changedCells == null)
                 return;
             _evaluateNow = true;
+            _sight.Invalidate();
             if (_routeCells == null)
                 return;
             for (int i = 0; i < changedCells.Count; i++)
@@ -282,6 +306,7 @@ namespace ToyFactory.AI.Agents.Guard
             _routeCells = null;
             _stunPending = true;
             _evaluateNow = true;
+            _sight.Invalidate();
             _debugState = "Stunned";
         }
 
@@ -317,6 +342,12 @@ namespace ToyFactory.AI.Agents.Guard
 
         /// <summary>Where the Guard believes the player is; only meaningful while <see cref="IsEngaged"/>.</summary>
         public Vector3 PlayerPosition => Player.Position;
+
+        /// <summary>Line-of-sight checks passed on so far (in the game, physics raycasts). For the performance log.</summary>
+        public int SightChecksMade => _sight.InnerQueries;
+
+        /// <summary>Cells the latest cover search had to sight-test. For the performance log.</summary>
+        public int CoverCellsTested => _evaluator.CellsTested;
 
         /// <summary>The cells of the route being walked, start to goal. Empty when there is none.</summary>
         public IReadOnlyList<Vector2Int> RouteCells => _routeCells != null ? _routeCells : (IReadOnlyList<Vector2Int>)NoRoute;
@@ -370,22 +401,27 @@ namespace ToyFactory.AI.Agents.Guard
                 if (_hasCover)
                     ReleaseCover();
                 _scored.Clear();
+                _sightCellKnown = false;
                 _reconsider = false;
                 _evaluateNow = true;
                 return;
             }
 
             PlayerSnapshot player = Player;
-            if (!_exposureCellKnown || player.Cell != _exposureCell)
+            if (!_sightCellKnown || player.Cell != _sightCell)
             {
-                _exposure.Clear();
-                _exposureCell = player.Cell;
-                _exposureCellKnown = true;
+                _sight.Invalidate();
+                _sightCell = player.Cell;
+                _sightCellKnown = true;
             }
 
             bool wasAggressive = _aggressive;
             bool tierChanged = UpdateTactic(player);
+            // Asked afresh every tick, not from memory: it is what notices that the player
+            // has flanked the cover without leaving their cell. If so, nothing remembered holds.
             bool exposed = _hasCover && !_visibility.IsBlocked(_coverCell, CoverEvaluator.LowCoverHeight);
+            if (exposed)
+                _sight.Invalidate();
             bool playerMoved = FlatDistance(player.Position, _lastEvalPlayerPosition) > ReevaluateDistance;
 
             if (_evaluateNow || tierChanged || exposed || playerMoved || Now >= _nextCoverTime)
@@ -446,65 +482,49 @@ namespace ToyFactory.AI.Agents.Guard
         }
 
         /// <summary>True if the player can see <paramref name="cell"/>. Cached until the player changes cell.</summary>
-        bool IsExposed(Vector2Int cell)
+        bool IsExposed(Vector2Int cell) => !_sight.IsBlocked(cell, CoverEvaluator.ChestHeight);
+
+        // A cover cell another agent has reserved is not on offer.
+        bool IsAvailable(Vector2Int cell)
         {
-            if (!_exposure.TryGetValue(cell, out bool exposed))
-            {
-                exposed = !_visibility.IsBlocked(cell, CoverEvaluator.ChestHeight);
-                _exposure[cell] = exposed;
-            }
-            return exposed;
+            int? holder = World.Reservations.ReservedBy(cell);
+            return !holder.HasValue || holder.Value == _agentId;
         }
 
         // ---- Cover selection -----------------------------------------------------------
 
         /// <summary>
-        /// Ranks every candidate with octile distance as a cheap path cost, runs tactical A*
-        /// on the top three, rescores those with the true cost and reserves the best. The
+        /// Takes the three best candidates by a cheap path cost (octile distance), runs tactical
+        /// A* on them, rescores those with the true cost and reserves the best. The
         /// current cover is kept unless it stopped being valid or a new one beats it by
         /// <see cref="CoverHysteresis"/>.
         /// </summary>
         void EvaluateCover(in PlayerSnapshot player)
         {
+            using ProfilerMarker.AutoScope timed = EvaluateMarker.Auto();
             _evaluateNow = false;
             _nextCoverTime = Now + CoverInterval;
             _lastEvalPlayerPosition = player.Position;
 
             Vector2Int playerCell = player.Cell;
-            _evaluator.FindCandidates(playerCell, _candidates);
-
-            _ranked.Clear();
             _scored.Clear();
-            bool currentValid = false;
-            CoverCandidate current = default;
             CellReservations reservations = World.Reservations;
-            for (int i = 0; i < _candidates.Count; i++)
-            {
-                CoverCandidate candidate = _candidates[i];
-                if (_fullCoverOnly && candidate.Protection < 1f)
-                    continue;
-                int? holder = reservations.ReservedBy(candidate.Cell);
-                if (holder.HasValue && holder.Value != _agentId)
-                    continue;
+            using (FindBestMarker.Auto())
+                _evaluator.FindBest(playerCell, _ctx.Cell, _idealRange, MaxPathCost, _fullCoverOnly,
+                    _isAvailable, TopCandidates, _best);
 
-                if (_hasCover && candidate.Cell == _coverCell)
-                {
-                    currentValid = true;
-                    current = candidate;
-                }
-
-                float estimate = BaseCostModel.OctileDistance(_ctx.Cell, candidate.Cell);
-                _ranked.Add(new RankedCandidate(candidate,
-                    _evaluator.Score(candidate, playerCell, _idealRange, estimate, MaxPathCost)));
-            }
-            _ranked.Sort(ByScoreDescending);
+            // The cover already held is judged on its own: it need not be among the best.
+            CoverCandidate current = default;
+            bool currentValid = _hasCover && IsAvailable(_coverCell)
+                && _evaluator.TryEvaluate(_coverCell, playerCell, out current)
+                && (!_fullCoverOnly || current.Protection >= 1f);
 
             bool found = false;
             CoverCandidate best = default;
             float bestScore = 0f;
-            for (int i = 0; i < _ranked.Count && i < TopCandidates; i++)
+            for (int i = 0; i < _best.Count; i++)
             {
-                CoverCandidate candidate = _ranked[i].Candidate;
+                CoverCandidate candidate = _best[i].Candidate;
                 if (!TryPathCost(candidate.Cell, out float cost))
                     continue;
                 float score = _evaluator.Score(candidate, playerCell, _idealRange, cost, MaxPathCost);
@@ -517,11 +537,17 @@ namespace ToyFactory.AI.Agents.Guard
                 }
             }
 
-            if (currentValid && TryPathCost(current.Cell, out float currentCost))
+            if (currentValid)
             {
-                float currentScore = _evaluator.Score(current, playerCell, _idealRange, currentCost, MaxPathCost);
-                RecordCurrentCover(current, currentCost, currentScore);
-                if (!found || best.Cell == current.Cell || bestScore <= currentScore + CoverHysteresis)
+                // Already costed if it was one of the best; otherwise cost it now.
+                bool costed = TryGetScored(current.Cell, out float currentScore);
+                if (!costed && TryPathCost(current.Cell, out float currentCost))
+                {
+                    currentScore = _evaluator.Score(current, playerCell, _idealRange, currentCost, MaxPathCost);
+                    _scored.Add(new ScoredCover(current, currentCost, currentScore));
+                    costed = true;
+                }
+                if (costed && (!found || best.Cell == current.Cell || bestScore <= currentScore + CoverHysteresis))
                 {
                     _coverCanPeek = current.CanPeek;
                     return;
@@ -543,27 +569,46 @@ namespace ToyFactory.AI.Agents.Guard
             ReleaseCover();
         }
 
-        // The cover already held is costed even when it is not among the top candidates.
-        void RecordCurrentCover(CoverCandidate current, float cost, float score)
+        bool TryGetScored(Vector2Int cell, out float score)
         {
             for (int i = 0; i < _scored.Count; i++)
-                if (_scored[i].Cell == current.Cell)
-                    return;
-            _scored.Add(new ScoredCover(current, cost, score));
+            {
+                if (_scored[i].Cell == cell)
+                {
+                    score = _scored[i].Score;
+                    return true;
+                }
+            }
+            score = 0f;
+            return false;
         }
 
-        /// <summary>The tactical cost of walking from here to <paramref name="goal"/>, or false if unreachable.</summary>
+        /// <summary>
+        /// The tactical cost of walking from here to <paramref name="goal"/>, capped at
+        /// <see cref="MaxPathCost"/>, or false if it cannot be reached.
+        /// </summary>
+        /// <remarks>
+        /// Only the cost is needed here, not the route, and only up to MaxPathCost: beyond it
+        /// the travel part of the cover score is already zero. So the search is cost-only, gives
+        /// up on anything dearer and is allowed <see cref="CostSearchCells"/> cells of effort.
+        /// Out of the player's sight every step is cheap, so without the effort limit a search
+        /// for a cover in another room spreads over most of the level before the cost limit
+        /// stops it. A cover that cannot be costed within the limit counts as far, and whether
+        /// it can be reached at all is read from the grid's connected areas.
+        /// </remarks>
         bool TryPathCost(Vector2Int goal, out float cost)
         {
+            using ProfilerMarker.AutoScope timed = PathCostMarker.Auto();
             cost = 0f;
             if (!TryWalkable(_ctx.Cell, out Vector2Int start))
                 return false;
-            PathResult result = _pathfinder.FindPath(start, goal, _tactical);
-            if (!result.Found)
-                return false;
-            for (int i = 1; i < result.Cells.Count; i++)
-                cost += _tactical.StepCost(result.Cells[i - 1], result.Cells[i]);
-            return true;
+
+            cost = _costSearch.Compute(start, goal, _tactical, MaxPathCost, CostSearchCells);
+            if (!float.IsPositiveInfinity(cost))
+                return true;
+
+            cost = MaxPathCost;
+            return _regions.Connected(start, goal);
         }
 
         void ReleaseCover()
@@ -596,6 +641,7 @@ namespace ToyFactory.AI.Agents.Guard
         /// </summary>
         bool TryFindRetreatCell(out Vector2Int retreatCell)
         {
+            using ProfilerMarker.AutoScope timed = RetreatMarker.Auto();
             _retreatOptions.Clear();
             Vector2Int playerCell = Player.Cell;
             for (int dy = -RetreatSearchRadius; dy <= RetreatSearchRadius; dy += RetreatSearchStep)
@@ -644,6 +690,7 @@ namespace ToyFactory.AI.Agents.Guard
         /// <summary>Plans an A* route to <paramref name="goal"/> under <paramref name="cost"/> and outputs it.</summary>
         bool MoveTo(Vector2Int goal, ICostModel cost)
         {
+            using ProfilerMarker.AutoScope timed = MoveToMarker.Auto();
             _routeGoal = goal;
             _routeCost = cost;
             if (!TryWalkable(_ctx.Cell, out Vector2Int start) || !TryWalkable(goal, out Vector2Int end))
