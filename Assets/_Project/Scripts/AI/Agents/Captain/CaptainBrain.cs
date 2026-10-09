@@ -92,6 +92,7 @@ namespace ToyFactory.AI.Agents.Captain
         // Distances, metres.
         public const float ArrivalRadius = 0.6f;
         public const float AmbushLeaveDistance = 1.5f;   // pushed this far off its cell, it re-plans
+        public const float ConvergeArrivedDistance = 3f; // closing in: within this, the stand-off (2 m) holds it, not a jam
         public const float ObserveDistance = 8f;         // keeps at least this far while unsure
         public const float RetreatStep = 4f;
         public const float GoalReachedRadius = 1f;       // the player is at g*
@@ -465,7 +466,9 @@ namespace ToyFactory.AI.Agents.Captain
         }
 
         // Line of sight on the grid, stopping short of the target so a player standing in a
-        // wall's clearance band is not hidden by it (see TrackerBrain.GridSight).
+        // wall's clearance band is not hidden by it (see TrackerBrain.GridSight). Walls and
+        // closed doors block it; props and boxes do not: at 3.25 m the Captain sees over a
+        // console, a switch cage or a crate, which the grid marks as blocked only for walking.
         bool GridSight(Vector3 from, Vector3 to)
         {
             Vector3 delta = to - from;
@@ -474,7 +477,7 @@ namespace ToyFactory.AI.Agents.Captain
             if (distance <= SightEndInset)
                 return true;
             Vector3 end = from + delta * ((distance - SightEndInset) / distance);
-            return GridLineCheck.IsWalkable(_grid, from, end);
+            return GridLineCheck.IsSightClear(_grid, from, end);
         }
 
         // ---- Prediction and intercept (2 Hz) -------------------------------------------
