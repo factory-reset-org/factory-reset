@@ -89,12 +89,22 @@ namespace ToyFactory.AI.Agents.Captain
                 b._planInvalid = false;
                 b._targetCell = b._plan.Cell;
                 b._targetGoalId = b._planGoalId;
+                b.ResetProgress();
                 b.MoveTo(b._targetCell);
             }
 
             public override void Tick(CaptainBrain b)
             {
                 b._outSpeed = InterceptSpeed;
+
+                // Getting no closer (a prop in the way, a jam of bodies): give the cell up,
+                // keep away from it for a while and plan again.
+                if (b.NoProgressTowards(b._grid.CellToWorld(b._targetCell)))
+                {
+                    b.Avoid(b._targetCell);
+                    b._planInvalid = true;
+                    return;
+                }
                 if (!b._decidedThisTick)
                     return;
 
@@ -107,6 +117,12 @@ namespace ToyFactory.AI.Agents.Captain
                 {
                     // The player moved on: the earliest cell that still beats them has changed.
                     b._targetCell = b._plan.Cell;
+                    b.MoveTo(b._targetCell);
+                }
+                else if (b._routeCells == null && !b.ArrivedAt(b._targetCell))
+                {
+                    // No route yet (a door was still shut when it last asked): ask again now,
+                    // rather than only when the target changes.
                     b.MoveTo(b._targetCell);
                 }
             }
@@ -194,6 +210,7 @@ namespace ToyFactory.AI.Agents.Captain
                 b._pursueOver = false;
                 _enteredAt = b.Now;
                 _arrived = false;
+                b.ResetProgress();
                 if (!b.MoveTo(b.ClampedCell(b._lastContactPosition)))
                     b._pursueOver = true;   // no route there: give up and predict again
             }
@@ -201,7 +218,8 @@ namespace ToyFactory.AI.Agents.Captain
             public override void Tick(CaptainBrain b)
             {
                 b._outSpeed = InterceptSpeed;
-                if (b.Now - _enteredAt >= PursueTimeout)
+                if (b.Now - _enteredAt >= PursueTimeout ||
+                    (!_arrived && b.NoProgressTowards(b._grid.CellToWorld(b._routeGoal))))
                 {
                     b._pursueOver = true;
                     return;
@@ -220,6 +238,46 @@ namespace ToyFactory.AI.Agents.Captain
                 b._outLook = b._lastContactPosition + b._lastContactHeading * 3f;
                 if (b.Now - _arrivedAt >= LookAroundTime)
                     b._pursueOver = true;
+            }
+        }
+
+        /// <summary>
+        /// The player is busy at a goal they reached (a task, the console hold) and nothing
+        /// else is predicted: closes in on them at intercept speed until they are in view,
+        /// instead of watching from a distance while they finish. Getting stuck on the way
+        /// gives up for a while (back to predicting).
+        /// </summary>
+        sealed class ConvergeState : CaptainState
+        {
+            public ConvergeState() : base("Converge") { }
+
+            public override void Enter(CaptainBrain b)
+            {
+                base.Enter(b);
+                b.ResetProgress();
+                b._convergeCell = b.Player.Cell;
+                b.MoveTo(b._convergeCell);
+            }
+
+            public override void Tick(CaptainBrain b)
+            {
+                b._outSpeed = InterceptSpeed;
+                if (!b.PlayerAvailable())
+                    return;
+                b._outLook = b.Player.Position;
+
+                if (b.NoProgressTowards(b.Player.Position))
+                {
+                    b._convergeBlockedUntil = b.Now + AvoidSeconds;
+                    b.StopMoving();
+                    return;
+                }
+                // Follow the player if they shuffle along the goal, at the decision rate.
+                if (b._decidedThisTick && (b.Player.Cell != b._convergeCell || b._routeCells == null))
+                {
+                    b._convergeCell = b.Player.Cell;
+                    b.MoveTo(b._convergeCell);
+                }
             }
         }
 

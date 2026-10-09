@@ -43,6 +43,20 @@ namespace ToyFactory.AI.Agents.Captain
         public const float SharedGoalGap = 0.1f;         // top two goals this close: plan for both
         public const float DefaultPlayerSprint = 7f;     // if the player reports no sprint speed
 
+        // Commitment (hysteresis, like the fight's): a confidence or a goal hovering at the edge
+        // must not flip the Captain between intercepting and watching every 0.5 s. It commits
+        // at 0.5 but keeps a plan it is already following down to 0.4, and it only switches to
+        // another goal once that goal leads the committed one by 0.15.
+        public const float KeepConfidence = 0.4f;
+        public const float GoalSwitchMargin = 0.15f;
+
+        // Progress: heading for a target but not moving 0.25 m in 2 s (pinned on a prop, a jam
+        // of bodies, no route) gives the target up; its cell and neighbours are not chosen
+        // again for 10 s.
+        public const float StuckTime = 2f;
+        public const float ProgressStep = 0.25f;
+        public const float AvoidSeconds = 10f;
+
         // Vision: a fight starts when the player is in view within 10 m.
         public const float EngageRange = 10f;
         public const float VisionHalfAngle = 70f;
@@ -95,7 +109,23 @@ namespace ToyFactory.AI.Agents.Captain
         readonly IState<CaptainBrain> _pursue;
         readonly IState<CaptainBrain> _reassess;
         readonly IState<CaptainBrain> _stunned;
+        readonly IState<CaptainBrain> _converge;
         readonly List<string> _labels = new List<string>();
+
+        // Cells the Captain could not reach (see StuckTime), and until when they are avoided.
+        readonly Dictionary<Vector2Int, float> _avoidUntil = new Dictionary<Vector2Int, float>();
+        readonly Predicate<Vector2Int> _isAvoided;
+
+        // Progress towards the current target, for the stuck check.
+        bool _progressTracking;
+        Vector3 _progressTarget;
+        Vector3 _progressPoint;
+        float _progressAt;
+
+        // Converge: the player's cell it last routed to, and until when it is not tried again
+        // after getting stuck on the way.
+        Vector2Int _convergeCell;
+        float _convergeBlockedUntil = float.NegativeInfinity;
 
         // This tick's input.
         AgentContext _ctx;
@@ -160,6 +190,8 @@ namespace ToyFactory.AI.Agents.Captain
             _pursue = new PursueState();
             _reassess = new ReassessState();
             _stunned = new StunnedState();
+            _converge = new ConvergeState();
+            _isAvoided = IsAvoided;
 
             var rules = new List<Transition<CaptainBrain>>();
             Rule(rules, _dormant, _observe, 110, "wake signal (or Chapter 3 started, or spawned awake)", b => b.IsAwake);
@@ -169,6 +201,7 @@ namespace ToyFactory.AI.Agents.Captain
             Rule(rules, _observe, _engage, 80, "player visible within 10 m", b => b._seesPlayer);
             Rule(rules, _intercept, _engage, 80, "player visible within 10 m", b => b._seesPlayer);
             Rule(rules, _ambush, _engage, 80, "player visible within 10 m", b => b._seesPlayer);
+            Rule(rules, _converge, _engage, 80, "player visible within 10 m", b => b._seesPlayer);
             Rule(rules, _pursue, _engage, 80, "contact again (line of sight within 14 m)", b => b._inContact);
             Rule(rules, _engage, _reassess, 75, "the player is gone (dead or missing)", b => !b.PlayerAvailable());
             Rule(rules, _engage, _pursue, 70, "no contact for 0.7 s, after at least 2 s engaged",
@@ -177,11 +210,15 @@ namespace ToyFactory.AI.Agents.Captain
                 b => b._pursueOver || !b.PlayerAvailable());
             Rule(rules, _intercept, _reassess, 60, "plan invalid: g* changed, confidence < 0.5, player at g*, cell blocked",
                 b => b._planInvalid);
-            Rule(rules, _ambush, _reassess, 60, "plan invalid: g* changed, confidence < 0.5, player at g* or past the cell",
+            Rule(rules, _ambush, _reassess, 60, "plan invalid: g* changed, confidence < 0.4, player at g* or past the cell",
                 b => b._planInvalid);
+            Rule(rules, _converge, _reassess, 60, "the player left the goal, or the way to them is blocked",
+                b => !b.PlayerBusyAtGoal);
             Rule(rules, _intercept, _ambush, 50, "reached the intercept cell", b => b.ArrivedAt(b._targetCell));
+            Rule(rules, _reassess, _converge, 45, "the player is busy at a goal: close in", b => b.PlayerBusyAtGoal);
             Rule(rules, _reassess, _intercept, 40, "a plan exists (confidence >= 0.5)", b => b._plan.HasPlan);
             Rule(rules, _reassess, _observe, 30, "no plan (confidence < 0.5, or no shared chokepoint)", b => !b._plan.HasPlan);
+            Rule(rules, _observe, _converge, 25, "the player is busy at a goal: close in", b => b.PlayerBusyAtGoal);
             Rule(rules, _observe, _intercept, 20, "a plan exists (confidence >= 0.5)", b => b._plan.HasPlan);
 
             _machine = new StateMachine<CaptainBrain>(startAwake ? _observe : _dormant, rules);
@@ -235,7 +272,7 @@ namespace ToyFactory.AI.Agents.Captain
         AlertLevel CurrentAlert()
         {
             IState<CaptainBrain> state = _machine.Current;
-            if (state == _engage || state == _pursue || state == _intercept || state == _ambush)
+            if (state == _engage || state == _pursue || state == _intercept || state == _ambush || state == _converge)
                 return AlertLevel.Alert;
             if ((state == _observe || state == _reassess) && PlayerAvailable())
                 return AlertLevel.Suspicious;
@@ -450,22 +487,37 @@ namespace ToyFactory.AI.Agents.Captain
                 return;
             }
 
-            if (_inference.Confidence < ConfidenceThreshold ||
-                !_inference.TryGetGoalField(goal.Id, out DijkstraField field))
+            // Hysteresis: while committed to a goal, keep planning for it unless another goal
+            // clearly leads, and keep the plan down to the lower confidence. The prediction
+            // above stays the true most likely goal, for the Saboteurs.
+            int planIndex = best;
+            float threshold = ConfidenceThreshold;
+            int committed = IsCommitted ? IndexOfGoal(_targetGoalId) : -1;
+            if (committed >= 0)
+            {
+                threshold = KeepConfidence;
+                if (_inference.Posterior(committed) >= _inference.Confidence - GoalSwitchMargin)
+                    planIndex = committed;
+            }
+            CandidateGoal planGoal = _goals[planIndex];
+            float planConfidence = _inference.Posterior(planIndex);
+
+            if (planConfidence < threshold ||
+                !_inference.TryGetGoalField(planGoal.Id, out DijkstraField field))
             {
                 _plan = InterceptPlan.None;
                 return;
             }
 
             float playerSpeed = player.SprintSpeed > 0f ? player.SprintSpeed : DefaultPlayerSprint;
-            int second = SecondMostLikelyIndex(best);
-            if (second >= 0 && _inference.Confidence - _inference.Posterior(second) <= SharedGoalGap &&
+            int second = SecondMostLikelyIndex(planIndex);
+            if (second >= 0 && planConfidence - _inference.Posterior(second) <= SharedGoalGap &&
                 _inference.TryGetGoalField(_goals[second].Id, out DijkstraField otherField))
-                _plan = _planner.PlanShared(field, otherField, player.Cell, _ctx.Cell, playerSpeed, InterceptSpeed);
+                _plan = _planner.PlanShared(field, otherField, player.Cell, _ctx.Cell, playerSpeed, InterceptSpeed, _isAvoided);
             else
-                _plan = _planner.Plan(field, player.Cell, _ctx.Cell, playerSpeed, InterceptSpeed);
+                _plan = _planner.Plan(field, player.Cell, _ctx.Cell, playerSpeed, InterceptSpeed, _isAvoided);
 
-            _planGoalId = goal.Id;
+            _planGoalId = planGoal.Id;
             if (_plan.HasPlan)
             {
                 // Face the cell the player will come from.
@@ -513,6 +565,65 @@ namespace ToyFactory.AI.Agents.Captain
                 default: return GoalCategory.Task;
             }
         }
+
+        // Following a plan to a goal: in Intercept or Ambush with a committed goal.
+        bool IsCommitted =>
+            _targetGoalId != NoGoal && (_machine.Current == _intercept || _machine.Current == _ambush);
+
+        int IndexOfGoal(int id)
+        {
+            for (int i = 0; i < _goals.Count && i < _inference.GoalCount; i++)
+                if (_goals[i].Id == id)
+                    return i;
+            return -1;
+        }
+
+        /// <summary>
+        /// True while the player stands at a goal they reached (doing a task, holding the
+        /// console) and the way to them is not known to be blocked: the Captain closes in.
+        /// </summary>
+        bool PlayerBusyAtGoal => _ignoredGoalId != NoGoal && PlayerAvailable() && Now >= _convergeBlockedUntil;
+
+        // ---- Progress and avoided cells -------------------------------------------------
+
+        /// <summary>
+        /// True once the Captain, heading for <paramref name="target"/>, has not moved
+        /// <see cref="ProgressStep"/> for <see cref="StuckTime"/>: pinned on a prop, in a jam,
+        /// or with no route. Movement, not distance to the target, is what counts, because a
+        /// route round a shelf row can lead away from the target for a while. A new target
+        /// starts the clock again.
+        /// </summary>
+        bool NoProgressTowards(Vector3 target)
+        {
+            if (!_progressTracking || FlatDistance(_progressTarget, target) > 0.3f ||
+                FlatDistance(_ctx.Position, _progressPoint) >= ProgressStep)
+            {
+                _progressTracking = true;
+                _progressTarget = target;
+                _progressPoint = _ctx.Position;
+                _progressAt = Now;
+                return false;
+            }
+            return Now - _progressAt >= StuckTime;
+        }
+
+        void ResetProgress() => _progressTracking = false;
+
+        // The cell and its eight neighbours: a prop in the way usually covers more than one cell.
+        void Avoid(Vector2Int cell)
+        {
+            if (_avoidUntil.Count > 64)
+                _avoidUntil.Clear();   // all long expired in practice; keeps the table small
+            float until = Now + AvoidSeconds;
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dy = -1; dy <= 1; dy++)
+                    _avoidUntil[new Vector2Int(cell.x + dx, cell.y + dy)] = until;
+        }
+
+        bool IsAvoided(Vector2Int cell) => _avoidUntil.TryGetValue(cell, out float until) && until > Now;
+
+        /// <summary>True if the planner will not choose <paramref name="cell"/> right now (the Captain got stuck going there).</summary>
+        public bool IsCellAvoided(Vector2Int cell) => IsAvoided(cell);
 
         int SecondMostLikelyIndex(int best)
         {

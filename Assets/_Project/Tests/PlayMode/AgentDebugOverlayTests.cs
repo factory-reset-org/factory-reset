@@ -167,8 +167,9 @@ namespace ToyFactory.Tests
                 new ObjectiveTarget(2, new Vector2Int(2, 3), ObjectiveTargetKind.Task),
             });
             var brain = new CaptainBrain(grid, new AStarSearch(grid), world, startAwake: true);
-            AgentController captain = Agent(AgentType.Captain, brain, grid.CellToWorld(new Vector2Int(22, 3)), grid, world);
-            captain.transform.rotation = Quaternion.LookRotation(Vector3.right);   // facing away: no Engage
+            // More than 10 m from the player: it watches them (it turns to its look target)
+            // but does not start a fight, so the overlay still shows the intercept.
+            AgentController captain = Agent(AgentType.Captain, brain, grid.CellToWorld(new Vector2Int(28, 3)), grid, world);
             AgentDebugOverlay overlay = Overlay();
 
             // The player walks east towards goal 1, one decision apart.
