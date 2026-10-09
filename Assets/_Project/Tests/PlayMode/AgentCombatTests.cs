@@ -8,6 +8,8 @@ using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
 using ToyFactory.Interfaces;
 using ToyFactory.Runtime.Agents;
+using ToyFactory.Runtime.Animation;
+using ToyFactory.Runtime.Movement;
 
 namespace ToyFactory.Tests
 {
@@ -176,6 +178,101 @@ namespace ToyFactory.Tests
             Assert.AreEqual(1, player.Damage.Count);
             Assert.AreEqual(10f, player.Damage[0].amount);
             Assert.AreEqual(4, player.Damage[0].source, "The damage names the agent that fired.");
+        }
+
+        [UnityTest]
+        public IEnumerator AShotWaitsForTheBodyToTurnToTheTargetSoItNeverLeavesSideways()
+        {
+            AgentController agent = Agent(armed: true);   // facing +Z
+            AgentWeapon weapon = agent.GetComponent<AgentWeapon>();
+            FakeShotPlayer player = Player(new Vector3(0f, 0f, -5f));   // behind it
+
+            weapon.RequestShot();
+            yield return Seconds(0.35f);
+            Assert.AreEqual(0, weapon.ShotsFired, "The telegraph is over, but it is still turning round (360 degrees a second).");
+
+            yield return Seconds(0.4f);
+            Assert.AreEqual(1, weapon.ShotsFired, "Fired once it faced the player.");
+            Assert.IsTrue(weapon.LastShotHit);
+            Assert.Less(Vector3.Angle(agent.transform.forward, Vector3.back), 26f, "Facing the player when it fired.");
+        }
+
+        [UnityTest]
+        public IEnumerator AShotTheBodyCannotTurnForIsDroppedNotFiredSideways()
+        {
+            AgentController agent = Agent(armed: true);
+            SetField(agent.GetComponent<AgentPathFollower>(), "turnSpeed", 1f);
+            AgentWeapon weapon = agent.GetComponent<AgentWeapon>();
+            Player(new Vector3(5f, 0f, 0f));   // 90 degrees to its side
+
+            weapon.RequestShot();
+            yield return Seconds(1f);
+            Assert.AreEqual(0, weapon.ShotsFired);
+            Assert.AreEqual(1, weapon.ShotsDropped);
+            Assert.IsFalse(agent.IsAttacking, "The aim is over.");
+        }
+
+        [UnityTest]
+        public IEnumerator EachShotKicksTheArmOfTheCannonThatFired()
+        {
+            var go = new GameObject("Captain");
+            _created.Add(go);
+            go.SetActive(false);
+            go.layer = LayerMask.NameToLayer("Agents");
+            go.AddComponent<CharacterController>().center = new Vector3(0f, 1f, 0f);
+            AgentController agent = go.AddComponent<AgentController>();
+            var arms = new Transform[2];
+            var barrels = new Renderer[2];
+            for (int i = 0; i < 2; i++)
+            {
+                arms[i] = new GameObject("Arm " + i).transform;
+                arms[i].SetParent(go.transform, false);
+                var cannon = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                Object.DestroyImmediate(cannon.GetComponent<Collider>());
+                cannon.transform.SetParent(arms[i], false);
+                cannon.transform.localPosition = new Vector3(i == 0 ? -0.7f : 0.7f, 1.2f, 0.4f);
+                cannon.transform.localScale = Vector3.one * 0.2f;
+                barrels[i] = cannon.GetComponent<Renderer>();
+            }
+            AgentWeapon weapon = go.AddComponent<AgentWeapon>();
+            SetField(weapon, "barrels", barrels);
+            AgentShotRecoil recoil = go.AddComponent<AgentShotRecoil>();
+            SetField(recoil, "arms", arms);
+            go.SetActive(true);
+            agent.Initialise(new AgentIdentity(AgentType.Captain, 6), new IdleBrain(), new WorldBlackboard());
+            Player(new Vector3(0f, 0f, 6f));
+
+            weapon.RequestShot();
+            yield return Seconds(0.35f);
+            Assert.AreEqual(1, weapon.ShotsFired);
+            Assert.IsTrue(recoil.IsKicking, "The shot kicks.");
+            Assert.AreEqual(0, recoil.LastBarrel);
+
+            yield return Seconds(0.4f);
+            Assert.IsFalse(recoil.IsKicking, "Settled after the kick.");
+            weapon.RequestShot();
+            yield return Seconds(0.35f);
+            Assert.AreEqual(2, weapon.ShotsFired);
+            Assert.AreEqual(1, recoil.LastBarrel, "The second shot comes from, and kicks, the other cannon.");
+        }
+
+        [UnityTest]
+        public IEnumerator TheTracerDoesNotStayOnScreenWhileTheGameIsFrozen()
+        {
+            AgentController agent = Agent(armed: true);
+            AgentWeapon weapon = agent.GetComponent<AgentWeapon>();
+            Player(new Vector3(0f, 0f, 5f));
+            LineRenderer line = agent.transform.Find("ShotLine").GetComponent<LineRenderer>();
+
+            weapon.RequestShot();
+            while (weapon.ShotsFired == 0)
+                yield return null;
+            Assert.IsTrue(line.enabled, "The tracer shows after the shot.");
+
+            // The player died on that shot: the game goes to Results and every body freezes.
+            agent.OnGameStateChanged(GameState.Playing, GameState.Results);
+            yield return null;
+            Assert.IsFalse(line.enabled, "No tracer left hanging over the frozen game.");
         }
 
         [UnityTest]

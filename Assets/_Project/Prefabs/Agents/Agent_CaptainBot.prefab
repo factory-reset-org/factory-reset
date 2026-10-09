@@ -17,6 +17,7 @@ GameObject:
   - component: {fileID: 226665710546748617}
   - component: {fileID: 5280218360834695168}
   - component: {fileID: 5345454812785796067}
+  - component: {fileID: 8644364866380868665}
   m_Layer: 11
   m_Name: Agent_CaptainBot
   m_TagString: Untagged
@@ -127,6 +128,8 @@ MonoBehaviour:
   - {fileID: 7119253584049345050}
   - {fileID: 2160097108017567228}
   aimSeconds: 0.3
+  maxFireAngle: 25
+  maxTurnWait: 0.5
   damage: 15
   range: 20
   chestHeight: 1.2
@@ -183,6 +186,60 @@ MonoBehaviour:
   standOff: 2
   release: 2.3
   maxHeightDifference: 1.5
+--- !u!114 &8644364866380868665
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2423681692945176304}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 46f67adb7f0d7804889b6e21963d4862, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentShotRecoil
+  arms:
+  - {fileID: 2373857575970691528}
+  - {fileID: 5360294489629131018}
+  torso: {fileID: 557454021947322219}
+  head: {fileID: 8566529918625814095}
+  duration: 0.28
+  armKick: 28
+  torsoKick: 6
+  headKick: 8
+  shape:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 12
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.15
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
 --- !u!1001 &6301709427974699168
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -243,14 +300,29 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 8039331634596765918}
   m_SourcePrefab: {fileID: 100100000, guid: 12f22ae6271c497419128b0180334639, type: 3}
+--- !u!4 &557454021947322219 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 5820992869470640075, guid: 12f22ae6271c497419128b0180334639, type: 3}
+  m_PrefabInstance: {fileID: 6301709427974699168}
+  m_PrefabAsset: {fileID: 0}
 --- !u!23 &2160097108017567228 stripped
 MeshRenderer:
   m_CorrespondingSourceObject: {fileID: 5372266273110830428, guid: 12f22ae6271c497419128b0180334639, type: 3}
   m_PrefabInstance: {fileID: 6301709427974699168}
   m_PrefabAsset: {fileID: 0}
+--- !u!4 &2373857575970691528 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 8612441274629431656, guid: 12f22ae6271c497419128b0180334639, type: 3}
+  m_PrefabInstance: {fileID: 6301709427974699168}
+  m_PrefabAsset: {fileID: 0}
 --- !u!4 &4680304842691956594 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1695573525149562834, guid: 12f22ae6271c497419128b0180334639, type: 3}
+  m_PrefabInstance: {fileID: 6301709427974699168}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &5360294489629131018 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 2096351023193749930, guid: 12f22ae6271c497419128b0180334639, type: 3}
   m_PrefabInstance: {fileID: 6301709427974699168}
   m_PrefabAsset: {fileID: 0}
 --- !u!1 &5456138271522395592 stripped
@@ -283,5 +355,10 @@ Animator:
 --- !u!23 &7119253584049345050 stripped
 MeshRenderer:
   m_CorrespondingSourceObject: {fileID: 3870984876842379962, guid: 12f22ae6271c497419128b0180334639, type: 3}
+  m_PrefabInstance: {fileID: 6301709427974699168}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &8566529918625814095 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 2420199661300870895, guid: 12f22ae6271c497419128b0180334639, type: 3}
   m_PrefabInstance: {fileID: 6301709427974699168}
   m_PrefabAsset: {fileID: 0}
