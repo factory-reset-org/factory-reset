@@ -189,5 +189,30 @@ namespace ToyFactory.Tests.EditMode
 
             Assert.AreEqual(0, allocated);
         }
+
+        [Test]
+        public void SightPassesOverPropsButNotWallsOrClosedDoors()
+        {
+            var grid = new GridGraph(20, 20, Vector3.zero);
+            Vector3 Row(int x, int y) => grid.CellToWorld(new Vector2Int(x, y));
+
+            // A prop (a grid blocker) on row 5: walking must go round it, a tall agent sees over it.
+            grid.AddBlocker(new Vector2Int(10, 5));
+            Assert.IsFalse(GridLineCheck.IsWalkable(grid, Row(5, 5), Row(15, 5)));
+            Assert.IsTrue(GridLineCheck.IsSightClear(grid, Row(5, 5), Row(15, 5)));
+
+            // A wall on row 9 blocks both.
+            grid.SetWalkable(new Vector2Int(10, 9), false);
+            Assert.IsFalse(GridLineCheck.IsWalkable(grid, Row(5, 9), Row(15, 9)));
+            Assert.IsFalse(GridLineCheck.IsSightClear(grid, Row(5, 9), Row(15, 9)));
+
+            // A closed door on row 13 blocks both; open, neither.
+            grid.SetDoorway(new Vector2Int(10, 13), true);
+            grid.SetDoor(new Vector2Int(10, 13), 4, true);
+            Assert.IsFalse(GridLineCheck.IsSightClear(grid, Row(5, 13), Row(15, 13)));
+            grid.SetDoor(new Vector2Int(10, 13), 4, false);
+            Assert.IsTrue(GridLineCheck.IsSightClear(grid, Row(5, 13), Row(15, 13)));
+            Assert.IsTrue(GridLineCheck.IsWalkable(grid, Row(5, 13), Row(15, 13)));
+        }
     }
 }
