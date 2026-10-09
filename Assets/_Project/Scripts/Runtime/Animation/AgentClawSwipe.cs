@@ -29,6 +29,9 @@ namespace ToyFactory.Runtime.Animation
         [SerializeField] Transform clawRightTop;
         [SerializeField] Transform clawRightBottom;
 
+        [Tooltip("Damage one swipe deals to the player.")]
+        [SerializeField, Min(0f)] float damage = 10f;
+
         [Header("Curves over normalised time")]
         [Tooltip("Root forward offset (m): rolls in for the strike, back after.")]
         [SerializeField] AnimationCurve roll = Keys((0f, 0f), (0.3f, -0.08f), (0.5f, 0.3f), (0.65f, 0.3f), (1f, 0f));
@@ -49,6 +52,9 @@ namespace ToyFactory.Runtime.Animation
 
         /// <summary>True when the swipe in progress uses the right arm.</summary>
         public bool RightArm => _rightArm;
+
+        /// <inheritdoc/>
+        public override float Damage => damage;
 
         /// <inheritdoc/>
         protected override void OnStrikeStarted(int count) => _rightArm = count % 2 == 1;
