@@ -322,15 +322,15 @@ The noise sources are `ScriptedNoiseSource` and the door is `DebugDoorToggle` (`
 
 ### GBFS vs A* on the level grid
 
-Same 20 start/goal pairs on the greybox level grid (83 x 83 cells, 5,318 walkable), `BaseCostModel`, editor timing. Full per-pair table in [AIPerformanceLog.md](../AIPerformanceLog.md).
+20 start/goal pairs on the level grid with the prototype rooms (83 x 83 cells, 4,963 walkable), `BaseCostModel`, editor timing, 2026-10-09. Full per-pair table in [AIPerformanceLog.md](../AIPerformanceLog.md).
 
 | Total over 20 pairs | A* | GBFS | Difference |
 | --- | --- | --- | --- |
-| Nodes expanded | 5,426 | 1,270 | 77% fewer |
-| Search time | 12.27 ms | 2.62 ms | 4.7x faster |
-| Path length | 412.2 m | 468.2 m | 13.6% longer |
+| Nodes expanded | 7,080 | 1,659 | 77% fewer |
+| Search time | 17.98 ms | 4.10 ms | 4.4x faster |
+| Path length | 439.8 m | 511.6 m | 16.3% longer |
 
-GBFS matched A*'s path length on 10 pairs and was longer on 10. The longest detours are routes that must pass round a central wall: greedy heads straight for the goal, meets the wall and follows it to a doorway. That is the trade the design accepts: a chaser that replans every 0.5 s needs cheap searches more than shortest routes, and the slight detours read as sniffing.
+GBFS matched A*'s path length on 12 pairs and was longer on 8 (on the earlier greybox layout: 77% fewer nodes, 4.7x faster, 13.6% longer). The longest detours are routes that must pass round a central wall or through the shelf maze: greedy heads straight for the goal, meets the wall and follows it to a doorway. That is the trade the design accepts: a chaser that replans every 0.5 s needs cheap searches more than shortest routes, and the slight detours read as sniffing.
 
 | Evidence | Status |
 | --- | --- |
