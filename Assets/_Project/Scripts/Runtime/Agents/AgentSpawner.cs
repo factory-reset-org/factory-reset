@@ -201,12 +201,14 @@ namespace ToyFactory.Runtime.Agents
                     return new MockPathProvider(setup.PatrolPoints);
                 case AgentType.Saboteur:
                     // The four Saboteurs share one squad through the blackboard's claims; the
-                    // squad slot is the letter. Without a grid, or a spawn point with no squad
-                    // slot (A-D), it falls back to the mock.
+                    // squad slot is the letter. They attack a player in sight within 8 m, using
+                    // the same physics sight check as the Guard. Without a grid, or a spawn point
+                    // with no squad slot (A-D), it falls back to the mock.
                     if (setup.HasGrid && setup.Identity.IsInSquad && setup.Identity.SquadIndex <= (int)SaboteurLetter.D)
                         return new SaboteurBrain(
                             new SaboteurIdentity(setup.Identity.Id, (SaboteurLetter)setup.Identity.SquadIndex),
-                            setup.Grid, setup.Pathfinder, setup.Blackboard.Claims, setup.PatrolPoints);
+                            setup.Grid, setup.Pathfinder, setup.Blackboard.Claims, setup.PatrolPoints, null, 0,
+                            new AttackPlayerSource(new CoverVisibilitySight(new PhysicsCoverVisibility(setup.Grid))));
                     return new MockPathProvider(setup.PatrolPoints);
                 default:
                     return new MockPathProvider(setup.PatrolPoints);
