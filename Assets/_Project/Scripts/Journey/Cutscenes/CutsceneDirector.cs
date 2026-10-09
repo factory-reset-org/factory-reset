@@ -85,6 +85,13 @@ namespace ToyFactory.Journey.Cutscenes
         /// <summary>The cutscene dialogue, for tests and the debug overlay.</summary>
         public DialogueRunner Dialogue => _dialogue;
 
+        /// <summary>
+        /// Raised once per shot as its dialogue marker is reached, with the cutscene id and the
+        /// shot index (0 = the first). Cutscene-only actors use it to time their beats, such as
+        /// Unit 047's eyes switching on. Not raised for shots cut by a skip.
+        /// </summary>
+        public event System.Action<string, int> ShotStarted;
+
         /// <summary>The gameplay camera hand-over, for tests.</summary>
         public CutsceneCameraRig CameraRig => _camera;
 
@@ -320,6 +327,7 @@ namespace ToyFactory.Journey.Cutscenes
             if (notification is DialogueMarker line && _playing?.Dialogue != null && line.Shot < _playing.Dialogue.ShotCount
                 && _shotsStarted.Add(line.Shot))
             {
+                ShotStarted?.Invoke(_playing.Id, line.Shot);
                 _dialogue.Enqueue(_playing.Dialogue.LinesOf(line.Shot));
                 if (line.WaitForLines && _dialogue.IsBusy)
                 {
