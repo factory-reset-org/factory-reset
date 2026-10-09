@@ -97,5 +97,31 @@ Level grid with the prototype rooms (`Env.unity`, 83 x 83 cells of 0.5 m, 4,963 
 
 ## Stress test (`Test_FourAgentsStress`)
 
-| Date | Build | Avg FPS | Worst frame (ms) | AI ms / frame | GC Alloc in searches |
+`Tests/PlayMode/FourAgentsStressTests` (category Evidence, explicit: run it on its own). It loads `Bootstrap`, jumps to Chapter 4 with the debug chapter jump (the Captain awake, every door open), then walks the player round a loop through the Control Room and the Storage doorway at 4 m/s for 30 s after a 3 s warm-up, so all seven agents (1 Tracker, 1 Guard, 4 Saboteurs, the Captain) keep seeing, hearing and chasing. The player's health is refilled every frame so the run is not cut short. AI time is the sum of the `AI.Brain.Tick.<type>` markers (around each brain's `Tick` in `AgentController`, so searches are inside them). Allocation is Unity's "GC Allocated In Frame", which counts everything in the frame, the test's own per-frame work included, not only the AI.
+
+| Date | Build | Avg FPS | Frame ms (avg / p99 / worst) | AI ms / frame (avg / p99 / worst) | GC allocated in frame, everything (avg / p99) |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-09 | Editor (Mono), 30 s, 5,887 frames | 196.2 | 5.10 / 13.55 / 44.58 | 0.179 / **5.191** / 14.04 | 10.3 KB / 12.7 KB |
+
+**By brain** (same run):
+
+| Brain | Avg ms / frame | p99 | Worst | Frames over 1 ms |
+| --- | --- | --- | --- | --- |
+| Tracker (S1) | 0.011 | 0.020 | 0.082 | 0 |
+| Guard (S2) | 0.071 | 3.052 | 11.790 | 83 |
+| Saboteur x4 (S3, placeholder brain) | 0.002 | 0.004 | 0.047 | 0 |
+| Captain (S4) | 0.095 | 4.967 | 14.007 | 67 |
+
+| Search marker | Avg ms / frame | Worst | Frames over 1 ms |
+| --- | --- | --- | --- |
+| `AI.Tracker.GBFS` | 0.000 | 0.062 | 0 |
+| `AI.AStarSearch.FindPath` | 0.012 | 5.791 | 19 |
+| `AI.DijkstraField.Compute` | 0.089 | 13.911 | 67 |
+| `AI.NoisePropagation.Propagate` | 0.000 | 0.000 | 0 |
+
+**What it shows:**
+- **On average the AI is cheap:** 0.18 ms a frame for all seven agents, about 1% of a 16.7 ms frame.
+- **But it spikes past the 2 ms budget on about 1% of frames** (p99 5.2 ms). The test logs a warning for this rather than failing, until the fix lands; the hard check comes back with it. Two brains cause it:
+  - **Captain:** 67 frames over 1 ms in 30 s, about two a second, which is its 2 Hz decision. Every spike is `DijkstraField.Compute`. With the player still, the cached goal fields are never rebuilt (5 computations, then none); the spikes come from the two fields each decision rebuilds while the player moves, the player's field (goal inference) and the Captain's own (intercept). One full-level field costs 4.33 ms median (6.95 ms worst, 4,878 cells expanded) in the editor; a bounded one 2.0 ms. Two in one decision exceed the budget. This is fixed and re-measured in `OptimisationLog.md`.
+  - **Guard:** 83 frames over 1 ms. A* accounts for 19 of them (worst 5.8 ms); the rest is other work in the Guard's tick, probably cover scoring. Reported to S2.
+- **Limits:** editor timings with Mono; a player build is faster. The worst frame (44.6 ms) includes editor work outside the AI.
