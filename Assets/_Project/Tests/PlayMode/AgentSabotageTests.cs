@@ -51,6 +51,16 @@ namespace ToyFactory.Tests
             public void Execute() => Executed++;
         }
 
+        // A registered door, as S2's Door is: closed by Execute, opened through IDoor.
+        sealed class CountingDoor : ISabotageable, IDoor
+        {
+            public int Closed, Opened;
+            public bool IsOpen => Opened > Closed;
+            public void Execute() => Closed++;
+            public void Open() => Opened++;
+            public void Close() => Closed++;
+        }
+
         [TearDown]
         public void TearDown()
         {
@@ -205,6 +215,30 @@ namespace ToyFactory.Tests
             yield return Seconds(0.5f);
             CollectionAssert.AreEqual(new[] { (2, 2), (1, 2), (0, 2), (2, 2) }, brain.Health,
                 "Back to full at the reboot.");
+        }
+
+        [UnityTest]
+        public IEnumerator OpenDoorOpensARegisteredDoorAndFailsOnAnythingElse()
+        {
+            var marker = new GameObject("Door12");
+            _created.Add(marker);
+            marker.transform.position = new Vector3(1.5f, 0f, 0f);
+            var door = new CountingDoor();
+            SabotageTargets.Register(SabotageKind.Door, 12, door, marker.transform);
+            _registered.Add((SabotageKind.Door, 12, door));
+            CountingTarget notADoor = Target(SabotageKind.Door, 13, new Vector3(-1.5f, 0f, 0f));
+            var brain = new ScriptBrain { Action = AgentAction.OpenDoor, TargetId = 12 };
+            Body(brain);
+
+            yield return Seconds(0.2f);
+            Assert.AreEqual(1, door.Opened, "Opened, once.");
+            Assert.AreEqual(0, door.Closed, "Not closed.");
+            CollectionAssert.AreEqual(new[] { (AgentAction.OpenDoor, 12, true) }, brain.Answers);
+
+            brain.TargetId = 13;
+            yield return Seconds(0.2f);
+            Assert.AreEqual(0, notADoor.Executed, "Something that is not a door is not 'opened' by closing it.");
+            Assert.AreEqual((AgentAction.OpenDoor, 13, false), brain.Answers[brain.Answers.Count - 1]);
         }
 
         [Test]
