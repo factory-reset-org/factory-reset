@@ -4,6 +4,7 @@ using NUnit.Framework;
 using UnityEngine;
 using ToyFactory.AI.Agents.Captain;
 using ToyFactory.AI.Core.Grid;
+using ToyFactory.AI.Core.Search;
 
 namespace ToyFactory.Tests.EditMode
 {
@@ -229,8 +230,56 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual(3, inference.FieldComputations, "Only the new goal's field is built");
 
             grid.SetWalkable(new Vector2Int(5, 5), false);
+            Assert.AreEqual(3, inference.StaleFieldCount, "A grid change makes every field stale");
             inference.Update(goals, new Vector2Int(10, 10), new Vector2Int(12, 10), false, FullAmmo);
-            Assert.AreEqual(6, inference.FieldComputations, "A grid change makes every field stale");
+            Assert.AreEqual(4, inference.FieldComputations, "One stale field is rebuilt per update");
+            Assert.AreEqual(2, inference.StaleFieldCount);
+
+            Assert.IsTrue(inference.RefreshOneStaleField());
+            Assert.IsTrue(inference.RefreshOneStaleField());
+            Assert.IsFalse(inference.RefreshOneStaleField(), "Nothing left to rebuild");
+            Assert.AreEqual(6, inference.FieldComputations);
+            Assert.AreEqual(0, inference.StaleFieldCount);
+        }
+
+        [Test]
+        public void TheLastPredictedGoalsFieldIsRebuiltFirst()
+        {
+            var grid = new GridGraph(20, 20, Vector3.zero);
+            var inference = new GoalInference(grid);
+            // Walking east, so the east goal (id 2) is predicted.
+            var goals = new List<CandidateGoal> { Task(1, 0, 10), Task(2, 19, 10), Task(3, 10, 19) };
+            inference.Update(goals, new Vector2Int(8, 10), new Vector2Int(12, 10), false, FullAmmo);
+            Assert.AreEqual(2, goals[inference.MostLikelyIndex].Id);
+
+            grid.SetWalkable(new Vector2Int(5, 5), false);
+            inference.Update(goals, new Vector2Int(8, 10), new Vector2Int(12, 10), false, FullAmmo);
+            Assert.IsTrue(inference.TryGetGoalField(2, out DijkstraField predicted));
+            Assert.IsFalse(predicted.IsStale, "The update rebuilt the predicted goal's field");
+
+            grid.SetWalkable(new Vector2Int(6, 6), false);
+            Assert.IsTrue(inference.RefreshOneStaleField());
+            Assert.IsFalse(predicted.IsStale, "So did the first refresh");
+        }
+
+        [Test]
+        public void StaleFieldsAgreeWithFreshOnesOnceRefreshed()
+        {
+            var grid = new GridGraph(20, 20, Vector3.zero);
+            var inference = new GoalInference(grid);
+            var goals = new List<CandidateGoal> { Task(1, 0, 10), Task(2, 19, 10), Task(3, 10, 19) };
+            inference.Update(goals, new Vector2Int(8, 10), new Vector2Int(12, 10), false, FullAmmo);
+
+            // A wall across the middle with a gap: every route east now detours.
+            for (int y = 0; y < 18; y++)
+                grid.SetWalkable(new Vector2Int(15, y), false);
+            while (inference.RefreshOneStaleField()) { }
+            inference.Update(goals, new Vector2Int(8, 10), new Vector2Int(12, 10), false, FullAmmo);
+
+            var fresh = new GoalInference(grid);
+            fresh.Update(goals, new Vector2Int(8, 10), new Vector2Int(12, 10), false, FullAmmo);
+            for (int i = 0; i < goals.Count; i++)
+                Assert.AreEqual(fresh.Posterior(i), inference.Posterior(i), 1e-5f, $"Goal {goals[i].Id}");
         }
 
         [Test]

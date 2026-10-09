@@ -20,10 +20,13 @@ namespace ToyFactory.AI.Agents.Captain
     /// </summary>
     /// <remarks>
     /// Costs come from Dijkstra fields: one per goal, built the first time the goal appears,
-    /// cached by goal id and dropped when the goal leaves. Grid movement and the base cost
-    /// model are symmetric, so a field computed from g gives C(x→g) for every x. C(s→x)
-    /// comes from one bounded field rooted at the player's current cell. After the first
-    /// update for a set of goals, updating again allocates nothing.
+    /// cached by goal id and dropped when the goal leaves. A grid change (a pushed box, a
+    /// door) makes every field stale at once; they are rebuilt one at a time, not all in one
+    /// update (see <see cref="RefreshOneStaleField"/>). Grid movement and the base cost
+    /// model are symmetric, so a field computed from g gives C(x→g) for every x. C(s→x) is a
+    /// single pair of cells, so it comes from a bounded A* (<see cref="OneToOneCost"/>), not
+    /// a field: a field rooted at x cost the whole level to answer that one number. After the
+    /// first update for a set of goals, updating again allocates nothing.
     /// </remarks>
     public sealed class GoalInference
     {
@@ -34,8 +37,8 @@ namespace ToyFactory.AI.Agents.Captain
         public const int SnapRadius = 4;
 
         /// <summary>
-        /// Bound on the field rooted at the player, in grid units (50 m). The player cannot
-        /// walk further than this in the 5 s window, so a larger search would be wasted.
+        /// Bound on the search for C(s→x), in grid units (50 m). The player cannot walk
+        /// further than this in the 5 s window, so a larger search would be wasted.
         /// </summary>
         public const float PlayerFieldBound = 100f;
 
@@ -44,7 +47,8 @@ namespace ToyFactory.AI.Agents.Captain
         readonly Dictionary<int, DijkstraField> _fields = new Dictionary<int, DijkstraField>();
         readonly HashSet<int> _currentIds = new HashSet<int>();
         readonly List<int> _removedIds = new List<int>();
-        readonly DijkstraField _fromPlayer;
+        readonly OneToOneCost _walked;
+        int? _lastBestId;
 
         float[] _priors = new float[8];
         float[] _detours = new float[8];
@@ -63,6 +67,22 @@ namespace ToyFactory.AI.Agents.Captain
         /// <summary>Number of goal fields currently cached.</summary>
         public int CachedFieldCount => _fields.Count;
 
+        /// <summary>Cells the last C(s→x) search expanded, for the performance log.</summary>
+        public int LastWalkNodesExpanded => _walked.NodesExpanded;
+
+        /// <summary>Cached goal fields the grid has changed under since they were built.</summary>
+        public int StaleFieldCount
+        {
+            get
+            {
+                int stale = 0;
+                foreach (KeyValuePair<int, DijkstraField> entry in _fields)
+                    if (entry.Value.IsStale)
+                        stale++;
+                return stale;
+            }
+        }
+
         /// <summary>How many goal fields have been computed in total, for tests and the performance log.</summary>
         public int FieldComputations { get; private set; }
 
@@ -72,7 +92,7 @@ namespace ToyFactory.AI.Agents.Captain
             if (!(beta > 0f) || float.IsInfinity(beta))
                 throw new ArgumentOutOfRangeException(nameof(beta), "Beta must be a positive, finite number.");
             _beta = beta;
-            _fromPlayer = new DijkstraField(grid);
+            _walked = new OneToOneCost(grid);
         }
 
         /// <summary>Posterior P(g | movement) of the goal at <paramref name="index"/> in the last goals list.</summary>
@@ -129,10 +149,7 @@ namespace ToyFactory.AI.Agents.Captain
                 bool moved = s != x;
                 float sToX = 0f;
                 if (moved)
-                {
-                    _fromPlayer.Compute(x, BaseCostModel.Instance, PlayerFieldBound);
-                    sToX = _fromPlayer.Cost(s);
-                }
+                    sToX = _walked.Compute(s, x, BaseCostModel.Instance, PlayerFieldBound);
 
                 for (int i = 0; i < goals.Count; i++)
                 {
@@ -157,6 +174,7 @@ namespace ToyFactory.AI.Agents.Captain
 
             int best = Normalise(_priors, _detours, _included, GoalCount, _beta, _posteriors);
             MostLikelyIndex = best;
+            _lastBestId = best >= 0 ? goals[best].Id : (int?)null;
             Confidence = best >= 0 ? _posteriors[best] : 0f;
             return best >= 0;
         }
@@ -212,10 +230,53 @@ namespace ToyFactory.AI.Agents.Captain
             return best;
         }
 
-        // Builds a field for each new goal, rebuilds fields that are stale or whose goal has
-        // moved, and drops the fields of goals that have gone.
+        /// <summary>
+        /// Rebuilds one goal field that a grid change left stale, the last predicted goal's
+        /// first (the intercept is planned on it). Returns false if none was stale. The brain
+        /// calls this on frames it does not decide on.
+        /// </summary>
+        /// <remarks>
+        /// A pushed box changes the grid and makes every goal field stale at once. Rebuilding
+        /// them all in the next update measured 5.4 ms for the four Chapter 4 goals in the
+        /// editor, one spike per box move. Each field is now repaired in place
+        /// (<see cref="DijkstraField.Refresh"/>), and only one per frame, so a frame never
+        /// carries more than one repair and all four are fresh again within four frames.
+        /// Until then a stale field still answers from the grid before the change, which is
+        /// off only by the detour round one box.
+        /// </remarks>
+        public bool RefreshOneStaleField()
+        {
+            if (_lastBestId.HasValue && _fields.TryGetValue(_lastBestId.Value, out DijkstraField best) && best.IsStale)
+            {
+                Rebuild(best);
+                return true;
+            }
+            foreach (KeyValuePair<int, DijkstraField> entry in _fields)
+            {
+                if (entry.Value.IsStale)
+                {
+                    Rebuild(entry.Value);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Repairs the field in place where the grid changed (DijkstraField.Refresh), which for
+        // a pushed box touches a few hundred cells instead of the whole level.
+        void Rebuild(DijkstraField field)
+        {
+            field.Refresh();
+            FieldComputations++;
+        }
+
+        // Builds a field for each new goal and rebuilds one whose goal has moved. Of the
+        // fields that are only stale (the grid changed), at most one is rebuilt per update,
+        // the last predicted goal's by preference; RefreshOneStaleField catches up the rest.
+        // Drops the fields of goals that have gone.
         void SyncFields(IReadOnlyList<CandidateGoal> goals)
         {
+            DijkstraField staleToRebuild = null;
             _currentIds.Clear();
             for (int i = 0; i < goals.Count; i++)
             {
@@ -231,12 +292,18 @@ namespace ToyFactory.AI.Agents.Captain
                     field = new DijkstraField(_grid);
                     _fields.Add(goal.Id, field);
                 }
-                if (field.IsStale || field.Source != source)
+                if (!field.HasBeenComputed || field.Source != source)
                 {
                     field.Compute(source, BaseCostModel.Instance);
                     FieldComputations++;
                 }
+                else if (field.IsStale && (staleToRebuild == null || goal.Id == _lastBestId))
+                {
+                    staleToRebuild = field;
+                }
             }
+            if (staleToRebuild != null)
+                Rebuild(staleToRebuild);
 
             _removedIds.Clear();
             foreach (KeyValuePair<int, DijkstraField> entry in _fields)
