@@ -219,8 +219,9 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | Considerations, compensation, selection, momentum, commitment, door cooldown | Implemented | `Consideration`, `UtilityAction`, `ActionSelector`; `UtilityScoringTests`, `ActionSelectorTests` |
 | Brain skeleton: identity, 4 Hz selection, Idle/Patrol, stun, graph changes, destruction | Implemented | `SaboteurIdentity`, `SaboteurBrain`; `SaboteurBrainTests` |
 | Decision trace for the debug panel: each candidate's raw and base score, each consideration's input and score, ranking, and why a candidate lost | Implemented; filled by the brain and `ActionSelector`, no allocation per decision | `UtilityDecisionTrace`, `SaboteurBrain.LastDecision`; `UtilityDecisionTraceTests` |
-| CloseDoor, ArmTrap, StealBattery, AttackPlayer, Flee | Not started | Need the blackboard facts in the handoff table |
-| Squad layer: claim on commit, "not claimed" veto, displacement check, release, attack saturation, tick stagger | Implemented in the brain: claims on commit, the veto and saturation applied to every candidate, stagger by letter, release on stun and destruction. The candidates themselves come from an `ICandidateSource`, which no action implements yet | `SquadCoordinator`, `ICandidateSource`, `SaboteurBrain`; `SquadClaimTests`, `SaboteurSquadTests` |
+| AttackPlayer | Implemented in the brain and tested; not yet wired to the level's line-of-sight check (see AttackPlayer) | `AttackPlayerSource`, `IPlayerSight`, `CoverVisibilitySight`, `SaboteurBrain`; `SaboteurAttackTests` |
+| CloseDoor, ArmTrap, StealBattery, Flee | Not started | Need the blackboard facts in the handoff table |
+| Squad layer: claim on commit, "not claimed" veto, displacement check, release, attack saturation, tick stagger | Implemented in the brain: claims on commit, the veto and saturation applied to every candidate, stagger by letter, release on stun and destruction. The candidates come from an `ICandidateSource`; `AttackPlayerSource` is the first | `SquadCoordinator`, `ICandidateSource`, `SaboteurBrain`; `SquadClaimTests`, `SaboteurSquadTests` |
 | Keycard drop through `IDropsItems` | Implemented; the battery drop waits for StealBattery | `IDropsItems`, `SaboteurBrain.GetDrops`; `SaboteurDropTests` |
 | `DetourCache` | Not started | Build on the brain skeleton |
 
@@ -258,7 +259,16 @@ Stun calls `EndPlan` and destruction calls `OnDestroyed`, so a stunned or destro
 
 **Stagger.** The first decision of an instance is `DecisionOffset(letter)` after its own first tick, and every later decision stays on that phase of the 250 ms grid (the next slot after the current time), so the four instances neither share a frame nor drift back together. A needs no offset, so it decides on its first tick. This assumes the squad's brains start ticking in the same frame, as the spawner does.
 
-**Limits.** No action implements `ICandidateSource` yet, so in the level the candidate list is still Idle only and no claim is ever made; the squad behaviour is exercised in `SaboteurSquadTests` with fake sources. A claim is released when the plan changes, on stun, on destruction and when the claim is lost, but action end and invalidation (door closed first, battery collected, trap armed) need the runtime's completion feedback, which does not exist yet.
+### AttackPlayer
+
+`AttackPlayerSource` offers AttackPlayer when the player is known and alive, the ground-plane distance is under 8 m (height is ignored) and the player has a line of sight to the Saboteur. The score is `1 - d / 8`, one consideration through `UtilityAction`, so it is 0.75 at 2 m and 0.1 at 7.2 m, where it meets Idle. The squad layer then multiplies it by 0.45 when two other live instances are attacking. A Saboteur that would score 0.2 on its own (6.4 m away) therefore idles once two others attack, and attacks when it is the first.
+
+- **Line of sight.** The brain asks `IPlayerSight.CanSeeCell(cell)`. `CoverVisibilitySight` answers it from the Guard's `ICoverVisibility` (a ray from the player's eye to a point 1 m above the Saboteur's cell, characters skipped), so the runtime's one physics sight check, S2's `PhysicsCoverVisibility`, serves both agents and the brain stays free of physics.
+- **Intent.** While AttackPlayer is selected and the player is in range, `Tick` stops the body once (an empty path), sets `LookTarget` to the player and requests `AgentAction.Shoot` at most every 1.5 s (`AttackIntervalSeconds`, a starting value to be tuned in play). The weapon ignores a request while a shot is in progress and turns the body to face the player while it aims. It is checked every tick, so a dead player or one who steps out of range ends the shooting at once rather than at the next 4 Hz decision. When the attack ends, the next tick routes the patrol afresh.
+- **Not in the score yet.** The design prefers a Saboteur with more health, but `AgentContext` carries no own-health fact; it joins as a second consideration when it exists (it is also Flee's input). There is no attack-ready cooldown beyond the 1.5 s pacing, because the runtime reports no shot result.
+- **Damage.** The Saboteur prefab has no `AgentWeapon` (S4's claw swipe plays on `Shoot`), so today an attack plays the swipe but deals no damage. Who delivers the claw's damage is an open question for S4.
+
+**Limits.** Only AttackPlayer implements `ICandidateSource`, so in the level the candidates are Idle and AttackPlayer and no door, trap or battery claim is ever made; the claim behaviour is exercised in `SaboteurSquadTests` with fake sources. A claim is released when the plan changes, on stun, on destruction and when the claim is lost, but action end and invalidation (door closed first, battery collected, trap armed) need the runtime's completion feedback, which does not exist yet.
 
 ### Spawn hookup
 
