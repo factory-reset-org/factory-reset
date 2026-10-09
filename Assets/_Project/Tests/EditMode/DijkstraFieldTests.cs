@@ -213,6 +213,42 @@ namespace ToyFactory.Tests.EditMode
             }
         }
 
+        // Base cost plus a penalty on every step into column 5, like a tactical model.
+        sealed class ColumnPenalty : ICostModel
+        {
+            public float StepCost(Vector2Int from, Vector2Int to) =>
+                BaseCostModel.Instance.StepCost(from, to) + (to.x == 5 ? 2.5f : 0f);
+        }
+
+        [Test]
+        public void FieldUnderAPenaltyModelMatchesAStarWithTheSameModel()
+        {
+            var rng = new System.Random(321);
+            var model = new ColumnPenalty();
+
+            for (int run = 0; run < 20; run++)
+            {
+                GridGraph grid = RandomGrid(12, 12, 0.2f, rng);
+                Vector2Int source = RandomWalkableCell(grid, rng);
+                var field = new DijkstraField(grid);
+                field.Compute(source, model);
+                var aStar = new AStarSearch(grid);
+
+                for (int target = 0; target < 5; target++)
+                {
+                    Vector2Int cell = RandomWalkableCell(grid, rng);
+                    PathResult path = aStar.FindPath(source, cell, model);
+                    Assert.AreEqual(path.Found, field.IsReachable(cell), $"Run {run}, target {cell}: reachability differs.");
+                    if (!path.Found)
+                        continue;
+                    float total = 0f;
+                    for (int i = 1; i < path.Cells.Count; i++)
+                        total += model.StepCost(path.Cells[i - 1], path.Cells[i]);
+                    Assert.AreEqual(total, field.Cost(cell), Tolerance, $"Run {run}, target {cell}: cost differs.");
+                }
+            }
+        }
+
         [Test]
         public void FieldBecomesStaleWhenTheGridChangesAndFreshAfterRecompute()
         {
@@ -272,12 +308,15 @@ namespace ToyFactory.Tests.EditMode
             for (int i = 0; i < 3; i++)
                 field.Compute(source, BaseCostModel.Instance);
 
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 20; i++)
-                field.Compute(source, BaseCostModel.Instance);
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            // GcAllocations, not GC.GetAllocatedBytesForCurrentThread: that always reads 0
+            // under Unity's Mono, so this test could never have failed.
+            int allocations = GcAllocations.Count(() =>
+            {
+                for (int i = 0; i < 20; i++)
+                    field.Compute(source, BaseCostModel.Instance);
+            });
 
-            Assert.AreEqual(0, allocated);
+            Assert.AreEqual(0, allocations);
             Assert.Greater(field.NodesExpanded, 0);
         }
 
