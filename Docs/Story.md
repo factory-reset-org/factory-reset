@@ -132,9 +132,11 @@ The cutscenes are shown in the order they play. Each shot lists the camera and t
 | Shot | Camera and action | Lines |
 | --- | --- | --- |
 | 1 | High, slow sweep across the dark assembly line. Alarm sound; 047's eyes are off. | **Factory OS:** Night shift initiated. / **Factory OS:** All unfinished units... activate. |
-| 2 | Low push-in on the Tracker as it powers on; a "?!" pops over its head. | **Factory OS:** Tracker units online. Guard units online. / **Factory OS:** Saboteur squad online. All four of you. Hunt anything that does not belong. |
-| 3 | Close-up of 047. Its eyes switch on, the DEFECTIVE stamp lands with a red "DEFECTIVE!" pop. | **Factory OS:** Unit 047. Quality check: FAILED. / **Factory OS:** Product status: DEFECTIVE. Send it to recycling. / **Unit 047:** ...defective? |
-| 4 | Over 047's shoulder, looking down the Assembly Floor. The radio crackles. | **Pip:** Psst. Hey, 047. Over here, on the radio. Name is Pip. I fix things around here. / **Pip:** You are not defective. You are just unfinished. Same as me. / **Pip:** Factory OS sealed the three control switches. Get them back and we can shut it down for good. / **Pip:** Start with the assembly line. Follow the light beam and I will talk you through it. |
+| 2 | Low push-in on the Tracker as it powers on; a "?!" pops over its head. | **Factory OS:** Tracker units online. |
+| 3 | The Guard Bot at its post in the Painting Room, from in front, at eye level. | **Factory OS:** Guard units online. |
+| 4 | Saboteur B by the pressure plate, slightly from above. | **Factory OS:** Saboteur squad online. All four of you. Hunt anything that does not belong. |
+| 5 | Close-up of 047. Its eyes switch on, the DEFECTIVE stamp lands with a red "DEFECTIVE!" pop. | **Factory OS:** Unit 047. Quality check: FAILED. / **Factory OS:** Product status: DEFECTIVE. Send it to recycling. / **Unit 047:** ...defective? |
+| 6 | Over 047's shoulder, looking down the Assembly Floor to the belts. The radio crackles. | **Pip:** Psst. Hey, 047. Over here, on the radio. Name is Pip. I fix things around here. / **Pip:** You are not defective. You are just unfinished. Same as me. / **Pip:** Factory OS sealed the three control switches. Get them back and we can shut it down for good. / **Pip:** Start with the assembly line. Follow the light beam and I will talk you through it. |
 
 The objective beacon is hidden until this cutscene ends; Pip's last line introduces it.
 
@@ -146,7 +148,7 @@ The objective beacon is hidden until this cutscene ends; Pip's last line introdu
 | --- | --- | --- |
 | 1 | On the Assembly switch as it hums back to life (its lamp turns mint). | **Pip:** Switch one is back online! Hear that hum? That is the good kind of hum. |
 | 2 | Fly-through into the Painting Room. Alarm; the Guard Bot takes cover. | **Factory OS:** Painting line breached. Guard Bot, hold the room. / **Pip:** Next stop, the Painting Room. The colour line is badly out of calibration. |
-| 3 | Slow pan across the spinning targets and the colour terminal. | **Pip:** Shoot all four spinning targets before the timer runs out, then hack that terminal. / **Pip:** Heads up. That terminal beeps like crazy, and the Guard Bot loves hiding behind cover. |
+| 3 | Slow pan from a spinning target on its pole down to the colour terminal. | **Pip:** Shoot all four spinning targets before the timer runs out, then hack that terminal. / **Pip:** Heads up. That terminal beeps like crazy, and the Guard Bot loves hiding behind cover. |
 
 ### `ch3`: The Captain wakes
 
@@ -154,11 +156,11 @@ The objective beacon is hidden until this cutscene ends; Pip's last line introdu
 
 | Shot | Camera and action | Lines |
 | --- | --- | --- |
-| 1 | The Captain Bot powers up facing the camera. Alarm. **Signal `CaptainWake`.** | **Factory OS:** Two switches lost. Waking the Captain. / **Captain Bot:** Unit 047. I do not chase. I predict. / **Captain Bot:** Wherever you are going next, I will already be there. |
+| 1 | Looking up at the Captain Bot through the gap in the server row as it powers up, facing the camera. Alarm. **Signal `CaptainWake`.** | **Factory OS:** Two switches lost. Waking the Captain. / **Captain Bot:** Unit 047. I do not chase. I predict. / **Captain Bot:** Wherever you are going next, I will already be there. |
 | 2 | The Control Room doors slide open on camera. Their beacons turn from red to amber. **Signal `ControlRoomUnlock`.** | **Pip:** Uh oh. The Control Room doors just opened. Keep moving, and do not be predictable. |
-| 3 | High shot over the Storage shelves towards the relay board and the Storage switch. | **Pip:** The last switch is in the Storage vault, and it needs the master keycard. / **Pip:** *(if Saboteur A is still active)* Saboteur A has it. The purple one with the card spinning over its head. Scrap it. *(if A is already destroyed)* You already knocked the keycard loose from Saboteur A. Nice. Go grab it. / **Pip:** Then read the relay board up there and hit the relays in that order. Wrong order sets off the alarm. |
+| 3 | High shot over the Storage shelves towards the relay board and the Storage switch. | **Pip:** The last switch is in the Storage vault, and it needs the master keycard. / **Pip:** *(if Saboteur A is still active)* Saboteur A has it. The purple one with the card spinning over its head. Scrap it. *(if A is destroyed and the card is still on the floor)* You already knocked the keycard loose from Saboteur A. Nice. Go grab it. *(if the card is already picked up)* And you already have it, straight off Saboteur A. Nice work. / **Pip:** Then read the relay board up there and hit the relays in that order. Wrong order sets off the alarm. |
 
-Shot 3's second line has two versions. The cutscene picks one when it plays, depending on whether Saboteur A has been destroyed.
+Shot 3's second line has three versions. The cutscene picks one when it plays: Saboteur A still active, A destroyed with its keycard on the floor, or the keycard already picked up.
 
 ### `ch4`: Shields down
 
@@ -175,7 +177,7 @@ Shot 3's second line has two versions. The cutscene picks one when it plays, dep
 | Shot | Camera and action | Lines |
 | --- | --- | --- |
 | 1 | Behind 047, looking at the console. A mint "SHUTDOWN" pop. **Signal `FactoryShutdown`:** the lights fade to warm and the emissives dim (S1's `LightingState`). | **Factory OS:** Shutdown... sequence... accepted. / **Factory OS:** Good... night... |
-| 2 | The camera pulls back and up from 047 as every toy in the building tips over and goes to sleep. | **Pip:** You did it! Every toy in the building just yawned and fell asleep. / **Pip:** Re-running quality check... Product status: NOT DEFECTIVE. / **Unit 047:** Not defective. / **Pip:** Welcome to the team, 047. |
+| 2 | The camera pulls back and up from 047, about 6 m, as every toy in the building tips over and goes to sleep. | **Pip:** You did it! Every toy in the building just yawned and fell asleep. / **Pip:** Re-running quality check... Product status: NOT DEFECTIVE. / **Unit 047:** Not defective. / **Pip:** Welcome to the team, 047. |
 
 ## Results screen
 
