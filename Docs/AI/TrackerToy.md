@@ -336,4 +336,5 @@ GBFS matched A*'s path length on 12 pairs and was longer on 8 (on the earlier gr
 | --- | --- |
 | Results for the same 20 GBFS/A* pairs | Done (above; lab-machine timing still to record) |
 | Tracker test execution results | Done: 40 brain, noise-memory and composite-state tests passing (see Tests) |
-| Tracker profiling and four-agent stress measurements | Pending / TODO |
+| Tracker profiling | Done: brain tick for 1 and 7 Trackers on the prototype-room grid, p99 under 0.06 ms per frame for 7 (see AIPerformanceLog) |
+| Four-agent stress test (`Test_FourAgentsStress`) | S4, pending |
