@@ -339,6 +339,8 @@ Edge-case tests are listed in the table above.
 
 The prediction is confident after 1.0 s, well inside the 3 s requirement. The north goal keeps more probability than the west goal because walking east costs less detour towards north than towards west. These values match the formula worked by hand to two decimal places. In-game accuracy runs replace them once the level exists.
 
+**Cost in the full game (2026-10-09, `Test_FourAgentsStress`, editor):** 0.095 ms a frame on average, but 4.97 ms at p99 and 14.0 ms at worst, with 67 frames over 1 ms in 30 s. Each 2 Hz decision rebuilds two distance fields while the player moves (the player's, for goal inference, and the Captain's own, for the intercept), and one full-level field costs 4.3 ms in the editor. The cached goal fields are not the cause: they are not rebuilt while the goals stay put. Fixed and re-measured in `OptimisationLog.md`.
+
 **Intercept choice (EditMode scenario, 2026-10-04):** a 45 × 10 m level (90 × 20 cells) with walls at x = 15 m and x = 30 m, each with a one-cell doorway, and `g*` at the far east end. Captain speed 4.6 m/s (the prototype's value). Printed by `InterceptPlanner.Plan` through the Unity editor:
 
 | Player | Captain | Player speed | Chosen | Player arrives | Captain arrives | Lead | Captain field cells (bounded / full) |
