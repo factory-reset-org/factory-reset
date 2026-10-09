@@ -109,7 +109,8 @@ namespace ToyFactory.Tests
         }
 
         // A legged body like the Captain's: the same pivots, no meshes, no Animator.
-        AgentController KneelingBody(out Transform model, out AgentKneel kneel, out Transform rig, out Transform frontHip)
+        AgentController KneelingBody(out Transform model, out AgentKneel kneel, out Transform rig, out Transform frontHip,
+            bool dormant = false, WorldBlackboard world = null, int id = 0)
         {
             var root = new GameObject("Captain");
             _created.Add(root);
@@ -133,6 +134,18 @@ namespace ToyFactory.Tests
             AgentKnockdown knockdown = root.AddComponent<AgentKnockdown>();
             SetField(knockdown, "model", model);
             SetField(knockdown, "knockOutWord", Word("KnockOut"));
+            SetField(knockdown, "dormantUntilCaptainWakes", dormant);
+
+            var visor = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            visor.transform.SetParent(rig, false);
+            visor.transform.localPosition = Vector3.up * 2.6f;
+            var lightMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            _created.Add(lightMaterial);
+            AgentLights lights = root.AddComponent<AgentLights>();
+            SetField(lights, "lights", new Renderer[] { visor.GetComponent<Renderer>() });
+            SetField(lights, "lightMaterial", lightMaterial);
+            SetField(lights, "darkUntilCaptainWakes", dormant);
+
             kneel = root.AddComponent<AgentKneel>();
             SetField(kneel, "root", rig);
             SetField(kneel, "frontHip", frontHip);
@@ -147,8 +160,67 @@ namespace ToyFactory.Tests
             SetField(kneel, "backArm", Pivot("CannonArm_R_Pivot", torso, new Vector3(0.72f, 0.91f, 0f)));
 
             root.SetActive(true);
-            agent.Initialise(new AgentIdentity(AgentType.Captain, 0), new IdleBrain(), new WorldBlackboard());
+            agent.Initialise(new AgentIdentity(AgentType.Captain, id), new IdleBrain(), world ?? new WorldBlackboard());
             return agent;
+        }
+
+        [UnityTest]
+        public IEnumerator TheDormantCaptainKneelsDarkThenItsVisorLightsAndItStandsUp()
+        {
+            var world = new WorldBlackboard();
+            AgentController agent = KneelingBody(out _, out AgentKneel kneel, out Transform rig, out _, dormant: true, world: world);
+            AgentKnockdown knockdown = agent.GetComponent<AgentKnockdown>();
+            AgentLights lights = agent.GetComponent<AgentLights>();
+
+            yield return null;
+            Assert.IsTrue(knockdown.IsDormant);
+            Assert.AreEqual(1f, kneel.Amount, "On its knee from the first frame, with no drop.");
+            Assert.That(rig.localPosition.y, Is.EqualTo(-0.45f).Within(0.01f));
+            Assert.AreEqual(0f, lights.Level, "Switched off.");
+            Assert.AreEqual(0, knockdown.ParticlesEmitted, "No explosion: it was never hit.");
+            Assert.IsFalse(knockdown.WordShowing);
+
+            world.SetCaptainAwake();   // what the wake signal does, through CaptainWakeWriter
+            yield return Seconds(0.45f);
+            Assert.Greater(lights.Level, 0f, "The visor is flickering on.");
+            Assert.AreEqual(1f, kneel.Amount, "Still on its knee while the visor flickers on.");
+
+            yield return Seconds(0.6f);   // past the 0.7 s delay: stepping up
+            Assert.IsFalse(knockdown.IsDormant);
+            Assert.Less(kneel.Amount, 1f);
+            Assert.AreEqual(1f, lights.Level, "Fully lit before it stands.");
+
+            yield return Seconds(1.3f);
+            Assert.IsFalse(knockdown.IsDown, "Standing.");
+            Assert.AreEqual(0f, kneel.Amount);
+        }
+
+        [UnityTest]
+        public IEnumerator WhenTheFactoryShutsDownEveryAgentPowersDownOneAfterAnother()
+        {
+            AgentController guard = Body(out Transform guardModel, hitPoints: 3);   // id 0: after 0.4 s
+            AgentController captain = KneelingBody(out _, out AgentKneel kneel, out _, out _, id: 4);   // after 1.0 s
+            AgentKnockdown guardDown = guard.GetComponent<AgentKnockdown>();
+            AgentKnockdown captainDown = captain.GetComponent<AgentKnockdown>();
+            yield return null;
+
+            CutsceneEvents.RaiseCriticalSignal(CutsceneSignals.FactoryShutdown);
+            yield return Seconds(0.2f);
+            Assert.IsFalse(guardDown.IsPoweredDown, "Not all at once.");
+            Assert.AreEqual(1f, guard.GetComponent<AgentLights>().Level);
+
+            yield return Seconds(0.5f);
+            Assert.IsTrue(guardDown.IsPoweredDown, "The first agent goes.");
+            Assert.IsFalse(captainDown.IsPoweredDown, "The next one a moment later.");
+
+            yield return Seconds(2f);
+            Assert.IsTrue(captainDown.IsPoweredDown);
+            Assert.AreEqual(0f, guard.GetComponent<AgentLights>().Level, "Lights out.");
+            Assert.AreEqual(0f, captain.GetComponent<AgentLights>().Level);
+            Assert.That(Vector3.Angle(guardModel.up, Vector3.up), Is.EqualTo(5f).Within(0.5f), "The Guard sags forward.");
+            Assert.Greater(Vector3.Dot(guardModel.up, guard.transform.forward), 0f, "Forward, not back.");
+            Assert.That(kneel.Amount, Is.EqualTo(1f).Within(0.02f), "The Captain sinks onto its knee.");
+            Assert.AreEqual(0, guardDown.ParticlesEmitted, "A quiet power-down, no explosion.");
         }
 
         [UnityTest]

@@ -84,6 +84,13 @@ namespace ToyFactory.Runtime.Agents
         /// </summary>
         public IAgentBrain Brain => _brain;
 
+        /// <summary>
+        /// The shared blackboard, for body components that show the state of the world (the
+        /// Captain's dormant kneel and dark visor read <c>CaptainAwake</c>). Null until
+        /// <see cref="Initialise"/>. Body components only read it; only Runtime writers set it.
+        /// </summary>
+        public WorldBlackboard World => _blackboard;
+
         /// <summary>The body's path follower, for debug tools (the overlay draws the route left to walk).</summary>
         public AgentPathFollower Follower => _follower;
 

@@ -250,6 +250,10 @@ MonoBehaviour:
   scrapSinkSeconds: 0.7
   wordWidth: 1.1
   wordSeconds: 1
+  dormantUntilCaptainWakes: 1
+  wakeStandDelay: 0.7
+  powerDownSeconds: 1.2
+  sagAngle: 5
 --- !u!114 &2045013324036941734
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -1,4 +1,5 @@
 using UnityEngine;
+using ToyFactory.Interfaces;
 using ToyFactory.Runtime.Agents;
 
 namespace ToyFactory.Runtime.Animation
@@ -17,6 +18,8 @@ namespace ToyFactory.Runtime.Animation
     /// flicker, rather than a plain fade, so they read as a machine powering down and up.</para>
     /// <para>The Captain's visor stays dark while it is dormant and flickers on when the wake
     /// signal sets <c>CaptainAwake</c>, which happens during the Chapter 3 cutscene itself.</para>
+    /// <para>When the factory shuts down in the ending (<see cref="CutsceneSignals.FactoryShutdown"/>)
+    /// every agent's lights sputter out for good, one agent after another.</para>
     /// </remarks>
     [RequireComponent(typeof(AgentController))]
     public sealed class AgentLights : MonoBehaviour
@@ -54,6 +57,7 @@ namespace ToyFactory.Runtime.Animation
         float _patternTime;
         bool _down;
         bool _started;
+        float _shutdownAt = float.PositiveInfinity;
 
         /// <summary>Brightness now, 0 (off) to 1 (on).</summary>
         public float Level { get; private set; } = 1f;
@@ -76,17 +80,31 @@ namespace ToyFactory.Runtime.Animation
                 Destroy(_material);
         }
 
-        // Off while knocked out or scrapped, and (the Captain) while still dormant. With no
-        // spawner (a test scene) there is no blackboard, so the Captain counts as awake.
+        // Off while knocked out or scrapped, after the factory shuts down (one agent after
+        // another), and (the Captain) while still dormant. Before the agent has a blackboard,
+        // the Captain counts as awake.
         bool Down()
         {
             if (_agent.IsDisabled || _agent.IsDead)
                 return true;
-            if (!darkUntilCaptainWakes)
-                return false;
-            AgentSpawner spawner = AgentSpawner.Instance;
-            return spawner != null && spawner.Blackboard != null && !spawner.Blackboard.CaptainAwake;
+            if (_shutdownAt <= Time.time)
+                return true;
+            return darkUntilCaptainWakes && _agent.World != null && !_agent.World.CaptainAwake;
         }
+
+        void OnEnable() => CutsceneEvents.OnCriticalSignal += HandleSignal;
+
+        void OnDisable() => CutsceneEvents.OnCriticalSignal -= HandleSignal;
+
+        // The ending's power-down: lights go out in a cascade, one agent every ShutdownStagger seconds.
+        void HandleSignal(string signalId)
+        {
+            if (signalId == CutsceneSignals.FactoryShutdown && float.IsPositiveInfinity(_shutdownAt))
+                _shutdownAt = Time.time + ShutdownDelay(_agent);
+        }
+
+        /// <summary>Seconds after the shutdown signal that this agent powers down: a cascade by spawn order.</summary>
+        public static float ShutdownDelay(AgentController agent) => 0.4f + 0.15f * Mathf.Max(0, agent.Identity.Id);
 
         void LateUpdate()
         {

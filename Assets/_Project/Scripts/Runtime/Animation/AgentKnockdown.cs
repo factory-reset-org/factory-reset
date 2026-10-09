@@ -1,4 +1,5 @@
 using UnityEngine;
+using ToyFactory.Interfaces;
 using ToyFactory.Runtime.Agents;
 
 namespace ToyFactory.Runtime.Animation
@@ -22,6 +23,12 @@ namespace ToyFactory.Runtime.Animation
     /// <see cref="AgentKneel"/> (the Captain) kneels and steps back up instead.</para>
     /// <para><b>Particles:</b> one world-space system per agent, emitting only on demand, so
     /// sparks stay where they were thrown when the body moves or tips.</para>
+    /// <para><b>Cutscene states.</b> The Captain kneels, switched off, while it is dormant
+    /// (<c>CaptainAwake</c> not yet set); when the Chapter 3 cutscene wakes it, its visor
+    /// flickers on first and then it steps up. When the factory shuts down in the ending
+    /// (<see cref="CutsceneSignals.FactoryShutdown"/>) every agent powers down for good, one
+    /// after another in step with its lights: the Animator winds down to a stop and the body
+    /// sags, and the Captain sinks slowly onto its knee.</para>
     /// </remarks>
     [RequireComponent(typeof(AgentController))]
     public sealed class AgentKnockdown : MonoBehaviour
@@ -59,11 +66,24 @@ namespace ToyFactory.Runtime.Animation
         [Tooltip("Seconds the comic word stays up.")]
         [SerializeField, Min(0.1f)] float wordSeconds = 1f;
 
+        [Header("Cutscenes")]
+        [Tooltip("The Captain: kneel, switched off, until the blackboard says it is awake (needs an AgentKneel).")]
+        [SerializeField] bool dormantUntilCaptainWakes;
+
+        [Tooltip("Seconds between the wake and the stand-up: the visor flickers on first.")]
+        [SerializeField, Min(0f)] float wakeStandDelay = 0.7f;
+
+        [Tooltip("Seconds the power-down takes in the ending: the Animator winds down and the body sags.")]
+        [SerializeField, Min(0.05f)] float powerDownSeconds = 1.2f;
+
+        [Tooltip("Degrees the body sags forward when it powers down (bodies without a kneel).")]
+        [SerializeField, Range(0f, 20f)] float sagAngle = 5f;
+
         static readonly Color SparkColour = new Color(1f, 0.85f, 0.35f);
         static readonly Color FireColour = new Color(1f, 0.55f, 0.15f);
         static readonly Color SmokeColour = new Color(0.45f, 0.42f, 0.5f, 0.8f);
 
-        enum Phase { Up, Down, StandingUp, Scrapped }
+        enum Phase { Up, Down, StandingUp, Scrapped, Dormant, Waking, PoweredDown }
 
         AgentController _agent;
         AgentKneel _kneel;
@@ -83,9 +103,18 @@ namespace ToyFactory.Runtime.Animation
         float _side = 1f;   // which way it falls
         float _punchTime = float.PositiveInfinity;
         bool _sinking;
+        bool _started;
+        bool _alreadyKneeling;   // powered down from the dormant kneel
+        float _shutdownAt = float.PositiveInfinity;
 
         /// <summary>True while the body is down or getting back up.</summary>
         public bool IsDown => _phase != Phase.Up;
+
+        /// <summary>True while the Captain kneels dormant, or is between its wake and its stand-up.</summary>
+        public bool IsDormant => _phase == Phase.Dormant || _phase == Phase.Waking;
+
+        /// <summary>True once the body has powered down in the ending. Never false again.</summary>
+        public bool IsPoweredDown => _phase == Phase.PoweredDown;
 
         /// <summary>How far over the body is: 0 upright, 1 on its side.</summary>
         public float Tip => _tip;
@@ -116,9 +145,28 @@ namespace ToyFactory.Runtime.Animation
             CreateWord();
         }
 
-        void OnEnable() => _agent.Hit += OnHit;
+        void OnEnable()
+        {
+            _agent.Hit += OnHit;
+            CutsceneEvents.OnCriticalSignal += HandleSignal;
+        }
 
-        void OnDisable() => _agent.Hit -= OnHit;
+        void OnDisable()
+        {
+            _agent.Hit -= OnHit;
+            CutsceneEvents.OnCriticalSignal -= HandleSignal;
+        }
+
+        // Powers down in step with the lights, which use the same delay.
+        void HandleSignal(string signalId)
+        {
+            if (signalId == CutsceneSignals.FactoryShutdown && float.IsPositiveInfinity(_shutdownAt))
+                _shutdownAt = Time.time + AgentLights.ShutdownDelay(_agent);
+        }
+
+        // The Captain before its wake. Before the agent has a blackboard it counts as awake.
+        bool Dormant() =>
+            dormantUntilCaptainWakes && _kneel != null && _agent.World != null && !_agent.World.CaptainAwake;
 
         Vector3 Chest => transform.position + Vector3.up * (_height * 0.55f);
 
@@ -132,6 +180,15 @@ namespace ToyFactory.Runtime.Animation
         {
             float dt = Time.deltaTime;
             _phaseTime += dt;
+            if (!_started)
+            {
+                // A dormant Captain is already kneeling on its first frame, with no drop.
+                _started = true;
+                if (Dormant())
+                    Enter(Phase.Dormant, 0f);
+            }
+
+            bool shutDown = _shutdownAt <= Time.time;
             switch (_phase)
             {
                 case Phase.Up:
@@ -139,16 +196,19 @@ namespace ToyFactory.Runtime.Animation
                         GoDown(Phase.Scrapped, scrapWord);
                     else if (_agent.IsDisabled)
                         GoDown(Phase.Down, knockOutWord);
+                    else if (shutDown)
+                        Enter(Phase.PoweredDown, -1f);
                     break;
                 case Phase.Down:
+                    // A body that is down when the factory shuts down simply stays down.
                     if (_agent.IsDead)
                         _phase = Phase.Scrapped;
-                    else if (!_agent.IsDisabled)
+                    else if (!_agent.IsDisabled && !shutDown)
                     {
-                        _phase = Phase.StandingUp;
-                        _phaseTime = 0f;
-                        if (_animator != null)
-                            _animator.speed = 1f;
+                        if (Dormant())
+                            Enter(Phase.Dormant, 0f);
+                        else
+                            Enter(Phase.StandingUp, 1f);
                     }
                     break;
                 case Phase.StandingUp:
@@ -156,8 +216,24 @@ namespace ToyFactory.Runtime.Animation
                         GoDown(Phase.Scrapped, scrapWord);
                     else if (_agent.IsDisabled)
                         GoDown(Phase.Down, knockOutWord);
+                    else if (shutDown)
+                        Enter(Phase.PoweredDown, -1f);
                     else if (_phaseTime >= StandSeconds)
                         _phase = Phase.Up;
+                    break;
+                case Phase.Dormant:
+                case Phase.Waking:
+                    if (_agent.IsDisabled)
+                        GoDown(Phase.Down, knockOutWord);
+                    else if (shutDown)
+                    {
+                        _alreadyKneeling = true;   // it simply stays on its knee
+                        Enter(Phase.PoweredDown, 0f);
+                    }
+                    else if (_phase == Phase.Dormant && !Dormant())
+                        Enter(Phase.Waking, 0f);   // the visor flickers on first
+                    else if (_phase == Phase.Waking && _phaseTime >= wakeStandDelay)
+                        Enter(Phase.StandingUp, 1f);
                     break;
             }
 
@@ -181,7 +257,30 @@ namespace ToyFactory.Runtime.Animation
                 ShowWord(word);
         }
 
+        // A quiet change of phase, without an explosion or a word. animatorSpeed: 1 runs,
+        // 0 holds the pose, -1 leaves it to the power-down, which winds it down.
+        void Enter(Phase next, float animatorSpeed)
+        {
+            _phase = next;
+            _phaseTime = 0f;
+            if (_animator != null && animatorSpeed >= 0f)
+                _animator.speed = animatorSpeed;
+        }
+
+        // Far enough into a kneel that it is fully down: a dormant Captain shows no drop.
+        const float FullyKneeling = 10f;
+
         float StandSeconds => _kneel != null ? _kneel.StandSeconds : standSeconds;
+
+        // How far the power-down has got, 0 to 1, eased; the Animator winds down with it.
+        float PowerDown()
+        {
+            float t = Mathf.Clamp01(_phaseTime / powerDownSeconds);
+            float s = t * t * (3f - 2f * t);
+            if (_animator != null)
+                _animator.speed = 1f - s;
+            return s;
+        }
 
         // The tip follows the phase: falls with a small overshoot, stands up smoothly.
         void UpdateTip()
@@ -197,6 +296,15 @@ namespace ToyFactory.Runtime.Animation
                 case Phase.Up:
                     _tip = 0f;
                     break;
+                case Phase.PoweredDown:
+                {
+                    // Sags forward a little about its feet and settles, as the Animator stops.
+                    _tip = 0f;
+                    float s = PowerDown();
+                    model.localRotation = _restRotation * Quaternion.Euler(sagAngle * s, 0f, 0f);
+                    model.localPosition = _restPosition;
+                    return;
+                }
                 case Phase.StandingUp:
                 {
                     float t = Mathf.Clamp01(_phaseTime / standSeconds);
@@ -218,7 +326,8 @@ namespace ToyFactory.Runtime.Animation
             model.localPosition = _restPosition + Vector3.up * lift;
         }
 
-        // The Captain: kneels where it stands instead of tipping, and steps back up.
+        // The Captain: kneels where it stands instead of tipping, and steps back up. Dormant it
+        // is already on its knee; powering down in the ending it sinks onto it at half speed.
         void UpdateKneel()
         {
             _tip = 0f;
@@ -232,6 +341,14 @@ namespace ToyFactory.Runtime.Animation
                     break;
                 case Phase.StandingUp:
                     _kneel.PoseStandUp(_phaseTime);
+                    break;
+                case Phase.Dormant:
+                case Phase.Waking:
+                    _kneel.PoseDown(FullyKneeling);
+                    break;
+                case Phase.PoweredDown:
+                    PowerDown();
+                    _kneel.PoseDown(_alreadyKneeling ? FullyKneeling : _phaseTime * 0.5f);
                     break;
                 default:
                     _kneel.PoseDown(_phaseTime);

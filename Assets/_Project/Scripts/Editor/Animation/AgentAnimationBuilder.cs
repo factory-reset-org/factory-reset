@@ -442,6 +442,7 @@ namespace ToyFactory.Editor.Animation
             knockdown.FindProperty("sparkMaterial").objectReferenceValue = SparkMaterial();
             knockdown.FindProperty("knockOutWord").objectReferenceValue = ComicSprite("Comic_KnockOut.png");
             knockdown.FindProperty("scrapWord").objectReferenceValue = ComicSprite("Comic_Scrapped.png");
+            knockdown.FindProperty("dormantUntilCaptainWakes").boolValue = modelName == "CaptainBot";
             knockdown.ApplyModifiedPropertiesWithoutUndo();
 
             // The Captain kneels instead of tipping over, and steps back up.
