@@ -273,15 +273,22 @@ A one-to-all search: after one `Compute(source, costModel, maxCost)`, `Cost(cell
 - **Unreachable cells:** cells that are blocked, off the grid, or beyond `maxCost` return infinity. A non-traversable source leaves the whole field unreachable, so callers snap it first with `GridGraph.TryFindNearestTraversable`.
 - **Bounded search:** `maxCost` stops the flood early, so the work scales with the area that matters. Costs inside the bound stay exact.
 - **Staleness:** the field stores the grid `Version` it was computed on, and `IsStale` turns true once the grid changes.
-- **No allocation:** per-cell arrays are allocated once per grid size, and each compute bumps a stamp instead of clearing them, so recomputing allocates nothing.
-- **Evidence hooks:** `NodesExpanded` and `ElapsedMs` for `AIPerformanceLog.md`.
+- **Neighbour table:** neighbours come from `GridAdjacency`, one table per grid that holds each cell's neighbour indices and base step costs in flat arrays. It listens to `GridGraph.Changed` and refreshes only the affected cells. It is built from `GetNeighboursNonAlloc`, so it follows the same corner and door rules. It made a full field 7× faster (4.82 to 0.67 ms).
+- **Repair (`Refresh`):** a stale unbounded base-cost field is repaired in place. Cells whose cost came through a changed cell lose it, in turn, and Dijkstra runs again from the edge of that damage and across new edges, the idea behind LPA* and D* Lite. The result equals a fresh compute. Every other field, and a field whose change log (the last 64 grid changes, kept by `GridAdjacency`) no longer reaches back, is computed again.
+- **No allocation:** per-cell arrays are allocated once per grid size, and each compute bumps a stamp instead of clearing them, so recomputing and repairing allocate nothing.
+- **Evidence hooks:** `NodesExpanded` and `ElapsedMs` for `AIPerformanceLog.md`, and the `AI.DijkstraField.Compute` and `AI.DijkstraField.Repair` profiler markers.
 - **Used by the Captain:** one field per candidate goal, plus one rooted at the Captain for its own arrival times. See `Docs/AI/CaptainBot.md`.
+- **One-to-one questions:** `OneToOneCost` answers the cost between two cells with A* and keeps no route. It is exact, takes an optional bound and allocates nothing. The Captain uses it where it needs one number, not a field.
 
-**Tests:** `DijkstraFieldTests` (20 EditMode tests), including:
-- field costs equal A* path costs on random grids;
-- blocked cells and corner-cutting are respected;
-- the bound stops the search;
-- a recompute allocates 0 bytes.
+**Tests:**
+- `DijkstraFieldTests` (21 EditMode tests), including:
+  - field costs equal A* path costs on random grids, and under a penalty model;
+  - blocked cells and corner-cutting are respected;
+  - the bound stops the search;
+  - a recompute allocates nothing.
+- `DijkstraFieldRepairTests` (8): a repaired field equals a fresh one on every cell after 480 random changes.
+- `GridAdjacencyTests` (5).
+- `OneToOneCostTests` (8).
 
 ### 3.2 Path smoothing: `GridLineCheck` and `PathSmoother` (S4, implemented)
 
@@ -623,6 +630,7 @@ The alarm colours belong to `LightingState`. A Timeline can frame or activate th
 | 2026-10-09 | Bodies stop short of the player (`PlayerStandOff`) and the Tracker pounces with a keyframed whole-body hop added after the Animator; no knockback | Walking the brain's route onto the player; a knockback on the player (needs an `IPlayerState` change and S2's controller); a new bite clip on an override layer | The ramming came from the body following a route that ends inside the player, so the body is the place to stop it, for every agent at once. Curves added on top of the clips need no new layer that could fight the locomotion tree, and a whole-body hop reads as an attack where a head-only snap did not. Knockback was dropped: it changes the player's controls, which are S2's | S4 |
 | 2026-10-09 | Debug chapter jump (F6-F8) drives the real chapter flow forward and skips each cutscene, then moves the player | A start-at-chapter hook in `ChapterManager`; setting the flow's state directly | Going through `CompleteTask` and the cutscene runner means every listener sees the same events as in play, so the jumped-to world is the real one (doors open, Captain awake). It needed no change to S1's chapter code | S4 |
 | 2026-10-09 | Shooters turn to the target while aiming and fire only within 25 degrees of it, else drop the shot; each shot kicks the firing arm, torso and head | Firing from wherever the body faces; snapping the body round at the shot | The Captain was seen shooting out of the side of its cannon while walking across the player. Turning during the 0.3 s telegraph is visible and fair (the player sees it line up), and dropping a shot it cannot line up keeps every tracer leaving the barrel. The static aim pose did not read as firing; a kick per shot does | S4 |
+| 2026-10-09 | The Captain's distance fields read a shared neighbour table, single-pair costs use a cost-only A*, and stale goal fields are repaired in place, one per frame | Recompute every stale field in the next decision; spread full recomputes over frames only; ask S2 to add a cost-only mode to `AStarSearch` | The stress test showed 67 frames over 1 ms (worst 15 ms) in normal play and, with a box being pushed, 32 ms at p99, because each grid change recomputed every goal field in one decision. Profiling put 84% of a field's time in neighbour gathering, which only changes with the grid. A field to answer one number wasted the whole level. Spreading full recomputes alone still left 128 frames over 1 ms. The repair touches only the cells behind a change, and a random-change test proves it equals a fresh field. Everything stays in S4's search code, so `GridGraph` and `AStarSearch` are untouched | S4 |
 
 ## 8. Greybox character model contract (S3)
 

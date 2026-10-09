@@ -36,6 +36,7 @@ namespace ToyFactory.AI.Agents.Captain
         readonly GridGraph _grid;
         readonly float _margin;
         readonly DijkstraField _fromCaptain;
+        readonly OneToOneCost _toGoal;
         readonly List<Vector2Int> _route = new List<Vector2Int>(64);
         readonly List<Vector2Int> _otherRoute = new List<Vector2Int>(64);
         readonly HashSet<Vector2Int> _otherRouteCells = new HashSet<Vector2Int>();
@@ -54,6 +55,7 @@ namespace ToyFactory.AI.Agents.Captain
                 throw new ArgumentOutOfRangeException(nameof(marginSeconds), "The margin must be a finite number of seconds, zero or more.");
             _margin = marginSeconds;
             _fromCaptain = new DijkstraField(grid);
+            _toGoal = new OneToOneCost(grid);
         }
 
         /// <summary>
@@ -96,10 +98,15 @@ namespace ToyFactory.AI.Agents.Captain
                 return MakePlan(InterceptKind.RouteCell, goalField, playerTotal, firstCell, playerSpeed, captainSpeed);
 
             // No cell gives the margin: the player is too close to g*, so guard g* itself.
-            // g* may lie beyond the bounded field, so time it with an unbounded one (rare,
-            // and only here) instead of reporting an arrival of infinity.
-            _fromCaptain.Compute(captain, BaseCostModel.Instance);
-            return MakePlan(InterceptKind.DefendGoal, goalField, playerTotal, _route.Count - 1, playerSpeed, captainSpeed);
+            // g* may lie beyond the bounded field, so time the Captain's walk to it with one
+            // A* query (a single pair of cells) instead of reporting an arrival of infinity.
+            // An unbounded field here cost the whole level for that one number.
+            int last = _route.Count - 1;
+            Vector2Int goalCell = _route[last];
+            float captainCost = _toGoal.Compute(captain, goalCell, BaseCostModel.Instance);
+            return new InterceptPlan(InterceptKind.DefendGoal, goalCell, last,
+                PlayerArrival(goalField, playerTotal, goalCell, playerSpeed),
+                captainCost * GridGraph.CellSize / captainSpeed);
         }
 
         /// <summary>

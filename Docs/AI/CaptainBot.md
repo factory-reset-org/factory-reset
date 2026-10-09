@@ -125,6 +125,7 @@ P(g | observed) = w(g) / Σ w(g')                 normalise so the goals sum to 
 - `s` is the player's cell 5 s ago and `x` is the player's current cell.
 - `D(g)` measures how far the player's actual movement strays from the shortest route to `g`. It is **0 when the player is on an optimal route to `g`** and grows as they move away from it.
 - `D(g) ≥ 0` always, because the field costs are true shortest paths: going via `x` can never be cheaper than the direct route (triangle inequality).
+- `C(x → g)` and `C(s → g)` are lookups in each goal's field. `C(s → x)` is a single pair of cells, so it comes from one A* query (`OneToOneCost`), bounded at 50 m, not from a field.
 - **Confidence** is the largest posterior, `P(g*)`, where `g*` is the most likely goal.
 
 ### Why β = 0.5 per metre
@@ -212,14 +213,16 @@ Once confidence ≥ 0.5, the Captain picks where to wait.
 | --- | --- | --- |
 | How far is every cell from each goal? (goal inference, predicted route) | One-to-all | Dijkstra field per goal |
 | How soon can I reach every cell on the predicted route? | One-to-all | Dijkstra field from the Captain |
+| How far did the player walk in the last 5 s, `C(s → x)`? | One-to-one, cost only | `OneToOneCost` (A* that keeps no route) |
+| How soon can I reach `g*` when defending it? | One-to-one, cost only | `OneToOneCost` |
 | What path do I actually walk to the chosen cell? | One-to-one | A* |
 
 - **Dijkstra (uniform-cost search)** expands cells in order of cost from its source and gives the exact cost to every reachable cell. One run answers the arrival-time question for the whole route at once. Running A* separately for every route cell would repeat most of the same work.
 - **A*** is the efficient choice when there is a single destination. The octile heuristic is admissible and consistent on the 8-connected grid, so A* returns an optimal path while expanding far fewer cells than Dijkstra. It also goes through the same `IPathfinder` and path scheduler as the other agents, so the Captain's movement follows the shared frame budget and replanning rules.
 
-**Cost:** each field is a bounded Dijkstra run, O(V log V) with the binary heap. Fields are only recomputed when `OnGraphChanged` reports a changed cell inside them, not every tick. Choosing the intercept cell is then O(L) for a route of L cells, because every step is a field lookup.
+**Cost:** each field is a Dijkstra run, O(V log V) with the binary heap, reading neighbours from a precomputed table (`GridAdjacency`). Goal fields are built once per goal and cached. When a door or a pushed box changes the grid they go stale, and each one is **repaired in place** (`DijkstraField.Refresh`). Only the cells whose cost came through a changed cell are invalidated, and Dijkstra runs again from the edge of that damage, the idea behind LPA* and D* Lite. Stale fields are repaired one per frame, the predicted goal's first, so several fields never land in the same frame. Choosing the intercept cell is then O(L) for a route of L cells, because every step is a field lookup.
 
-**Bounding the Captain's field:** a cell can only qualify if `t_captain(i) ≤ t_player(i) − 1 s`, and no route cell is further for the player than `g*` itself. So the Captain's field stops spreading at `(t_player(g*) − 1 s) · v_captain`. Cells beyond that bound could never be chosen, so the search skips them. If no cell qualifies, the planner runs one unbounded field so it can still time the walk to `g*` for defending it.
+**Bounding the Captain's field:** a cell can only qualify if `t_captain(i) ≤ t_player(i) − 1 s`, and no route cell is further for the player than `g*` itself. So the Captain's field stops spreading at `(t_player(g*) − 1 s) · v_captain`. Cells beyond that bound could never be chosen, so the search skips them. If no cell qualifies, the planner times the Captain's walk to `g*` with one A* query (`OneToOneCost`), so it can still defend it.
 
 ## Edge cases
 
@@ -266,7 +269,12 @@ EditMode tests run without a scene, which also proves the brain is decoupled fro
 | `WorkedExampleFromTheDesignDocument` | The code matches the maths in this document: 0.84 / 0.11 / 0.04 |
 | `PosteriorsSumToOneOnRandomGrids` | Normalisation is correct, with no NaN, on 50 random grids |
 | `RemovingAGoalDropsItsFieldAndRenormalises` | Goals can come and go as tasks complete |
-| `EachGoalFieldIsBuiltOnceUntilTheGridChanges` | Fields are built lazily and cached, and rebuilt only when the grid changes |
+| `EachGoalFieldIsBuiltOnceUntilTheGridChanges` | Fields are built lazily and cached. A grid change makes them all stale; one is rebuilt per update and the rest by `RefreshOneStaleField` |
+| `TheLastPredictedGoalsFieldIsRebuiltFirst` | After a grid change the field the intercept is planned on is fresh first |
+| `StaleFieldsAgreeWithFreshOnesOnceRefreshed` | After the refreshes, the posteriors equal those of a brand-new inference on the changed grid |
+| `DijkstraFieldRepairTests` (8 tests) | A repaired field equals a fresh one on every cell after 480 random box placements, box moves, openings and door changes; a door opening connects the room behind it; a moved box repairs far fewer cells than a full search; fallbacks and no allocation |
+| `OneToOneCostTests` (8 tests) | The cost-only A* equals the field's cost on 50 random grids and under a penalty model; the bound; no allocation |
+| `GridAdjacencyTests` (5 tests) | The neighbour table matches the grid's own neighbours on random grids and stays correct, refreshing only the affected cells, through 30 changes |
 | `GoalPriorsTests` (9 tests) | The category priors follow the table, including the final-chapter 0.55 / 0.45 example and batteries only below 30% ammo |
 | `HugeDetoursDoNotUnderflowToNaN` | The underflow guard works |
 | `PlayerTrackTests` (9 tests) | The 5 s window, the short-history fallback and the ring buffer |
@@ -315,10 +323,12 @@ Edge-case tests are listed in the table above.
 
 | Part | Code | Status |
 | --- | --- | --- |
-| Distance fields | `AI/Core/Search/DijkstraField` | Implemented, 20 tests |
+| Distance fields | `AI/Core/Search/DijkstraField` | Implemented, 21 tests + 8 repair tests |
+| Neighbour table | `AI/Core/Search/GridAdjacency` | Implemented, 5 tests |
+| Cost-only A* | `AI/Core/Search/OneToOneCost` | Implemented, 8 tests |
 | Candidate goals and priors | `Captain/CandidateGoal`, `GoalCategory`, `GoalPriors` | Implemented, 9 tests |
 | Player history (5 s window) | `Captain/PlayerTrack` | Implemented, 9 tests |
-| Goal inference | `Captain/GoalInference` | Implemented, 14 tests |
+| Goal inference | `Captain/GoalInference` | Implemented, 16 tests |
 | Intercept planner | `Captain/InterceptPlanner`, `InterceptPlan` | Implemented, 14 tests |
 | `CaptainBrain` states and transitions | `Captain/CaptainBrain`, `CaptainBrain.States` | Implemented, 16 tests |
 | `PredictedGoal` on the blackboard | `Core/IGoalPredictor`, `Blackboard/PredictedGoal`, copied by `AgentController` | Implemented |
@@ -339,7 +349,12 @@ Edge-case tests are listed in the table above.
 
 The prediction is confident after 1.0 s, well inside the 3 s requirement. The north goal keeps more probability than the west goal because walking east costs less detour towards north than towards west. These values match the formula worked by hand to two decimal places. In-game accuracy runs replace them once the level exists.
 
-**Cost in the full game (2026-10-09, `Test_FourAgentsStress`, editor):** 0.095 ms a frame on average, but 4.97 ms at p99 and 14.0 ms at worst, with 67 frames over 1 ms in 30 s. Each 2 Hz decision rebuilds two distance fields while the player moves (the player's, for goal inference, and the Captain's own, for the intercept), and one full-level field costs 4.3 ms in the editor. The cached goal fields are not the cause: they are not rebuilt while the goals stay put. Fixed and re-measured in `OptimisationLog.md`.
+**Cost in the full game (2026-10-09, `Test_FourAgentsStress`, editor):** 0.095 ms a frame on average, but 4.97 ms at p99 and 14.0 ms at worst, with 67 frames over 1 ms in 30 s. Each 2 Hz decision rebuilds two distance fields while the player moves (the player's, for goal inference, and the Captain's own, for the intercept), and one full-level field costs 4.3 ms in the editor. The cached goal fields are not the cause: they are not rebuilt while the goals stay put.
+
+**After the fix (same day, same tests):** p99 0.14 ms and worst 1.1 ms in normal play, against 7.2 ms and 15.1 ms for `develop` in the same session. With a box pushed every 0.5 s (`Test_PushedBoxStress`), p99 is 0.20 ms against 32 ms, and no frame is over 1 ms. The three changes are in `OptimisationLog.md`:
+1. Fields read neighbours from a precomputed table, making a full field 7× faster.
+2. `C(s → x)` and the defend-`g*` time come from a cost-only A*, which searches 21–166 cells instead of the whole level.
+3. A grid change repairs the stale goal fields in place, one per frame.
 
 **Intercept choice (EditMode scenario, 2026-10-04):** a 45 × 10 m level (90 × 20 cells) with walls at x = 15 m and x = 30 m, each with a one-cell doorway, and `g*` at the far east end. Captain speed 4.6 m/s (the prototype's value). Printed by `InterceptPlanner.Plan` through the Unity editor:
 
@@ -349,7 +364,7 @@ The prediction is confident after 1.0 s, well inside the 3 s requirement. The no
 | west end | just past the first doorway | 3 m/s (walk) | First doorway | 4.17 s | 0.99 s | 3.18 s | 1762 / 1762 |
 | west end | past the second doorway | 7 m/s | Second doorway | 3.93 s | 1.36 s | 2.57 s | 1143 / 1762 |
 | middle room | past the second doorway | 7 m/s | Route cell 1.5 m past the doorway | 1.64 s | 0.57 s | 1.07 s | 665 / 1762 |
-| 2.5 m from `g*` | west end | 7 m/s | Defend `g*` | 0.36 s | 8.15 s | −7.80 s | full (unbounded fallback) |
+| 2.5 m from `g*` | west end | 7 m/s | Defend `g*` | 0.36 s | 8.15 s | −7.80 s | full (unbounded fallback; since 2026-10-09 one A* query instead) |
 
 What this shows:
 - **Planning against the sprint speed changes the choice.** Against a walking player the Captain takes the first doorway with 3 s to spare. Against a sprinting one it would only arrive 0.80 s early there (1.79 s against 0.99 s), inside the 1 s margin, so it waits at the second doorway instead. It never over-promises.

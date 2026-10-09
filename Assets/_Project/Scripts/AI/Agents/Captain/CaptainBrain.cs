@@ -180,6 +180,10 @@ namespace ToyFactory.AI.Agents.Captain
                 Perceive();
                 if (_decideNow || Now >= _nextDecisionTime)
                     Decide();
+                else
+                    // A frame with no decision: repair one goal field a grid change left
+                    // stale, so a pushed box costs one repair per frame, not all at once.
+                    _inference.RefreshOneStaleField();
             }
 
             _machine.Tick(this);
@@ -217,10 +221,10 @@ namespace ToyFactory.AI.Agents.Captain
         }
 
         /// <summary>
-        /// A door or box changed the grid. Goal fields go stale on their own (grid version),
-        /// so the next decision recomputes them; it is brought forward to this tick. The
-        /// route is replanned if it crosses a changed cell, and the plan is dropped if the
-        /// cell the Captain is heading for became blocked.
+        /// A door or box changed the grid. Goal fields go stale on their own (grid version)
+        /// and are repaired one per frame, the predicted goal's first; the next decision is
+        /// brought forward to this tick. The route is replanned if it crosses a changed cell,
+        /// and the plan is dropped if the cell the Captain is heading for became blocked.
         /// </summary>
         public void OnGraphChanged(IReadOnlyList<Vector2Int> changedCells)
         {
