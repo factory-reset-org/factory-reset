@@ -519,6 +519,7 @@ GameObject:
   m_Component:
   - component: {fileID: 410335445}
   - component: {fileID: 410335446}
+  - component: {fileID: 410335447}
   m_Layer: 0
   m_Name: Unit 047 (cutscene)
   m_TagString: Untagged
@@ -555,6 +556,44 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.CutsceneActor
   model: {fileID: 1643442539}
+--- !u!114 &410335447
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 410335444}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 905caff7b4110cc4a8aa9ecdfadd1d28, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.Unit047Motion
+  eyeMaterial: {fileID: 2100000, guid: dd46163783547f24896c87f25e415eea, type: 2}
+  eyeColour: {r: 0.384, g: 0.847, b: 1, a: 1}
+  eyeIntensity: 2.5
+  eyesOnSeconds: 0.6
+  cues:
+  - cutscene: intro
+    shot: -1
+    beat: 0
+  - cutscene: intro
+    shot: 4
+    beat: 1
+  - cutscene: intro
+    shot: 4
+    beat: 4
+  - cutscene: intro
+    shot: 5
+    beat: 3
+  - cutscene: ending
+    shot: 1
+    beat: 5
+  sway: {x: 1.5, y: 3.2}
+  rock: {x: 1, y: 4.3}
+  bob: {x: 0.006, y: 1.8}
+  keySpeed: 180
+  lookAround: {x: 12, y: 7}
+  headSmoothing: 0.35
 --- !u!1 &450397189
 GameObject:
   m_ObjectHideFlags: 0
@@ -2952,6 +2991,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0dff4b84e5cdaaa4497c21bb7c7f3df0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.PlaceholderSubtitles
+  sortingOrder: 50
+  fontSize: 34
+  maxWidth: 1300
+  bottomGap: 0.125
+  panelColour: {r: 0.03, g: 0.02, b: 0.07, a: 0.72}
 --- !u!82 &1447529305
 AudioSource:
   m_ObjectHideFlags: 0
