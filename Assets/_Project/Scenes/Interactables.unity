@@ -148,7 +148,7 @@ Transform:
   m_GameObject: {fileID: 14016835}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 37.5, y: 0.6, z: 33.5}
+  m_LocalPosition: {x: 28.8, y: 0.6, z: 27.5}
   m_LocalScale: {x: 0.35, y: 0.35, z: 0.35}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -368,7 +368,7 @@ Transform:
   m_GameObject: {fileID: 71324105}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 10.5, y: 3.4, z: 28.5}
+  m_LocalPosition: {x: 8.35, y: 3.75, z: 28}
   m_LocalScale: {x: 0.8, y: 0.8, z: 0.8}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -941,7 +941,7 @@ Transform:
   m_GameObject: {fileID: 163214288}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 28.5, y: 0.6, z: 39.5}
+  m_LocalPosition: {x: 27.8, y: 0.6, z: 22.2}
   m_LocalScale: {x: 0.5, y: 1.2, z: 0.5}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2082,7 +2082,7 @@ Transform:
   m_GameObject: {fileID: 611008827}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 39, y: 0.6, z: 28}
+  m_LocalPosition: {x: 21.8, y: 0.6, z: 25.5}
   m_LocalScale: {x: 0.5, y: 1.2, z: 0.5}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -3158,7 +3158,7 @@ Transform:
   m_GameObject: {fileID: 807165990}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 5, y: 3.4, z: 35}
+  m_LocalPosition: {x: 16.93, y: 3.75, z: 38}
   m_LocalScale: {x: 0.8, y: 0.8, z: 0.8}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -3775,7 +3775,7 @@ Transform:
   m_GameObject: {fileID: 1059724676}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 23.5, y: 0.6, z: 23}
+  m_LocalPosition: {x: 40.2, y: 0.6, z: 33.5}
   m_LocalScale: {x: 0.5, y: 1.2, z: 0.5}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -3851,8 +3851,8 @@ Transform:
   m_GameObject: {fileID: 1096905065}
   serializedVersion: 2
   m_LocalRotation: {x: 0.7071068, y: -0, z: -0, w: 0.7071068}
-  m_LocalPosition: {x: 24, y: 2.5, z: 0.75}
-  m_LocalScale: {x: 0.8, y: 0.05, z: 0.8}
+  m_LocalPosition: {x: 24.6, y: 3.55, z: 17.5}
+  m_LocalScale: {x: 1.24, y: 0.05, z: 1.24}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 112271608}
@@ -3869,8 +3869,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 599a60e786db5814baeb6dd597e14933, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.SpinningTarget
-  spinAxis: {x: 0, y: 1, z: 0}
-  spinDegreesPerSecond: 120
+  spinAxis: {x: 0, y: 0, z: 1}
+  spinDegreesPerSecond: 70
   body: {fileID: 0}
   hitColour: {r: 0.2, g: 0.9, b: 0.4, a: 1}
 --- !u!64 &1096905068
@@ -3920,7 +3920,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: a42316da05bb58442ab011225e770274, type: 2}
+  - {fileID: 2100000, guid: 77e1b752dadb01748a7349794ddebd83, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -4106,9 +4106,9 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1120128778}
   serializedVersion: 2
-  m_LocalRotation: {x: -0.7071068, y: -0, z: -0, w: 0.7071068}
-  m_LocalPosition: {x: 24, y: 2.5, z: 20.25}
-  m_LocalScale: {x: 0.8, y: 0.05, z: 0.8}
+  m_LocalRotation: {x: 0.7071068, y: -0, z: -0, w: 0.7071068}
+  m_LocalPosition: {x: 38.9, y: 3.55, z: 5.5}
+  m_LocalScale: {x: 1.24, y: 0.05, z: 1.24}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 112271608}
@@ -4125,8 +4125,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 599a60e786db5814baeb6dd597e14933, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.SpinningTarget
-  spinAxis: {x: 0, y: 1, z: 0}
-  spinDegreesPerSecond: 120
+  spinAxis: {x: 0, y: 0, z: 1}
+  spinDegreesPerSecond: 130
   body: {fileID: 0}
   hitColour: {r: 0.2, g: 0.9, b: 0.4, a: 1}
 --- !u!64 &1120128781
@@ -4176,7 +4176,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: a42316da05bb58442ab011225e770274, type: 2}
+  - {fileID: 2100000, guid: 77e1b752dadb01748a7349794ddebd83, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -5400,8 +5400,8 @@ Transform:
   m_GameObject: {fileID: 1531412211}
   serializedVersion: 2
   m_LocalRotation: {x: 0.7071068, y: -0, z: -0, w: 0.7071068}
-  m_LocalPosition: {x: 38, y: 2.5, z: 0.75}
-  m_LocalScale: {x: 0.8, y: 0.05, z: 0.8}
+  m_LocalPosition: {x: 37.4, y: 3.55, z: 17.5}
+  m_LocalScale: {x: 1.24, y: 0.05, z: 1.24}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 112271608}
@@ -5418,8 +5418,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 599a60e786db5814baeb6dd597e14933, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.SpinningTarget
-  spinAxis: {x: 0, y: 1, z: 0}
-  spinDegreesPerSecond: 120
+  spinAxis: {x: 0, y: 0, z: 1}
+  spinDegreesPerSecond: 90
   body: {fileID: 0}
   hitColour: {r: 0.2, g: 0.9, b: 0.4, a: 1}
 --- !u!64 &1531412214
@@ -5469,7 +5469,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: a42316da05bb58442ab011225e770274, type: 2}
+  - {fileID: 2100000, guid: 77e1b752dadb01748a7349794ddebd83, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -5657,7 +5657,7 @@ Transform:
   m_GameObject: {fileID: 1595024057}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 10.5, y: 0.5, z: 40}
+  m_LocalPosition: {x: 10.5, y: 0.5, z: 31}
   m_LocalScale: {x: 1.2, y: 1, z: 0.6}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -5790,9 +5790,9 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1637341111}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: 0.7071068, w: 0.7071068}
-  m_LocalPosition: {x: 40.75, y: 2.5, z: 16}
-  m_LocalScale: {x: 0.8, y: 0.05, z: 0.8}
+  m_LocalRotation: {x: 0.7071068, y: -0, z: -0, w: 0.7071068}
+  m_LocalPosition: {x: 27.4, y: 3.55, z: 11.5}
+  m_LocalScale: {x: 1.24, y: 0.05, z: 1.24}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 112271608}
@@ -5809,8 +5809,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 599a60e786db5814baeb6dd597e14933, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.SpinningTarget
-  spinAxis: {x: 0, y: 1, z: 0}
-  spinDegreesPerSecond: 120
+  spinAxis: {x: 0, y: 0, z: 1}
+  spinDegreesPerSecond: 110
   body: {fileID: 0}
   hitColour: {r: 0.2, g: 0.9, b: 0.4, a: 1}
 --- !u!64 &1637341114
@@ -5860,7 +5860,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: a42316da05bb58442ab011225e770274, type: 2}
+  - {fileID: 2100000, guid: 77e1b752dadb01748a7349794ddebd83, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -6015,7 +6015,7 @@ Transform:
   m_GameObject: {fileID: 1661680936}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 16, y: 3.4, z: 35}
+  m_LocalPosition: {x: 4.06, y: 3.75, z: 38}
   m_LocalScale: {x: 0.8, y: 0.8, z: 0.8}
   m_ConstrainProportionsScale: 0
   m_Children:
