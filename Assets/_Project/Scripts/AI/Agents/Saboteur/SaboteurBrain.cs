@@ -27,6 +27,12 @@ namespace ToyFactory.AI.Agents.Saboteur
     /// </remarks>
     public sealed class SaboteurBrain : IAgentBrain, IDropsItems
     {
+        /// <summary>Ground distance, in metres, from a door within which the Saboteur can close it.</summary>
+        public const float DoorReachMetres = 1.5f;
+
+        /// <summary>Seconds the Saboteur keeps asking to close a door that stays open before it gives up on it.</summary>
+        public const float CloseDoorTimeoutSeconds = 3f;
+
         /// <summary>Seconds between two shots while attacking (provisional pacing, tuned in play).</summary>
         public const float AttackIntervalSeconds = 1.5f;
 
@@ -62,6 +68,7 @@ namespace ToyFactory.AI.Agents.Saboteur
         readonly IPathfinder _pathfinder;
         readonly SquadCoordinator _squad;
         readonly ICandidateSource _source;
+        readonly DetourCache _detours;
         readonly ActionSelector _selector;
         readonly Vector2Int[] _patrolCells;
         readonly List<ActionCandidate> _candidates = new List<ActionCandidate>(8);
@@ -82,6 +89,16 @@ namespace ToyFactory.AI.Agents.Saboteur
         // Set after no patrol point could be reached, so A* is not rerun every tick while
         // holding; cleared by the next selection pass or any grid change.
         bool _routeRetryWaiting;
+
+        // CloseDoor: the plan for the selected door. Travel sends one route, then the Saboteur stops
+        // within reach of the door and asks for the close until the door shuts or the time is up.
+        bool _doorActive;
+        ActionKey _doorKey;
+        bool _doorRouteSent;
+        bool _doorEmitted;
+        bool _doorInReach;
+        float _doorReachedAt;
+        List<Vector2Int> _doorRoute;
 
         // AttackPlayer: whether the body has been stopped for the current attack, and when it
         // may next ask for a shot.
@@ -113,9 +130,13 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// Supplies the sabotage and combat candidates; null until those actions exist, in which
         /// case Idle/Patrol is the only candidate.
         /// </param>
+        /// <param name="detourCache">
+        /// The squad's shared detour cache. Needed to carry out CloseDoor (it knows the door's cells);
+        /// without it a selected CloseDoor is ignored and the Saboteur keeps patrolling.
+        /// </param>
         public SaboteurBrain(SaboteurIdentity identity, GridGraph grid, IPathfinder pathfinder,
             TargetClaims claims, IReadOnlyList<Vector3> patrolPoints, SelectorSettings selectorSettings = null,
-            int keycardItemId = 0, ICandidateSource candidateSource = null)
+            int keycardItemId = 0, ICandidateSource candidateSource = null, DetourCache detourCache = null)
         {
             // default(SaboteurIdentity) would otherwise pass as "Saboteur A, the keycard carrier".
             if (!identity.IsAssigned)
@@ -130,6 +151,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             _selector = new ActionSelector(selectorSettings);
             _keycardItemId = keycardItemId;
             _source = candidateSource;
+            _detours = detourCache;
 
             var cells = new List<Vector2Int>();
             if (patrolPoints != null)
@@ -189,14 +211,25 @@ namespace ToyFactory.AI.Agents.Saboteur
                 _nextDecisionTime = NextSlotAfter(ctx.Time);
             }
 
+            if (_detours != null && _selector.HasCurrent && _selector.Current.Kind == SaboteurActionKind.CloseDoor
+                && TryCloseDoor(ctx, out AgentIntent closeDoor))
+                return closeDoor;
+
             if (ctx.World != null && _selector.HasCurrent && _selector.Current.Kind == SaboteurActionKind.AttackPlayer
                 && AttackPlayerSource.InRange(ctx.World.Player, ctx.Position, out _))
                 return Attack(ctx);
 
-            // Back to patrolling after an attack: the body was stopped, so route again.
-            if (_attacking)
+            // Back to patrolling after an attack or a door: the body was stopped or sent elsewhere, so route again.
+            if (_attacking || _doorActive)
             {
+                // The selection can end before TryCloseDoor sees the door shut, because a closed door
+                // stops being a candidate. A close this Saboteur had asked for still earns the cooldown.
+                if (_doorActive && _doorEmitted && _detours.TryGetCells(_doorKey.TargetId, out IReadOnlyList<Vector2Int> doorCells)
+                    && doorCells.Count > 0 && _grid.GetNode(doorCells[0]).IsDoorClosed)
+                    _selector.NotifySuccess(_doorKey, ctx.Time);
+
                 _attacking = false;
+                ResetDoorPlan();
                 _needsRoute = true;
                 _holdSent = false;
             }
@@ -210,6 +243,18 @@ namespace ToyFactory.AI.Agents.Saboteur
         {
             if (changedCells == null || changedCells.Count == 0)
                 return;
+
+            if (_doorRoute != null)
+            {
+                for (int i = 0; i < changedCells.Count; i++)
+                {
+                    if (_doorRoute.Contains(changedCells[i]))
+                    {
+                        _doorRouteSent = false;
+                        break;
+                    }
+                }
+            }
 
             if (_routeCells == null)
             {
@@ -242,6 +287,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             _needsRoute = true;
             _holdSent = false;
             _attacking = false;
+            ResetDoorPlan();
         }
 
         /// <inheritdoc />
@@ -374,6 +420,142 @@ namespace ToyFactory.AI.Agents.Saboteur
                 Action = action,
                 DebugState = "AttackPlayer"
             };
+        }
+
+        void ResetDoorPlan()
+        {
+            _doorActive = false;
+            _doorRouteSent = false;
+            _doorEmitted = false;
+            _doorInReach = false;
+            _doorRoute = null;
+        }
+
+        // Carries out the selected CloseDoor: walk to the door, stop within reach and ask the runtime
+        // to close it. Returns false when the plan has ended (the door shut, the Saboteur could not
+        // get there, or the door stayed open), so the caller falls back to patrolling.
+        bool TryCloseDoor(in AgentContext ctx, out AgentIntent intent)
+        {
+            intent = default;
+            ActionKey key = _selector.Current;
+            if (!_detours.TryGetCells(key.TargetId, out IReadOnlyList<Vector2Int> cells) || cells.Count == 0)
+            {
+                EndDoorPlan(key, ctx.Time, false, false);
+                return false;
+            }
+
+            if (_grid.GetNode(cells[0]).IsDoorClosed)
+            {
+                // Only a close this Saboteur asked for is a success worth a cooldown; if someone
+                // else shut it, the door simply stopped being a candidate.
+                EndDoorPlan(key, ctx.Time, _doorEmitted, false);
+                return false;
+            }
+
+            _doorActive = true;
+            _doorKey = key;
+            Vector3 nearest = _grid.CellToWorld(cells[0]);
+            float nearestSqr = float.MaxValue;
+            for (int i = 0; i < cells.Count; i++)
+            {
+                Vector3 world = _grid.CellToWorld(cells[i]);
+                float dx = world.x - ctx.Position.x;
+                float dz = world.z - ctx.Position.z;
+                float sqr = dx * dx + dz * dz;
+                if (sqr < nearestSqr)
+                {
+                    nearestSqr = sqr;
+                    nearest = world;
+                }
+            }
+
+            if (nearestSqr <= DoorReachMetres * DoorReachMetres)
+            {
+                List<Vector3> stop = null;
+                if (!_doorInReach)
+                {
+                    _doorInReach = true;
+                    _doorReachedAt = ctx.Time;
+                    stop = new List<Vector3>();
+                }
+                else if (ctx.Time - _doorReachedAt > CloseDoorTimeoutSeconds)
+                {
+                    EndDoorPlan(key, ctx.Time, false, true);
+                    return false;
+                }
+
+                _doorEmitted = true;
+                intent = new AgentIntent
+                {
+                    Path = stop,
+                    DesiredSpeed = MoveSpeed,
+                    LookTarget = nearest,
+                    Action = AgentAction.CloseDoor,
+                    ActionTargetId = key.TargetId,
+                    DebugState = "CloseDoor"
+                };
+                return true;
+            }
+
+            _doorInReach = false;
+            if (_doorRouteSent)
+            {
+                // The body stops short of the last waypoint, so a finished route that is still out of
+                // reach means the door cannot be got to; do not stand there.
+                if (HasArrivedAt(_doorRoute, ctx.Position))
+                {
+                    EndDoorPlan(key, ctx.Time, false, true);
+                    return false;
+                }
+
+                intent = Keep("CloseDoor");
+                return true;
+            }
+
+            Vector2Int target = cells[0];
+            float best = float.MaxValue;
+            for (int i = 0; i < cells.Count; i++)
+            {
+                float distance = BaseCostModel.OctileDistance(ctx.Cell, cells[i]);
+                if (distance < best)
+                {
+                    best = distance;
+                    target = cells[i];
+                }
+            }
+
+            if (!TryRoute(ctx.Cell, target, out List<Vector2Int> route))
+            {
+                EndDoorPlan(key, ctx.Time, false, true);
+                return false;
+            }
+
+            _doorRoute = route;
+            _doorRouteSent = true;
+            intent = Move(route, "CloseDoor");
+            return true;
+        }
+
+        void EndDoorPlan(ActionKey key, float now, bool succeeded, bool failed)
+        {
+            if (succeeded)
+                _selector.NotifySuccess(key, now);
+            else if (failed)
+                _selector.NotifyFailure(key, now);
+
+            _selector.CancelCurrent();
+            _squad.EndPlan(_identity.AgentId);
+            ResetDoorPlan();
+            _needsRoute = true;
+            _holdSent = false;
+        }
+
+        bool HasArrivedAt(List<Vector2Int> route, Vector3 position)
+        {
+            Vector3 end = _grid.CellToWorld(route[route.Count - 1]);
+            float dx = position.x - end.x;
+            float dz = position.z - end.z;
+            return dx * dx + dz * dz <= ArrivalRadius * ArrivalRadius;
         }
 
         AgentIntent Patrol(Vector2Int currentCell, Vector3 position)
