@@ -181,7 +181,7 @@ The walk and run speeds are the brains' own speeds (Tracker 1.9 / 4.6, Saboteur 
 
 **Wheels and key in code, not clips:** a wheel of radius r rolling distance d turns `d / r` radians (rolling without slipping), so `WheelSpinner` turns each wheel by `Speed · Δt / r` every frame. A clip could only match one speed and would visibly slip at every other. `WindUpKeySpinner` turns the key at 180°/s × energy, so it slows as the Tracker runs down, and at −720°/s while it rewinds. It reads the brain's energy through `IWindUpState` (AI.Core), copied by `AgentController.WindUp`. Wheel and key pivots are never keyed in clips, so the Animator never fights the code.
 
-**Not done yet:** the Guard's tread scroll and Unit 047's cutscene clips. The aim pose is in 2.9, falling apart in 2.10.
+**Not done yet:** the Guard's tread scroll and Unit 047's cutscene clips. The aim pose is in 2.9, the knock-down under "Hit effects, lights and the icons".
 
 ### 2.9 Taking hits and shooting (S4, implemented)
 
@@ -216,18 +216,22 @@ The Captain alternates its two cannons. The aim pose is an **Aim** override laye
 
 **Not done yet:** the Saboteur's door, trap and battery actions (`CloseDoor`, `ArmTrap`, `StealBattery`). Its brain does not output them yet; S2's `Door` already implements `ISabotageable`, so the controller will call `Execute()` on the target once it does. Player health is S2's (`TakeDamage` is still a no-op), so hits are wired but do not hurt yet.
 
-### 2.10 Falling apart and the "?"/"!" icons (S4, implemented)
+### 2.10 Hit effects, lights and the "?"/"!" icons (S4, implemented)
 
-**Falling apart:** `AgentFallApart` on every body. S3's models are rigid parts under pivots, each with a disabled collider, so falling apart needs nothing spawned:
+**Hit effects:** `AgentKnockdown` on every body. They are kept small on purpose: the prototype put a comic word on every hit, which cluttered fights, so here a word only marks going down.
 
 | When | What happens |
 | --- | --- |
-| Knocked out | Every mesh part leaves the body as a physics body on the **Debris** layer, with a small outward burst; the Animator stops |
-| Last 1 s of the knock-out | The parts lose their physics and fly back to their pose under their pivots on a smoothstep, all arriving together |
-| Reboot | Parts re-attached exactly as they were (position, rotation, scale, layer, collider off), Animator back on |
-| Scrapped (Saboteurs) | Falls apart the same way, lies there for 2 s, shrinks away over 1 s, and the agent is switched off (not destroyed, so the spawner's list stays valid) |
+| Each hit (`AgentController.Hit`) | A few sparks at the chest and a 0.15 s squash of the model; no word |
+| Knocked out | A small explosion (a bright flash, hot sparks, a grey puff), one comic word ("KRZZT!") that pops, rises and fades over 1 s, and the body tips over onto its side with a small bounce; the Animator is paused so the pose holds |
+| Reboot | It gets back up over 0.5 s and the Animator runs again |
+| Scrapped (Saboteurs) | The same explosion with "SCRAPPED!", lies there for 1.2 s, then sinks into the floor and shrinks over 0.7 s with a last puff, and the agent is switched off (not destroyed, so the spawner's list stays valid) |
 
-The Debris layer collides with the floor, walls and other debris but not with the player or the agents, so a heap of parts never blocks anyone. `AgentController.KnockOutTimeLeft` tells the component when to start reassembling.
+The tip rotates the model root about the feet and lifts it by part of the body radius so its side rests on the floor. No clip animates the model root, so nothing fights the tilt. The sparks come from one world-space particle system per agent that only emits on demand, with an additive material (`AgentSpark`). The comic words are two pre-rendered sprites (`Textures/FX`), shown as a camera-facing sprite, so no font asset or UI canvas is needed.
+
+**Lights:** `AgentLights` on every body. The Tracker's antenna ball, the Guard's and the Captain's visors and the Saboteur's goggles glow in the prototype's colours (green, cyan, red, green). They sputter out when the agent goes down, and flicker back on at the reboot. The Captain's visor stays dark while it is dormant and flickers on when the wake signal sets `CaptainAwake`, during the Chapter 3 cutscene. S3's visors and goggles are frames, so the glow is a thin lens added inside each one on the body prefab (a box behind the visor frame, a disc on each goggle face); the frame itself stays unlit and S3's model prefab is unchanged. Each agent gets one copy of the emissive `AgentLight` material for all its lenses, which stays SRP Batcher compatible.
+
+The bodies are updated by **Factory Reset/Animation/Update Agent Hit Effects**, which only touches these two components and the lenses. The full animation build adds them too.
 
 **Alert icons:** `AlertIcon` on every body shows a yellow **"?"** (suspicious) or a red **"!"** (has the player) above the agent's head, facing the camera, with a short pop when the level rises. It hides while the agent is down, scrapped or frozen. The level comes from `AgentController.Alert`:
 
@@ -632,6 +636,7 @@ The alarm colours belong to `LightingState`. A Timeline can frame or activate th
 | 2026-10-09 | Shooters turn to the target while aiming and fire only within 25 degrees of it, else drop the shot; each shot kicks the firing arm, torso and head | Firing from wherever the body faces; snapping the body round at the shot | The Captain was seen shooting out of the side of its cannon while walking across the player. Turning during the 0.3 s telegraph is visible and fair (the player sees it line up), and dropping a shot it cannot line up keeps every tracer leaving the barrel. The static aim pose did not read as firing; a kick per shot does | S4 |
 | 2026-10-09 | The Captain's distance fields read a shared neighbour table, single-pair costs use a cost-only A*, and stale goal fields are repaired in place, one per frame | Recompute every stale field in the next decision; spread full recomputes over frames only; ask S2 to add a cost-only mode to `AStarSearch` | The stress test showed 67 frames over 1 ms (worst 15 ms) in normal play and, with a box being pushed, 32 ms at p99, because each grid change recomputed every goal field in one decision. Profiling put 84% of a field's time in neighbour gathering, which only changes with the grid. A field to answer one number wasted the whole level. Spreading full recomputes alone still left 128 frames over 1 ms. The repair touches only the cells behind a change, and a random-change test proves it equals a fresh field. Everything stays in S4's search code, so `GridGraph` and `AStarSearch` are untouched | S4 |
 | 2026-10-09 | The Captain's fight has hysteresis: it starts at 10 m in view, keeps going while in line of sight within 14 m, lasts at least 2 s, and on losing contact pursues to the last-seen spot (new Pursue state) before predicting again | Keep one 10 m threshold with a 0.7 s grace; lock on until the player leaves the room | A player stepping in and out of 10 m flipped it between fighting and backing off, which looked irrational. Separate start and keep thresholds plus a minimum time stop the flipping, the way a thermostat does, and going to the last-seen spot reads as hunting, not retreating. A room lock needs room data the brain does not have, turns the Captain into a plain chaser, and can be beaten by standing in a doorway | S4 |
+| 2026-10-09 | Downed agents tip over with a small explosion and one comic word, their lights go out and flicker back at the reboot; Saboteurs sink away. Replaces falling apart | Keep the fall-apart; copy the prototype's word on every hit | The team found the parts scattering hard to read and the word on every hit distracting. One explosion, one word and a body lying on its side say "down" at a glance, and the lights coming back say "it is back". Ordinary hits keep sparks only. Visor and goggle lenses are added on the body because S3's visors and goggles are frames | S4 |
 
 ## 8. Greybox character model contract (S3)
 
