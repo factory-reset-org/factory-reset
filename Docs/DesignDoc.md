@@ -649,6 +649,29 @@ The beacons change by swapping shared materials, which keeps the SRP Batcher. On
 
 The alarm colours belong to `LightingState`. A Timeline can frame or activate these objects, but a light that both a Timeline and `LightingState` animate would fight, so leave the alarm colour to the signals.
 
+### 6.4 The player's blaster, battery and effects (S2, implemented)
+
+**Health** (`PlayerHealth`). 100 points. Agents reach it through `IPlayerState.TakeDamage` (the Guard hits for 10, the Captain for 15). Hits that arrive outside the Playing state are ignored. At zero the game goes to Results and `LastDamageSourceId` names the agent that did it.
+
+**Battery** (`PlayerBattery`). 20 shots per battery. Reloading (R, or pulling the trigger on an empty battery) takes 1.5 s and uses one spare cell; the player starts with 3 and carries at most 5, so a run has 80 shots without pickups. A battery pickup adds a spare cell, the charger refills everything, and an overcharge cell makes shots free for 8 s. The agents read all of it through `IPlayerState` (`AmmoFraction`, `IsReloading`, `OverchargeTimeLeft`, `LastShotTime`).
+
+**Firing** (`PlayerBlaster`). Holding Attack fires a hitscan ray from the camera pivot, 4 shots a second, 60 m range. The first thing it meets that implements `IDamageable` takes `TakeHit()`, and every shot is a `NoiseLoudness.BlasterShot` noise with source id -1. Overcharged, it fires 13.3 shots a second inside a 1 degree cone and costs nothing. `TryShoot()` is public so tests can fire without a mouse.
+
+**What the player sees.** The hit is decided and applied when the shot is fired; everything below is the picture of it.
+
+| Part | What it is |
+| --- | --- |
+| `ShotBolt` | A bright, nearly white core (about 0.16 m wide, 0.8 m long) with a soft glow about 0.9 m wide on its head, in the shot's colour (cyan, gold when overcharged). The glow is a quad turned to face the camera, so it still shows as a round blob when the bolt flies straight away; a line alone would shrink to nothing. It flies at 90 m/s from the gun's muzzle to the hit point and the glow goes out on arrival. The sizes follow the HTML prototype. |
+| `ImpactBurst` | Six glowing sparks (0.18 to 0.34 m) thrown out from the hit point, with gravity and a linear fade, tinted by the shot. |
+| `BlasterViewModel` | The gun in view: a greybox model from primitives (orange body, steel barrel, teal rings, a glowing cell that shrinks with the charge and turns gold on overcharge), walking bob, recoil kick, a muzzle flash, hidden outside Playing and Paused. It is a prefab with no physics, so S3 can replace the model by setting four references again. |
+| `ObjectPool<T>` | `Runtime/Pooling`, not `Managers/`, so tests can reach it. The player's blaster pools 12 bolts and 8 bursts, wired once when they are made, so firing creates no objects. |
+
+If the wall is closer than the barrel tip, the shot is only the sparks: a bolt from the muzzle would start behind the wall.
+
+**The gun is drawn by its own camera.** It is on the `ViewModel` layer (user layer 16) and a second, overlay camera under the player's camera renders only that layer, after the first, which no longer draws it. So the gun is always on top and can never be inside a wall, however close the player stands. The player's camera also has a near plane of 0.1 m, because at 0.3 m the plane's corners poked through a wall the player stood against at an angle (the body keeps 0.4 m from walls) and showed the empty space behind it.
+
+**Built, not hand-edited.** `BlasterAssetBuilder` (menu *Factory Reset/Blaster/Build Blaster Assets*) writes the glow textures, the additive and gun materials, the three prefabs and the wiring on `Player.prefab`, including the overlay camera and the layer. It rewrites the same assets in place, so it can be run again; only whoever changes the look needs to. Everything it writes is committed.
+
 ## 7. Decision log
 
 | Date | Decision | Alternatives considered | Because | Owner |
@@ -713,6 +736,9 @@ The alarm colours belong to `LightingState`. A Timeline can frame or activate th
 | 2026-10-09 | Unit 047's cutscene animation (sway, breathing, key, head, eyes) is code on its pivots, with story beats cued by shot through a new `CutsceneDirector.ShotStarted` event | Sine-wave clips from the agent animation builder plus Timeline activation tracks for the eyes; markers per beat on each Timeline | The beats belong to shots, and a shot's length depends on the player's reading speed, so a clip or a fixed Timeline time could not stay in step. Cues by shot index survive a Timeline rebuild, live in one list, and need no cross-scene binding. Code on rest poses matches how the wheels, key and kneel already work | S4 |
 | 2026-10-09 | Placeholder subtitles move from IMGUI to a scaled uGUI canvas with a dynamic font | Keep IMGUI with a bigger font; import TextMesh Pro's essentials | IMGUI draws a fixed-size bitmap font that pixelates when the view is scaled; a canvas scaler and a dynamic font draw the glyphs at their final size. TextMesh Pro would add a shared asset folder for a placeholder that S3's UI replaces | S4 |
 | 2026-10-09 | The controller carries out door, trap and battery actions through an id registry in `Interfaces` (`SabotageTargets`), answers every request exactly once through an optional `IActionFeedback`, and tells a brain its health through an optional `IHealthAware`; melee moves deal their damage at contact (Saboteur 10, Tracker 0) | Brains find props themselves; `FindObjectOfType` by id; put health in `AgentContext`; damage when the move starts; give the Tracker's pounce damage | Brains are pure C# and the props live in another scene, so ids are the only link, and a registry filled by the props costs one dictionary read. One answer per request (including failures) means the Saboteur's claims never wait forever. Optional interfaces leave `AgentContext` and the other brains unchanged. Damage at contact makes the wind-up a telegraph. The Tracker's design has no contact damage, so its value stays 0 until S1 decides. Agreed with S3; new interfaces after the freeze, so all four reviewers | S4 (agreed with S3 on 2026-10-09) |
+| 2026-10-09 | The player's gun is drawn by an overlay camera on its own layer, and the main camera's near plane is 0.1 m | Pull the gun back when a wall is near (it reaches 1.3 m ahead of the camera and cannot fit in front of a camera 0.4 m from a wall); keep the 0.3 m near plane (its corners cut through walls the player stands against at an angle) | The prototype draws its gun in a separate scene for the same reason. A second camera makes the gun always on top and never inside anything, and costs one layer (16, `ViewModel`) | S2 |
+| 2026-10-09 | A blaster shot is a hitscan hit with a flying picture of it (core, camera-facing glow, spark burst) from pools, sized like the prototype's | Real projectiles like the prototype (damage would arrive late and miss moving agents); a thin line tracer (it shrank to nothing when flying straight away, and looked small) | The hit has to be instant and exact for the Guard's and the Captain's logic, and S4's agent hit sparks are instant. The bolt at 90 m/s is slow enough to be seen and the sparks appear where it lands | S2 |
+| 2026-10-09 | `ObjectPool<T>` lives in `Runtime/Pooling`, not `Managers/` as the plan has it | `Managers/ObjectPool` | `Managers/` is the default assembly, which no test assembly can reference; in `Runtime` the pool is covered by PlayMode tests | S2 |
 
 ## 8. Greybox character model contract (S3)
 
