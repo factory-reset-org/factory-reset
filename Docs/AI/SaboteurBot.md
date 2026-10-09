@@ -61,7 +61,7 @@ Emergency scoring does not override eligibility. Flee interrupts commitment earl
 | C | orange | |
 | D | pink | |
 
-Each instance owns its own brain object, with a numeric agent id (the claim owner id) and a letter. The brain does not know its colour: the tint is a model concern (S3 model; the tint component's location is to be agreed with S4). The letter and agent id must be given to the brain at spawn. `SpawnPoint` currently stores only `AgentType` and `IAgentState` has no instance id, so this is a **needed handoff from S4** (also needed for the HUD squad dots). Spawn rooms for A-D are **to be confirmed** with S1/S4.
+Each instance owns its own brain object, with a numeric agent id (the claim owner id) and a letter. The brain does not know its colour: the tint is a model concern (S3 model; the tint component's location is to be agreed with S4). The spawner gives the brain its letter and agent id from the spawn point's squad slot and its spawn-order id (`AgentIdentity`, also on `IAgentState.Identity` for the HUD squad dots); see Spawn hookup.
 
 ### Target claims
 
@@ -202,9 +202,9 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 
 | Need | Owner | Status |
 | --- | --- | --- |
-| `TargetClaims` reachable through `WorldBlackboard` | S2 | Class and tests exist; not on the blackboard yet. Tests construct it directly. |
+| `TargetClaims` reachable through `WorldBlackboard` | S2 | Done: `WorldBlackboard.Claims`, passed to the brain by the spawner. |
 | Player state (position, cell, ammo, overcharge, alive, aiming), door/trap/battery state | S2 | Not on the blackboard. Fake snapshots in tests. |
-| Pathfinder, grid and instance identity (letter, claim id, keycard carrier) given at spawn; an id on `IAgentState` | S4 (with S1 `GridManager`) | Not available. Constructor injection in tests. |
+| Pathfinder, grid and instance identity (letter, claim id, keycard carrier) given at spawn; an id on `IAgentState` | S4 (with S1 `GridManager`) | Done: `BrainSetup` and `AgentIdentity` (`IAgentState.Identity`); see Spawn hookup. |
 | Action execution and success/failure feedback | S4 controller, S2 targets | `AgentController` applies paths only. |
 | `ISabotageable` on traps and batteries | S2 | `Door` only. |
 | `ObjectiveTargets`; `PredictedGoal` with confidence | S1; S4 | Not published. Fixed test objective. |
@@ -262,18 +262,23 @@ Stun calls `EndPlan` and destruction calls `OnDestroyed`, so a stunned or destro
 
 ### Spawn hookup
 
-`AgentSpawner.CreateBrain(point, identity)` now receives an `AgentIdentity` (spawn-order id and squad index), and its Saboteur case is S3's to replace. It still returns `MockPathProvider` until the shared grid and claims exist. The Saboteur case will be:
+`AgentSpawner.CreateBrain(point, setup)` builds the Saboteur brain from the `BrainSetup` the spawner passes to every case. The Saboteur case is S3's to replace (S4 confirmed in writing on 4 October):
 
 ```csharp
-new SaboteurBrain(
-    new SaboteurIdentity(identity.Id, (SaboteurLetter)identity.SquadIndex),
-    grid,                     // the shared GridGraph (S4's grid-cell branch, using S1's GridManager)
-    pathfinder,               // one shared IPathfinder over that grid
-    claims,                   // the one TargetClaims shared by all four (S2, via the blackboard)
-    point.GetPatrolPositions());
+if (setup.HasGrid && setup.Identity.IsInSquad && setup.Identity.SquadIndex <= (int)SaboteurLetter.D)
+    return new SaboteurBrain(
+        new SaboteurIdentity(setup.Identity.Id, (SaboteurLetter)setup.Identity.SquadIndex),
+        setup.Grid, setup.Pathfinder, setup.Blackboard.Claims, setup.PatrolPoints);
+return new MockPathProvider(setup.PatrolPoints);
 ```
 
-`SaboteurIdentity` rejects a squad index outside A-D, so a Saboteur spawn point without a squad slot fails loudly instead of becoming a second Saboteur A. The four squad slots are set on the spawn points in `Agents.unity`, which is S4's scene. Until the grid and claims exist the Saboteurs keep the mock brain, and in-scene behaviour is untested.
+- The claim owner id is the spawn-order `AgentIdentity.Id`, and the letter is the spawn point's squad slot (0 = A to 3 = D). The four slots are set on the spawn points in `Agents.unity` (S4's scene) and `Test_AgentSpawner`.
+- All four brains get the blackboard's one `TargetClaims`, so `SquadCoordinator.For(claims)` makes them one squad. Each level load builds a new blackboard, so a new squad.
+- The grid and pathfinder are the level grid and the one `AStarSearch` the spawner shares with every brain.
+- Without a grid, or for a Saboteur spawn point with no squad slot or a slot past D, the case keeps the mock. A mis-set spawn point never becomes a second Saboteur A, and it does not stop the other agents spawning, as an exception from `SaboteurIdentity` inside `SpawnAll` would. The spawner already logs an error when two Saboteur spawn points share a slot.
+- The keycard item id stays at its default (0). S2's `KeycardDrop` places the keycard from `AgentEvents.OnDestroyed`, and nothing in the runtime calls `IDropsItems.GetDrops` yet.
+
+Checked on 9 October 2026 in batch-mode Play, in `Test_AgentSpawner` (6 s) and in `Agents.unity` loaded from Bootstrap with the intro skipped (8 s): all four Saboteurs ran `SaboteurBrain` as A-D, reported the Patrol state and logged no console errors. With the candidate list still Idle only (see Limits), this checks the wiring, not the sabotage behaviour.
 
 ## Architecture rationale
 
