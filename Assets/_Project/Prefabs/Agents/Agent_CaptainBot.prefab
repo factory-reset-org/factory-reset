@@ -16,6 +16,7 @@ GameObject:
   - component: {fileID: 4788375802282383868}
   - component: {fileID: 226665710546748617}
   - component: {fileID: 5280218360834695168}
+  - component: {fileID: 5345454812785796067}
   m_Layer: 11
   m_Name: Agent_CaptainBot
   m_TagString: Untagged
@@ -167,6 +168,21 @@ MonoBehaviour:
   popSeconds: 0.25
   suspiciousColour: {r: 1, g: 0.85, b: 0.2, a: 1}
   alertColour: {r: 1, g: 0.25, b: 0.2, a: 1}
+--- !u!114 &5345454812785796067
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2423681692945176304}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9f78bb11c4008474294bbb5c5dcd8e71, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Movement.PlayerStandOff
+  standOff: 2
+  release: 2.3
+  maxHeightDifference: 1.5
 --- !u!1001 &6301709427974699168
 PrefabInstance:
   m_ObjectHideFlags: 0

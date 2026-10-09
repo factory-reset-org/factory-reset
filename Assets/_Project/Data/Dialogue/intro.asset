@@ -22,8 +22,13 @@ MonoBehaviour:
       condition: 0
   - lines:
     - speaker: 0
-      text: Tracker units online. Guard units online.
+      text: Tracker units online.
       condition: 0
+  - lines:
+    - speaker: 0
+      text: Guard units online.
+      condition: 0
+  - lines:
     - speaker: 0
       text: Saboteur squad online. All four of you. Hunt anything that does not belong.
       condition: 0

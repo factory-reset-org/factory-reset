@@ -1,21 +1,5 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!114 &-8451386831986305923
-MonoBehaviour:
-  m_ObjectHideFlags: 1
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 90fb794a295e73545af71bcdb7375791, type: 3}
-  m_Name: CinemachineShot
-  m_EditorClassIdentifier: Unity.Cinemachine::Unity.Cinemachine.CinemachineShot
-  DisplayName: 
-  VirtualCamera:
-    exposedName: ch2.2.from
-    defaultValue: {fileID: 0}
 --- !u!114 &-8378133105184045188
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -44,80 +28,7 @@ MonoBehaviour:
   m_Time: 5.193420886993408
   shot: 1
   waitForLines: 0
---- !u!114 &-6614548878394053820
-MonoBehaviour:
-  m_ObjectHideFlags: 1
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 35b9e472ae61f1d46b140d0b4757daa2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.ShotEndMarker
-  m_Time: 25.827631664276122
---- !u!114 &-6559471436082243368
-MonoBehaviour:
-  m_ObjectHideFlags: 1
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2a16748d9461eae46a725db9776d5390, type: 3}
-  m_Name: Markers
-  m_EditorClassIdentifier: Unity.Timeline::UnityEngine.Timeline.MarkerTrack
-  m_Version: 3
-  m_AnimClip: {fileID: 0}
-  m_Locked: 0
-  m_Muted: 0
-  m_CustomPlayableFullTypename: 
-  m_Curves: {fileID: 0}
-  m_Parent: {fileID: 11400000}
-  m_Children: []
-  m_Clips: []
-  m_Markers:
-    m_Objects:
-    - {fileID: 1119429276169464923}
-    - {fileID: 465150444332213697}
-    - {fileID: -7326207402775323278}
-    - {fileID: -8378133105184045188}
-    - {fileID: -5861705332060867119}
-    - {fileID: -6614548878394053820}
---- !u!114 &-6014784789437951737
-MonoBehaviour:
-  m_ObjectHideFlags: 1
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 90fb794a295e73545af71bcdb7375791, type: 3}
-  m_Name: CinemachineShot
-  m_EditorClassIdentifier: Unity.Cinemachine::Unity.Cinemachine.CinemachineShot
-  DisplayName: 
-  VirtualCamera:
-    exposedName: ch2.1.to
-    defaultValue: {fileID: 0}
---- !u!114 &-5861705332060867119
-MonoBehaviour:
-  m_ObjectHideFlags: 1
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e523b942c83da004c8bac92420ee51e6, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.DialogueMarker
-  m_Time: 14.355263233184814
-  shot: 2
-  waitForLines: 0
---- !u!114 &-3086933154524497374
+--- !u!114 &-6671191096184417269
 MonoBehaviour:
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
@@ -141,10 +52,10 @@ MonoBehaviour:
   - m_Version: 1
     m_Start: 0
     m_ClipIn: 0
-    m_Asset: {fileID: 286691092570271656}
+    m_Asset: {fileID: -5683672544147642625}
     m_Duration: 5.093420886993409
     m_TimeScale: 1
-    m_ParentTrack: {fileID: -3086933154524497374}
+    m_ParentTrack: {fileID: -6671191096184417269}
     m_EaseInDuration: 0
     m_EaseOutDuration: 0
     m_BlendInDuration: -1
@@ -192,10 +103,10 @@ MonoBehaviour:
   - m_Version: 1
     m_Start: 0.1
     m_ClipIn: 0
-    m_Asset: {fileID: 672471833411227374}
+    m_Asset: {fileID: -141902236011512163}
     m_Duration: 5.093420886993409
     m_TimeScale: 1
-    m_ParentTrack: {fileID: -3086933154524497374}
+    m_ParentTrack: {fileID: -6671191096184417269}
     m_EaseInDuration: 0
     m_EaseOutDuration: 0
     m_BlendInDuration: 4.993420886993409
@@ -243,10 +154,10 @@ MonoBehaviour:
   - m_Version: 1
     m_Start: 5.193420886993408
     m_ClipIn: 0
-    m_Asset: {fileID: -2529402249050850627}
+    m_Asset: {fileID: 8233689723330812013}
     m_Duration: 9.061842346191407
     m_TimeScale: 1
-    m_ParentTrack: {fileID: -3086933154524497374}
+    m_ParentTrack: {fileID: -6671191096184417269}
     m_EaseInDuration: 0
     m_EaseOutDuration: 0
     m_BlendInDuration: -1
@@ -290,14 +201,14 @@ MonoBehaviour:
     m_PreExtrapolationMode: 0
     m_PostExtrapolationTime: 0
     m_PreExtrapolationTime: 0
-    m_DisplayName: '2 from: High pan across the Painting Room to the Guard'
+    m_DisplayName: '2 from: High pan across the Painting Room to the Guard''s ground'
   - m_Version: 1
     m_Start: 5.293420886993408
     m_ClipIn: 0
-    m_Asset: {fileID: -6014784789437951737}
+    m_Asset: {fileID: 3416896217621389209}
     m_Duration: 9.061842346191407
     m_TimeScale: 1
-    m_ParentTrack: {fileID: -3086933154524497374}
+    m_ParentTrack: {fileID: -6671191096184417269}
     m_EaseInDuration: 0
     m_EaseOutDuration: 0
     m_BlendInDuration: 8.961842346191407
@@ -341,14 +252,14 @@ MonoBehaviour:
     m_PreExtrapolationMode: 0
     m_PostExtrapolationTime: 0
     m_PreExtrapolationTime: 0
-    m_DisplayName: '2 to: High pan across the Painting Room to the Guard'
+    m_DisplayName: '2 to: High pan across the Painting Room to the Guard''s ground'
   - m_Version: 1
     m_Start: 14.355263233184814
     m_ClipIn: 0
-    m_Asset: {fileID: -8451386831986305923}
+    m_Asset: {fileID: -3834201805565938408}
     m_Duration: 11.422368431091307
     m_TimeScale: 1
-    m_ParentTrack: {fileID: -3086933154524497374}
+    m_ParentTrack: {fileID: -6671191096184417269}
     m_EaseInDuration: 0
     m_EaseOutDuration: 0
     m_BlendInDuration: -1
@@ -392,14 +303,14 @@ MonoBehaviour:
     m_PreExtrapolationMode: 0
     m_PostExtrapolationTime: 0
     m_PreExtrapolationTime: 0
-    m_DisplayName: '3 from: The colour terminal in the middle of the room'
+    m_DisplayName: '3 from: Pan from a spinning target down to the colour terminal'
   - m_Version: 1
     m_Start: 14.455263233184814
     m_ClipIn: 0
-    m_Asset: {fileID: 5371797583112984040}
+    m_Asset: {fileID: 7266601698484584805}
     m_Duration: 11.422368431091309
     m_TimeScale: 1
-    m_ParentTrack: {fileID: -3086933154524497374}
+    m_ParentTrack: {fileID: -6671191096184417269}
     m_EaseInDuration: 0
     m_EaseOutDuration: 0
     m_BlendInDuration: 11.322368431091308
@@ -443,11 +354,11 @@ MonoBehaviour:
     m_PreExtrapolationMode: 0
     m_PostExtrapolationTime: 0
     m_PreExtrapolationTime: 0
-    m_DisplayName: '3 to: The colour terminal in the middle of the room'
+    m_DisplayName: '3 to: Pan from a spinning target down to the colour terminal'
   m_Markers:
     m_Objects: []
   TrackPriority: 0
---- !u!114 &-2529402249050850627
+--- !u!114 &-6614548878394053820
 MonoBehaviour:
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
@@ -456,35 +367,26 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 90fb794a295e73545af71bcdb7375791, type: 3}
-  m_Name: CinemachineShot
-  m_EditorClassIdentifier: Unity.Cinemachine::Unity.Cinemachine.CinemachineShot
-  DisplayName: 
-  VirtualCamera:
-    exposedName: ch2.1.from
-    defaultValue: {fileID: 0}
---- !u!114 &11400000
+  m_Script: {fileID: 11500000, guid: 35b9e472ae61f1d46b140d0b4757daa2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.ShotEndMarker
+  m_Time: 25.827631664276122
+--- !u!114 &-5861705332060867119
 MonoBehaviour:
-  m_ObjectHideFlags: 0
+  m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: bfda56da833e2384a9677cd3c976a436, type: 3}
-  m_Name: ch2
-  m_EditorClassIdentifier: Unity.Timeline::UnityEngine.Timeline.TimelineAsset
-  m_Version: 0
-  m_Tracks:
-  - {fileID: -3086933154524497374}
-  m_FixedDuration: 25.877631664276123
-  m_EditorSettings:
-    m_Framerate: 60
-    m_ScenePreview: 1
-  m_DurationMode: 1
-  m_MarkerTrack: {fileID: -6559471436082243368}
---- !u!114 &286691092570271656
+  m_Script: {fileID: 11500000, guid: e523b942c83da004c8bac92420ee51e6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.DialogueMarker
+  m_Time: 14.355263233184814
+  shot: 2
+  waitForLines: 0
+--- !u!114 &-5683672544147642625
 MonoBehaviour:
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
@@ -500,7 +402,7 @@ MonoBehaviour:
   VirtualCamera:
     exposedName: ch2.0.from
     defaultValue: {fileID: 0}
---- !u!114 &465150444332213697
+--- !u!114 &-4499954913927566695
 MonoBehaviour:
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
@@ -509,11 +411,73 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 35b9e472ae61f1d46b140d0b4757daa2, type: 3}
+  m_Script: {fileID: 11500000, guid: e523b942c83da004c8bac92420ee51e6, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.ShotEndMarker
-  m_Time: 5.143420886993408
---- !u!114 &672471833411227374
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.DialogueMarker
+  m_Time: 5.193420886993408
+  shot: 1
+  waitForLines: 0
+--- !u!114 &-4046753142951036030
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e523b942c83da004c8bac92420ee51e6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.DialogueMarker
+  m_Time: 0
+  shot: 0
+  waitForLines: 0
+--- !u!114 &-3834201805565938408
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 90fb794a295e73545af71bcdb7375791, type: 3}
+  m_Name: CinemachineShot
+  m_EditorClassIdentifier: Unity.Cinemachine::Unity.Cinemachine.CinemachineShot
+  DisplayName: 
+  VirtualCamera:
+    exposedName: ch2.2.from
+    defaultValue: {fileID: 0}
+--- !u!114 &-827305864503619902
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2a16748d9461eae46a725db9776d5390, type: 3}
+  m_Name: Markers
+  m_EditorClassIdentifier: Unity.Timeline::UnityEngine.Timeline.MarkerTrack
+  m_Version: 3
+  m_AnimClip: {fileID: 0}
+  m_Locked: 0
+  m_Muted: 0
+  m_CustomPlayableFullTypename: 
+  m_Curves: {fileID: 0}
+  m_Parent: {fileID: 11400000}
+  m_Children: []
+  m_Clips: []
+  m_Markers:
+    m_Objects:
+    - {fileID: -4046753142951036030}
+    - {fileID: 4577917806414082886}
+    - {fileID: -4499954913927566695}
+    - {fileID: 4317397804833471406}
+    - {fileID: 2063701165031976378}
+    - {fileID: 3246254183684356064}
+--- !u!114 &-141902236011512163
 MonoBehaviour:
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
@@ -529,6 +493,40 @@ MonoBehaviour:
   VirtualCamera:
     exposedName: ch2.0.to
     defaultValue: {fileID: 0}
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bfda56da833e2384a9677cd3c976a436, type: 3}
+  m_Name: ch2
+  m_EditorClassIdentifier: Unity.Timeline::UnityEngine.Timeline.TimelineAsset
+  m_Version: 0
+  m_Tracks:
+  - {fileID: -6671191096184417269}
+  m_FixedDuration: 25.877631664276123
+  m_EditorSettings:
+    m_Framerate: 60
+    m_ScenePreview: 1
+  m_DurationMode: 1
+  m_MarkerTrack: {fileID: -827305864503619902}
+--- !u!114 &465150444332213697
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 35b9e472ae61f1d46b140d0b4757daa2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.ShotEndMarker
+  m_Time: 5.143420886993408
 --- !u!114 &1119429276169464923
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -544,7 +542,77 @@ MonoBehaviour:
   m_Time: 0
   shot: 0
   waitForLines: 0
---- !u!114 &5371797583112984040
+--- !u!114 &2063701165031976378
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e523b942c83da004c8bac92420ee51e6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.DialogueMarker
+  m_Time: 14.355263233184814
+  shot: 2
+  waitForLines: 0
+--- !u!114 &3246254183684356064
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 35b9e472ae61f1d46b140d0b4757daa2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.ShotEndMarker
+  m_Time: 25.827631664276122
+--- !u!114 &3416896217621389209
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 90fb794a295e73545af71bcdb7375791, type: 3}
+  m_Name: CinemachineShot
+  m_EditorClassIdentifier: Unity.Cinemachine::Unity.Cinemachine.CinemachineShot
+  DisplayName: 
+  VirtualCamera:
+    exposedName: ch2.1.to
+    defaultValue: {fileID: 0}
+--- !u!114 &4317397804833471406
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 35b9e472ae61f1d46b140d0b4757daa2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.ShotEndMarker
+  m_Time: 14.305263233184814
+--- !u!114 &4577917806414082886
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 35b9e472ae61f1d46b140d0b4757daa2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.ShotEndMarker
+  m_Time: 5.143420886993408
+--- !u!114 &7266601698484584805
 MonoBehaviour:
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
@@ -559,4 +627,20 @@ MonoBehaviour:
   DisplayName: 
   VirtualCamera:
     exposedName: ch2.2.to
+    defaultValue: {fileID: 0}
+--- !u!114 &8233689723330812013
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 90fb794a295e73545af71bcdb7375791, type: 3}
+  m_Name: CinemachineShot
+  m_EditorClassIdentifier: Unity.Cinemachine::Unity.Cinemachine.CinemachineShot
+  DisplayName: 
+  VirtualCamera:
+    exposedName: ch2.1.from
     defaultValue: {fileID: 0}

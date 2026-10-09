@@ -38,5 +38,8 @@ MonoBehaviour:
       text: You already knocked the keycard loose from Saboteur A. Nice. Go grab it.
       condition: 2
     - speaker: 1
+      text: And you already have it, straight off Saboteur A. Nice work.
+      condition: 3
+    - speaker: 1
       text: Then read the relay board up there and hit the relays in that order. Wrong order sets off the alarm.
       condition: 0

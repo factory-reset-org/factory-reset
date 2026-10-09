@@ -16,21 +16,39 @@ namespace ToyFactory.Tests.EditMode
         const float WallMargin = 0.5f;
         const float ObstacleMargin = 0.3f;
 
-        // Obstacles from Docs/LevelLayout.md: centre (x, z), footprint (width x, depth z), top height.
+        // Obstacles as built in Env.unity (Docs/LevelLayout.md, rooms as in the prototype):
+        // centre (x, z), footprint (width x, depth z), top height. Cores float above servers 1, 2 and 9.
         static readonly (Vector2 centre, Vector2 size, float top, string name)[] Obstacles =
         {
-            (new Vector2(7f, 9f), new Vector2(2f, 2f), 3.1f, "Assembly press 1"),
-            (new Vector2(14f, 10f), new Vector2(2f, 2f), 3.1f, "Assembly press 2"),
-            (new Vector2(26f, 6f), new Vector2(2f, 1f), 1.2f, "Painting cover 1"),
-            (new Vector2(35f, 6f), new Vector2(2f, 1f), 1.2f, "Painting cover 2"),
-            (new Vector2(27f, 15f), new Vector2(2f, 1f), 1.2f, "Painting cover 3"),
-            (new Vector2(36f, 15f), new Vector2(2f, 1f), 1.2f, "Painting cover 4"),
-            (new Vector2(28.5f, 25.5f), new Vector2(9f, 1f), 3.2f, "Storage shelf 1"),
-            (new Vector2(29.5f, 31f), new Vector2(9f, 1f), 3.2f, "Storage shelf 2"),
-            (new Vector2(28.5f, 36.5f), new Vector2(9f, 1f), 3.2f, "Storage shelf 3"),
-            (new Vector2(5f, 35f), new Vector2(1.5f, 1.5f), 3.8f, "Control pillar 1 and its core"),
-            (new Vector2(16f, 35f), new Vector2(1.5f, 1.5f), 3.8f, "Control pillar 2 and its core"),
-            (new Vector2(10.5f, 28.5f), new Vector2(1.5f, 1.5f), 3.8f, "Control pillar 3 and its core"),
+            (new Vector2(3.5f, 11.5f), new Vector2(2f, 2f), 2.8f, "Assembly press 1"),
+            (new Vector2(5.6f, 11.5f), new Vector2(2f, 2f), 2.8f, "Assembly press 2"),
+            (new Vector2(24.6f, 17.5f), new Vector2(2f, 2f), 3.8f, "Painting tank 1 and its target"),
+            (new Vector2(37.4f, 17.5f), new Vector2(2f, 2f), 3.8f, "Painting tank 2 and its target"),
+            (new Vector2(27.4f, 11.5f), new Vector2(2f, 2f), 3.8f, "Painting tank 3 and its target"),
+            (new Vector2(38.9f, 5.5f), new Vector2(2f, 2f), 3.8f, "Painting tank 4 and its target"),
+            (new Vector2(23.1f, 1.5f), new Vector2(2f, 2f), 2.4f, "Painting tank 5"),
+            (new Vector2(31f, 10.5f), new Vector2(1.4f, 1.2f), 2.8f, "Colour terminal"),
+            (new Vector2(32.42f, 37.5f), new Vector2(5.72f, 1f), 3.2f, "Storage shelf 1"),
+            (new Vector2(24.56f, 37.5f), new Vector2(4.29f, 1f), 3.2f, "Storage shelf 2"),
+            (new Vector2(36f, 33.5f), new Vector2(4.29f, 1f), 3.2f, "Storage shelf 3"),
+            (new Vector2(24.56f, 33.5f), new Vector2(4.29f, 1f), 3.2f, "Storage shelf 4"),
+            (new Vector2(37.43f, 29.5f), new Vector2(4.29f, 1f), 3.2f, "Storage shelf 5"),
+            (new Vector2(29.56f, 29.5f), new Vector2(5.72f, 1f), 3.2f, "Storage shelf 6"),
+            (new Vector2(36.71f, 25.5f), new Vector2(2.86f, 1f), 3.2f, "Storage shelf 7"),
+            (new Vector2(25.27f, 25.5f), new Vector2(2.86f, 1f), 3.2f, "Storage shelf 8"),
+            (new Vector2(16.93f, 38f), new Vector2(1.3f, 1.5f), 4.3f, "Control server 1 and core 1"),
+            (new Vector2(4.06f, 38f), new Vector2(1.3f, 1.5f), 4.3f, "Control server 2 and core 2"),
+            (new Vector2(14.07f, 34f), new Vector2(1.3f, 1.5f), 2.8f, "Control server 3"),
+            (new Vector2(12.64f, 34f), new Vector2(1.3f, 1.5f), 2.8f, "Control server 4"),
+            (new Vector2(8.35f, 34f), new Vector2(1.3f, 1.5f), 2.8f, "Control server 5"),
+            (new Vector2(6.92f, 34f), new Vector2(1.3f, 1.5f), 2.8f, "Control server 6"),
+            (new Vector2(14.07f, 28f), new Vector2(1.3f, 1.5f), 2.8f, "Control server 7"),
+            (new Vector2(12.64f, 28f), new Vector2(1.3f, 1.5f), 2.8f, "Control server 8"),
+            (new Vector2(8.35f, 28f), new Vector2(1.3f, 1.5f), 4.3f, "Control server 9 and core 3"),
+            (new Vector2(6.92f, 28f), new Vector2(1.3f, 1.5f), 2.8f, "Control server 10"),
+            (new Vector2(16.93f, 24f), new Vector2(1.3f, 1.5f), 2.8f, "Control server 11"),
+            (new Vector2(4.06f, 24f), new Vector2(1.3f, 1.5f), 2.8f, "Control server 12"),
+            (new Vector2(10.5f, 31f), new Vector2(2f, 1.6f), 2f, "Control console"),
         };
 
         static IEnumerable<(CutsceneShot shot, Vector3 camera, string pose)> Cameras(ShotFraming framing)
@@ -82,10 +100,10 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void FollowCamerasStayCloseToUnit047()
+        public void FollowCamerasStayCloseEnoughToUnit047ToStayInTheRoom()
         {
             foreach (var (shot, camera, pose) in Cameras(ShotFraming.FollowActor))
-                Assert.LessOrEqual(new Vector2(camera.x, camera.z).magnitude, 9.5f, Name(shot, pose));
+                Assert.LessOrEqual(new Vector2(camera.x, camera.z).magnitude, CutsceneShotPlan.MaxFollowDistance, Name(shot, pose));
         }
 
         [Test]

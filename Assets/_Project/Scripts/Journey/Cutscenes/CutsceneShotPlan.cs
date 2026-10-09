@@ -110,48 +110,58 @@ namespace ToyFactory.Journey.Cutscenes
 
         static readonly CutsceneShot[] Shots =
         {
-            // ---- Intro: the factory wakes up, Unit 047 fails its quality check, Pip calls in.
+            // ---- Intro: the factory wakes up, Factory OS calls each kind of toy online,
+            // Unit 047 fails its quality check, Pip calls in. Agents are at their spawns.
             new CutsceneShot("intro", 0, "Wide high shot across the Assembly Floor", ShotRoom.Assembly, ShotFraming.World,
                 new Vector3(18.5f, 4.6f, 2f), new Vector3(17f, 4.3f, 3.5f), new Vector3(5f, 0.5f, 16f), new Vector3(5f, 0.5f, 14.5f), 60f),
             new CutsceneShot("intro", 1, "Close-up on the Tracker at its spawn", ShotRoom.Assembly, ShotFraming.World,
                 new Vector3(7.6f, 1.2f, 14.6f), new Vector3(6.8f, 1.05f, 14.4f), new Vector3(4f, 0.7f, 14f), new Vector3(4f, 0.7f, 14f), 50f),
-            new CutsceneShot("intro", 2, "Push-in on Unit 047's face", ShotRoom.Assembly, ShotFraming.FollowActor,
+            new CutsceneShot("intro", 2, "Low shot of the Guard from in front, at its spawn", ShotRoom.Painting, ShotFraming.World,
+                new Vector3(31.8f, 1.7f, 11.9f), new Vector3(31.4f, 1.6f, 12.6f), new Vector3(31f, 1.5f, 15f), new Vector3(31f, 1.6f, 15f), 50f),
+            new CutsceneShot("intro", 3, "Saboteur B at its spawn by the pressure plate", ShotRoom.Assembly, ShotFraming.World,
+                new Vector3(13.8f, 2.6f, 16.2f), new Vector3(14.4f, 2.3f, 16.6f), new Vector3(17f, 1f, 17f), new Vector3(17f, 1f, 17f), 55f),
+            new CutsceneShot("intro", 4, "Push-in on Unit 047's face", ShotRoom.Assembly, ShotFraming.FollowActor,
                 new Vector3(0f, 2f, 4.6f), new Vector3(0f, 1.9f, 3.4f), new Vector3(0f, 1.85f, 0f), new Vector3(0f, 1.85f, 0f), 45f,
                 looksAtActor: true),
-            new CutsceneShot("intro", 3, "Beside Unit 047, across the floor to the conveyor lever", ShotRoom.Assembly, ShotFraming.FollowActor,
-                new Vector3(-2.5f, 2.6f, -1.5f), new Vector3(-2f, 2.4f, -1f), new Vector3(2f, 1f, 14.5f), new Vector3(2f, 1f, 14.5f), 60f),
+            new CutsceneShot("intro", 5, "Beside Unit 047, down the Assembly Floor to the belts", ShotRoom.Assembly, ShotFraming.FollowActor,
+                new Vector3(-2.5f, 2.6f, -1.5f), new Vector3(-2f, 2.4f, -1f), new Vector3(10f, 1f, 16f), new Vector3(10f, 1f, 16f), 60f),
 
-            // ---- Chapter 2: switch one is back; the Painting Room and its terminal.
+            // ---- Chapter 2: switch one is back; the Painting Room, its targets and terminal.
             new CutsceneShot("ch2", 0, "The restored Assembly switch", ShotRoom.Assembly, ShotFraming.World,
                 new Vector3(5f, 2.2f, 7f), new Vector3(4.6f, 2.4f, 6.5f), new Vector3(1.5f, 1.2f, 4f), new Vector3(1.5f, 1.1f, 4f), 55f),
-            new CutsceneShot("ch2", 1, "High pan across the Painting Room to the Guard", ShotRoom.Painting, ShotFraming.World,
-                new Vector3(23f, 4.6f, 2f), new Vector3(26f, 4.2f, 4.5f), new Vector3(36f, 1.5f, 15f), new Vector3(36f, 1.5f, 15f), 60f),
-            new CutsceneShot("ch2", 2, "The colour terminal in the middle of the room", ShotRoom.Painting, ShotFraming.World,
-                new Vector3(35.5f, 2.6f, 5f), new Vector3(33.8f, 2.4f, 7.2f), new Vector3(31f, 1.4f, 10.5f), new Vector3(31f, 1.4f, 10.5f), 50f),
+            new CutsceneShot("ch2", 1, "High pan across the Painting Room to the Guard's ground", ShotRoom.Painting, ShotFraming.World,
+                new Vector3(24.5f, 4.6f, 3f), new Vector3(26.5f, 4.3f, 5f), new Vector3(31f, 1.4f, 15f), new Vector3(31f, 1.4f, 15f), 60f),
+            new CutsceneShot("ch2", 2, "Pan from a spinning target down to the colour terminal", ShotRoom.Painting, ShotFraming.World,
+                new Vector3(35.5f, 2.6f, 5f), new Vector3(33.8f, 2.4f, 7.2f), new Vector3(37.4f, 3.55f, 17.5f), new Vector3(31f, 1.4f, 10.5f), 55f),
 
             // ---- Chapter 3: the Captain wakes, the Control Room unlocks, the Storage vault.
-            new CutsceneShot("ch3", 0, "Looking up at the Captain as it wakes", ShotRoom.Control, ShotFraming.World,
-                new Vector3(10.5f, 1.8f, 31.2f), new Vector3(10.5f, 2f, 32.2f), new Vector3(10.5f, 2.9f, 36f), new Vector3(10.5f, 3f, 36f), 50f,
+            new CutsceneShot("ch3", 0, "Looking up at the Captain through the server row as it wakes", ShotRoom.Control, ShotFraming.World,
+                new Vector3(10.5f, 1.2f, 32.3f), new Vector3(10.5f, 1.3f, 32.8f), new Vector3(10.5f, 1.6f, 36f), new Vector3(10.5f, 1.8f, 36f), 58f,
                 signals: CutsceneSignals.CaptainWake),
             new CutsceneShot("ch3", 1, "The Storage-Control door unlocking, from the Storage side", ShotRoom.Storage, ShotFraming.World,
                 new Vector3(23f, 3.2f, 26.5f), new Vector3(22.6f, 2.7f, 27.8f), new Vector3(20.75f, 2f, 31f), new Vector3(20.75f, 2f, 31f), 55f,
                 signals: CutsceneSignals.ControlRoomUnlock),
             new CutsceneShot("ch3", 2, "High pan over the Storage shelves to the relay board", ShotRoom.Storage, ShotFraming.World,
-                new Vector3(24f, 4.6f, 23.5f), new Vector3(27.5f, 4.4f, 28f), new Vector3(36f, 3.3f, 40.5f), new Vector3(36f, 3.3f, 40.5f), 60f),
+                new Vector3(24f, 4.6f, 23.5f), new Vector3(27.5f, 4.8f, 28f), new Vector3(36f, 3.3f, 40.5f), new Vector3(36f, 3.3f, 40.5f), 60f),
 
             // ---- Chapter 4: the cores.
             new CutsceneShot("ch4", 0, "Wide over the three power cores", ShotRoom.Control, ShotFraming.World,
-                new Vector3(3.5f, 4.4f, 23.5f), new Vector3(6f, 4.6f, 24.5f), new Vector3(10.5f, 3f, 33.5f), new Vector3(10.5f, 3f, 33.5f), 60f,
+                new Vector3(2.2f, 4.4f, 22.3f), new Vector3(5.5f, 4.6f, 23.2f), new Vector3(10.5f, 3f, 33.5f), new Vector3(10.5f, 3f, 33.5f), 60f,
                 signals: CutsceneSignals.CoreShieldsDown),
 
             // ---- Ending: behind Unit 047 at the console, then a crane back as the factory sleeps.
+            // The console stands in the middle of the Control Room, 10 m from every wall, so the
+            // crane ends at most 6 m behind 047 to stay inside the room.
             new CutsceneShot("ending", 0, "Behind Unit 047, looking at the console", ShotRoom.Control, ShotFraming.FollowActor,
-                new Vector3(0.6f, 2.2f, -3f), new Vector3(0.7f, 2.5f, -3.6f), new Vector3(10.5f, 1.2f, 40f), new Vector3(10.5f, 1.2f, 40f), 55f,
+                new Vector3(0.6f, 2.2f, -3f), new Vector3(0.7f, 2.5f, -3.6f), new Vector3(10.5f, 1.2f, 31f), new Vector3(10.5f, 1.2f, 31f), 55f,
                 signals: CutsceneSignals.FactoryShutdown),
             new CutsceneShot("ending", 1, "Crane back and up from Unit 047", ShotRoom.Control, ShotFraming.FollowActor,
-                new Vector3(0.7f, 2.5f, -3.6f), new Vector3(1f, 4.4f, -8.5f), new Vector3(0f, 1.2f, 0f), new Vector3(0f, 1f, 0f), 60f,
+                new Vector3(0.7f, 2.5f, -3.6f), new Vector3(1f, 4.4f, -6f), new Vector3(0f, 1.2f, 0f), new Vector3(0f, 1f, 0f), 60f,
                 looksAtActor: true),
         };
+
+        /// <summary>Furthest a follow camera may be from Unit 047 on the ground, so a shot taken at the console stays inside the Control Room.</summary>
+        public const float MaxFollowDistance = 7f;
 
         /// <summary>Every shot of every cutscene.</summary>
         public static IReadOnlyList<CutsceneShot> All => Shots;

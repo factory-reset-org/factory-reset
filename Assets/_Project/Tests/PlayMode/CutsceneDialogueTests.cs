@@ -138,6 +138,38 @@ namespace ToyFactory.Tests
             director.Skip();
         }
 
+        sealed class FakeTask : ITask
+        {
+            public string Id { get; set; }
+            public event System.Action<float> OnProgress { add { } remove { } }
+            public event System.Action OnCompleted;
+            public void Complete() => OnCompleted?.Invoke();
+        }
+
+        [UnityTest]
+        public IEnumerator KeycardLineStopsSendingThePlayerForACardTheyAlreadyHave()
+        {
+            DialogueScript script = Script(new[]
+            {
+                Pip("Scrap it.", DialogueCondition.IfSaboteurAActive),
+                Pip("Go grab it.", DialogueCondition.IfSaboteurAScrapped),
+                Pip("You have it.", DialogueCondition.IfKeycardCollected),
+            });
+            CutsceneDirector director = Director(new CutsceneDefinition("ch3", CutsceneTrigger.SwitchRestored, 2, dialogue: script));
+
+            AgentEvents.RaiseDestroyed(new FakeAgent { Type = AgentType.Saboteur, Identity = new AgentIdentity(AgentType.Saboteur, 2, 0) });
+            var keycard = new FakeTask { Id = "ch3.keycard" };
+            TaskEvents.RaiseTaskSpawned(keycard);
+            keycard.Complete();
+            ChapterEvents.RaiseSwitchRestored(2);
+            yield return Seconds(0.2f);
+
+            CollectionAssert.Contains(_log, "line:You have it.");
+            CollectionAssert.DoesNotContain(_log, "line:Go grab it.");
+            CollectionAssert.DoesNotContain(_log, "line:Scrap it.");
+            director.Skip();
+        }
+
         [UnityTest]
         public IEnumerator TimelineWaitsAtADialogueMarkerUntilItsLinesAreSaid()
         {
