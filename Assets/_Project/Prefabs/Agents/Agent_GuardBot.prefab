@@ -16,6 +16,7 @@ GameObject:
   - component: {fileID: 2358035611716374269}
   - component: {fileID: 4947976135915116715}
   - component: {fileID: 7160851386128979493}
+  - component: {fileID: 7827242234416586923}
   m_Layer: 11
   m_Name: Agent_GuardBot
   m_TagString: Untagged
@@ -166,6 +167,21 @@ MonoBehaviour:
   popSeconds: 0.25
   suspiciousColour: {r: 1, g: 0.85, b: 0.2, a: 1}
   alertColour: {r: 1, g: 0.25, b: 0.2, a: 1}
+--- !u!114 &7827242234416586923
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1436568227419779139}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9f78bb11c4008474294bbb5c5dcd8e71, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Movement.PlayerStandOff
+  standOff: 1.6
+  release: 1.9000001
+  maxHeightDifference: 1.5
 --- !u!1001 &5722044532394225745
 PrefabInstance:
   m_ObjectHideFlags: 0
