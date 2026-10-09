@@ -191,3 +191,10 @@ The last three rows are from one editor session; the first is the earlier sessio
 - **What is left:** path costing is still about 1.25 ms in a typical slow frame (three or four capped searches in one tick), and the few worst frames (5 of 50) are now the tactical route search itself, `MoveTo`, at 2.6 to 9.2 ms when the Guard is 18 to 27 m from the player. Neither is addressed here. The next step would be to spread one decision over several frames, which is the path request scheduler that is still not built.
 - **Limits:** editor timings with Mono, one session.
 
+
+### Path request scheduler (2026-10-09, not yet measured)
+
+`BrainTickScheduler` now gives brain decisions a per-frame budget of 2 ms: once a frame's brains have used it, the remaining agents tick in the next frame, at most 2 frames late (see the DesignDoc's path follower section). It cannot split one decision, so the Guard's single 2.6 to 9.2 ms route searches still take their frame; what it removes is two heavy decisions landing in the same frame, which is what pushes the AI total over its budget.
+
+- **Tested:** `AgentSchedulingTests`. Three brains costing 3 ms each no longer all tick in the same frame, none waits more than 2 frames, and light brains never wait.
+- **Not yet measured in the level:** the `Test_FourAgentsStress` run for this table needs the Unity window focused (an unfocused run gives meaningless timings, as seen before). To fill it in, run the stress test with the editor focused and compare the AI total p99 and the frames over 2 ms with the "All four" row above.
