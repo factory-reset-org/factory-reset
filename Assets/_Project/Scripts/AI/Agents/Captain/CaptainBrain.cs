@@ -31,7 +31,7 @@ namespace ToyFactory.AI.Agents.Captain
     /// <para><b>Time.</b> Every timer uses <c>ctx.Time</c> (game time), so cutscenes and pause
     /// freeze the 5 s history and the 2 Hz clock. Stuns are owned by the controller.</para>
     /// </remarks>
-    public sealed partial class CaptainBrain : IAgentBrain, IGoalPredictor
+    public sealed partial class CaptainBrain : IAgentBrain, IGoalPredictor, IActionFeedback
     {
         // Speeds in m/s. 4.6 is the prototype's Captain speed, used by the intercept timing.
         public const float InterceptSpeed = 4.6f;
@@ -57,6 +57,17 @@ namespace ToyFactory.AI.Agents.Captain
         public const float ProgressStep = 0.25f;
         public const float AvoidSeconds = 10f;
 
+        // Doors: it opens a closed door on its route from 1.5 m (the Saboteur's reach to a door
+        // cell; the body's reach to the door is 2.5 m), waits up to 3 s for it to swing open,
+        // and gives up on a door that would not open for 10 s. Passing through, it shuts a door
+        // behind it when that door is on the player's predicted route, at 1-2.3 m past it, if
+        // the player is at least 3 m from it.
+        public const float DoorReach = 1.5f;
+        public const float DoorWaitTimeout = 3f;
+        public const float CloseBehindMin = 1f;
+        public const float CloseBehindMax = 2.3f;
+        public const float CloseBehindPlayerClearance = 3f;
+
         // Vision: a fight starts when the player is in view within 10 m.
         public const float EngageRange = 10f;
         public const float VisionHalfAngle = 70f;
@@ -80,6 +91,7 @@ namespace ToyFactory.AI.Agents.Captain
 
         // Distances, metres.
         public const float ArrivalRadius = 0.6f;
+        public const float AmbushLeaveDistance = 1.5f;   // pushed this far off its cell, it re-plans
         public const float ObserveDistance = 8f;         // keeps at least this far while unsure
         public const float RetreatStep = 4f;
         public const float GoalReachedRadius = 1f;       // the player is at g*
@@ -127,6 +139,19 @@ namespace ToyFactory.AI.Agents.Captain
         Vector2Int _convergeCell;
         float _convergeBlockedUntil = float.NegativeInfinity;
 
+        // Doors: the router, doors it failed to open and until when, the door it is waiting
+        // at, and the door it opened and may shut behind it.
+        readonly DoorRouter _doors;
+        readonly Dictionary<int, float> _blockedDoorsUntil = new Dictionary<int, float>();
+        readonly Predicate<int> _isDoorBlocked;
+        const int NoDoor = int.MinValue;
+        int _waitDoorId = NoDoor;
+        Vector2Int _waitDoorCell;
+        float _waitDoorSince;
+        int _openedDoorId = NoDoor;
+        Vector2Int _openedDoorCell;
+        bool _closeRequested;
+
         // This tick's input.
         AgentContext _ctx;
         float Now => _ctx.Time;
@@ -167,6 +192,7 @@ namespace ToyFactory.AI.Agents.Captain
         float _outSpeed;
         Vector3? _outLook;
         AgentAction _outAction;
+        int _outTargetId;
         string _debugState = "Dormant";
 
         /// <param name="grid">The level grid.</param>
@@ -192,6 +218,8 @@ namespace ToyFactory.AI.Agents.Captain
             _stunned = new StunnedState();
             _converge = new ConvergeState();
             _isAvoided = IsAvoided;
+            _doors = new DoorRouter(grid);
+            _isDoorBlocked = IsDoorBlocked;
 
             var rules = new List<Transition<CaptainBrain>>();
             Rule(rules, _dormant, _observe, 110, "wake signal (or Chapter 3 started, or spawned awake)", b => b.IsAwake);
@@ -232,6 +260,7 @@ namespace ToyFactory.AI.Agents.Captain
             _outPath = null;
             _outLook = null;
             _outAction = AgentAction.None;
+            _outTargetId = 0;
             _decidedThisTick = false;
 
             if (_machine.Current != _dormant)
@@ -255,13 +284,15 @@ namespace ToyFactory.AI.Agents.Captain
                 MoveTo(_routeGoal);
             _replanRequested = false;
 
+            HandleDoors();
+
             return new AgentIntent
             {
                 Path = _outPath,
                 DesiredSpeed = _outSpeed,
                 LookTarget = _outLook,
                 Action = _outAction,
-                ActionTargetId = 0,
+                ActionTargetId = _outTargetId,
                 DebugState = _debugState,
                 Alert = CurrentAlert()
             };
@@ -310,6 +341,8 @@ namespace ToyFactory.AI.Agents.Captain
             _routeCells = null;
             _plan = InterceptPlan.None;
             _prediction = default;
+            _waitDoorId = NoDoor;
+            _openedDoorId = NoDoor;
             if (_machine.Current != _dormant)
                 _stunPending = true;
         }
@@ -517,6 +550,11 @@ namespace ToyFactory.AI.Agents.Captain
             else
                 _plan = _planner.Plan(field, player.Cell, _ctx.Cell, playerSpeed, InterceptSpeed, _isAvoided);
 
+            // Shut out by a closed door: the planner only walks open cells, but the Captain can
+            // open doors, so defend g* by way of the door instead of standing and watching.
+            if (!_plan.HasPlan)
+                _plan = PlanThroughDoors(field, playerSpeed);
+
             _planGoalId = planGoal.Id;
             if (_plan.HasPlan)
             {
@@ -563,6 +601,214 @@ namespace ToyFactory.AI.Agents.Captain
                 case ObjectiveTargetKind.Console: return GoalCategory.Console;
                 case ObjectiveTargetKind.Battery: return GoalCategory.Battery;
                 default: return GoalCategory.Task;
+            }
+        }
+
+        // Defend g* through a closed door, only when a door is what stands in the way: the route
+        // to g* must cross one. Any other reason for no plan (two goals with no shared
+        // chokepoint, a goal behind a wall) keeps the Captain watching.
+        InterceptPlan PlanThroughDoors(DijkstraField goalField, float playerSpeed)
+        {
+            IReadOnlyList<Vector2Int> route = _planner.PredictedRoute;
+            if (route.Count == 0 || !TryWalkable(_ctx.Cell, out Vector2Int start))
+                return InterceptPlan.None;
+            Vector2Int goalCell = route[route.Count - 1];
+            if (IsAvoided(goalCell))
+                return InterceptPlan.None;
+
+            List<Vector2Int> path = _doors.FindPath(start, goalCell, _isDoorBlocked);
+            if (path == null || !CrossesClosedDoor(path))
+                return InterceptPlan.None;
+
+            float playerArrival = goalField.Cost(route[0]) * GridGraph.CellSize / playerSpeed;
+            float captainArrival = _doors.LastCost * GridGraph.CellSize / InterceptSpeed;
+            return new InterceptPlan(InterceptKind.DefendGoal, goalCell, route.Count - 1, playerArrival, captainArrival);
+        }
+
+        static float RouteCost(List<Vector2Int> cells)
+        {
+            float cost = 0f;
+            for (int i = 1; i < cells.Count; i++)
+                cost += BaseCostModel.Instance.StepCost(cells[i - 1], cells[i]);
+            return cost;
+        }
+
+        bool CrossesClosedDoor(List<Vector2Int> path)
+        {
+            for (int i = 0; i < path.Count; i++)
+                if (_grid.GetNode(path[i]).IsDoorClosed)
+                    return true;
+            return false;
+        }
+
+        // ---- Doors -------------------------------------------------------------------
+
+        /// <summary>
+        /// Every tick: if a closed door is just ahead on the route, stop at it and ask the body
+        /// to open it (the route is kept, and resumes when the door's cells open in the grid);
+        /// give up on it after <see cref="DoorWaitTimeout"/>. Once through a door it opened,
+        /// shut it behind if it is on the player's predicted route.
+        /// </summary>
+        void HandleDoors()
+        {
+            IState<CaptainBrain> state = _machine.Current;
+            bool moving = state == _intercept || state == _pursue || state == _converge || state == _observe;
+            if (!moving || _routeCells == null)
+            {
+                _waitDoorId = NoDoor;
+                return;
+            }
+
+            int here = NearestRouteIndex();
+            if (_waitDoorId != NoDoor)
+            {
+                if (!_grid.GetNode(_waitDoorCell).IsDoorClosed)
+                {
+                    // It opened: the grid change replans the route through it. Remember the door
+                    // so it can be shut behind.
+                    _openedDoorId = _waitDoorId;
+                    _openedDoorCell = _waitDoorCell;
+                    _closeRequested = false;
+                    _waitDoorId = NoDoor;
+                }
+                else if (Now - _waitDoorSince > DoorWaitTimeout)
+                {
+                    BlockDoor(_waitDoorId);
+                    _waitDoorId = NoDoor;
+                    StopMoving();   // the stuck check and the next decision take it from here
+                    return;
+                }
+                else
+                {
+                    HoldAtDoor();
+                    return;
+                }
+            }
+
+            // A closed door just ahead (the next few cells) within reach.
+            for (int i = here; i < _routeCells.Count && i <= here + 6; i++)
+            {
+                Vector2Int cell = _routeCells[i];
+                GridNode node = _grid.GetNode(cell);
+                if (!node.IsDoorClosed || !node.DoorId.HasValue)
+                    continue;
+                if (FlatDistance(_ctx.Position, _grid.CellToWorld(cell)) > DoorReach)
+                    break;
+                _waitDoorId = node.DoorId.Value;
+                _waitDoorCell = cell;
+                _waitDoorSince = Now;
+                HoldAtDoor();
+                return;
+            }
+
+            CloseBehind(here);
+        }
+
+        // Stand at the door, facing it, asking the body to open it. The stuck check is paused:
+        // waiting for a door to swing open is not being stuck.
+        void HoldAtDoor()
+        {
+            if (_outPath == null || _outPath.Count > 0)
+                _outPath = new List<Vector3>();   // stop, but keep _routeCells to carry on
+            _outSpeed = 0f;
+            _outLook = _grid.CellToWorld(_waitDoorCell);
+            _outAction = AgentAction.OpenDoor;
+            _outTargetId = _waitDoorId;
+            ResetProgress();
+        }
+
+        // Shuts the door it came through when that door is on the player's predicted route: the
+        // Captain gets through, and the player is slowed, as a Saboteur would want. Only a door
+        // it opened itself (_openedDoorId is set only after waiting at a closed door): a door
+        // that was already open is left as it was.
+        void CloseBehind(int here)
+        {
+            if (_openedDoorId == NoDoor || _closeRequested || _outAction != AgentAction.None)
+                return;
+            Vector3 door = _grid.CellToWorld(_openedDoorCell);
+            float distance = FlatDistance(_ctx.Position, door);
+            if (distance > CloseBehindMax + 0.5f || _grid.GetNode(_openedDoorCell).IsDoorClosed)
+            {
+                _openedDoorId = NoDoor;   // walked on, or someone shut it already
+                return;
+            }
+            if (distance < CloseBehindMin || distance > CloseBehindMax || IsAheadOnRoute(_openedDoorCell, here))
+                return;
+            if (!DoorOnPlayerRoute(_openedDoorId) ||
+                (PlayerAvailable() && FlatDistance(Player.Position, door) < CloseBehindPlayerClearance))
+                return;
+
+            _outAction = AgentAction.CloseDoor;
+            _outTargetId = _openedDoorId;
+            _closeRequested = true;
+        }
+
+        bool IsAheadOnRoute(Vector2Int cell, int here)
+        {
+            for (int i = here; i < _routeCells.Count; i++)
+                if (_routeCells[i] == cell)
+                    return true;
+            return false;
+        }
+
+        bool DoorOnPlayerRoute(int doorId)
+        {
+            if (!_prediction.IsKnown)
+                return false;
+            IReadOnlyList<Vector2Int> route = _planner.PredictedRoute;
+            for (int i = 0; i < route.Count; i++)
+            {
+                GridNode node = _grid.GetNode(route[i]);
+                if (node.DoorId.HasValue && node.DoorId.Value == doorId)
+                    return true;
+            }
+            return false;
+        }
+
+        // The route cell nearest the Captain: where it is along the route.
+        int NearestRouteIndex()
+        {
+            int best = 0;
+            float bestSqr = float.MaxValue;
+            for (int i = 0; i < _routeCells.Count; i++)
+            {
+                Vector3 world = _grid.CellToWorld(_routeCells[i]);
+                float dx = world.x - _ctx.Position.x, dz = world.z - _ctx.Position.z;
+                float sqr = dx * dx + dz * dz;
+                if (sqr < bestSqr)
+                {
+                    bestSqr = sqr;
+                    best = i;
+                }
+            }
+            return best;
+        }
+
+        void BlockDoor(int doorId) => _blockedDoorsUntil[doorId] = Now + AvoidSeconds;
+
+        bool IsDoorBlocked(int doorId) => _blockedDoorsUntil.TryGetValue(doorId, out float until) && until > Now;
+
+        /// <summary>True while the Captain is stopped at a closed door, asking for it to open.</summary>
+        public bool IsWaitingAtDoor => _waitDoorId != NoDoor;
+
+        /// <summary>True while the Captain treats <paramref name="doorId"/> as a wall (it would not open).</summary>
+        public bool IsDoorGivenUp(int doorId) => IsDoorBlocked(doorId);
+
+        /// <summary>
+        /// How the body carried out a door request: a door that would not open (out of reach,
+        /// not registered) is given up for a while; a shut-behind is done either way.
+        /// </summary>
+        public void OnActionResolved(AgentAction action, int targetId, bool success)
+        {
+            if (action == AgentAction.OpenDoor && !success)
+            {
+                BlockDoor(targetId);
+                if (_waitDoorId == targetId)
+                    _waitDoorId = NoDoor;
+            }
+            else if (action == AgentAction.CloseDoor && targetId == _openedDoorId)
+            {
+                _openedDoorId = NoDoor;
             }
         }
 
@@ -667,16 +913,23 @@ namespace ToyFactory.AI.Agents.Captain
             _routeGoal = end;   // the walkable cell actually routed to
 
             PathResult result = _pathfinder.FindPath(start, end, BaseCostModel.Instance);
-            if (!result.Found)
+            List<Vector2Int> cells = result.Found ? result.Cells : null;
+            // The Captain can open doors: go through a closed one when that is the only way, or
+            // cheaper than walking round even after the time it takes to open it.
+            List<Vector2Int> viaDoor = _doors.FindPath(start, end, _isDoorBlocked);
+            if (viaDoor != null && CrossesClosedDoor(viaDoor) &&
+                (cells == null || _doors.LastCost + 0.01f < RouteCost(cells)))
+                cells = viaDoor;
+            if (cells == null)
             {
                 StopMoving();
                 return false;
             }
 
-            _routeCells = result.Cells;
-            var world = new List<Vector3>(result.Cells.Count);
-            for (int i = 0; i < result.Cells.Count; i++)
-                world.Add(_grid.CellToWorld(result.Cells[i]));
+            _routeCells = cells;
+            var world = new List<Vector3>(cells.Count);
+            for (int i = 0; i < cells.Count; i++)
+                world.Add(_grid.CellToWorld(cells[i]));
             _outPath = world;
             return true;
         }

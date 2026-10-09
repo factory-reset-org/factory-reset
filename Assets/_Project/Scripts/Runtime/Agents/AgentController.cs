@@ -425,9 +425,10 @@ namespace ToyFactory.Runtime.Agents
             _grid != null ? _grid.WorldToCell(position) : Vector2Int.zero;
 
         // Carries out the brain's action. Shoot goes to the weapon, which aims for 0.3 s (the
-        // telegraph) before the hitscan; a request while it is still busy is ignored. A door,
-        // trap or battery action is a request that starts when the (action, target) pair changes
-        // and stays open until it is carried out or given up, even if the brain moves on.
+        // telegraph) before the hitscan; a request while it is still busy is ignored. A door
+        // (close or open), trap or battery action is a request that starts when the (action,
+        // target) pair changes and stays open until it is carried out or given up, even if the
+        // brain moves on.
         void ApplyAction(in AgentIntent intent)
         {
             _shootRequested = intent.Action == AgentAction.Shoot;
@@ -465,7 +466,20 @@ namespace ToyFactory.Runtime.Agents
             offset.y = 0f;   // a battery on a shelf is still in reach from the floor
             if (offset.sqrMagnitude <= sabotageReach * sabotageReach)
             {
-                target.Execute();
+                if (_sabotageAction == AgentAction.OpenDoor)
+                {
+                    // The same registered door, opened rather than closed (the Captain).
+                    if (!(target is IDoor door))
+                    {
+                        ResolveSabotage(false);
+                        return;
+                    }
+                    door.Open();
+                }
+                else
+                {
+                    target.Execute();
+                }
                 ResolveSabotage(true);
             }
             else if (Now - _sabotageSince > sabotageGiveUpSeconds)
@@ -490,6 +504,7 @@ namespace ToyFactory.Runtime.Agents
             switch (action)
             {
                 case AgentAction.CloseDoor:
+                case AgentAction.OpenDoor:
                     kind = SabotageKind.Door;
                     return true;
                 case AgentAction.ArmTrap:

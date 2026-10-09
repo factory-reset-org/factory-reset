@@ -200,6 +200,37 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void PushedOffItsAmbushCellTheCaptainPlansAgain()
+        {
+            GridGraph grid = Room(100, 60);
+            WorldBlackboard world = World(new ObjectiveTarget(1, new Vector2Int(95, 30), ObjectiveTargetKind.Task));
+            CaptainBrain brain = Captain(grid, world);
+            var body = new Body(grid, new Vector2Int(45, 55));
+            Vector3 player = grid.CellToWorld(new Vector2Int(5, 30));
+            Vector3 toGoal = (grid.CellToWorld(new Vector2Int(95, 30)) - player).normalized * 1.5f;
+
+            float t = 0f;
+            for (; t < 15f && brain.StateName != "Ambush"; t += Dt)
+            {
+                player += toGoal * Dt;
+                PlacePlayer(world, grid, player, toGoal);
+                body.Tick(brain, world, t);
+            }
+            Assert.AreEqual("Ambush", brain.StateName);
+
+            body.Position += new Vector3(0f, 0f, 6f);   // shoved 6 m off its cell
+            bool replanned = false;
+            for (float end = t + 1.5f; t < end && !replanned; t += Dt)
+            {
+                player += toGoal * Dt;
+                PlacePlayer(world, grid, player, toGoal);
+                body.Tick(brain, world, t);
+                replanned = brain.StateName != "Ambush";
+            }
+            Assert.IsTrue(replanned, "Not holding a cell it is no longer standing on.");
+        }
+
+        [Test]
         public void WhileThePlayerHoldsTheOnlyGoalTheCaptainClosesInAndEngages()
         {
             // The console hold: the player reached the last goal, so there is nothing left to

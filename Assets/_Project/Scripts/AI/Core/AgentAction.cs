@@ -24,6 +24,12 @@ namespace ToyFactory.AI.Core
         StealBattery,
 
         /// <summary>Stop moving and rewind wind-up energy.</summary>
-        Rewind
+        Rewind,
+
+        /// <summary>
+        /// Open the door identified by <see cref="AgentIntent.ActionTargetId"/> (the Captain,
+        /// on its way through). Added last so the existing values keep their numbers.
+        /// </summary>
+        OpenDoor
     }
 }
