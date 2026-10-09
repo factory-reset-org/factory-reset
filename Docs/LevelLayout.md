@@ -70,6 +70,8 @@ Dressing from the prototype that makes each room read as its own part of the fac
 | Control | Nine server racks against the walls, each with 24 status lights that blink (`DressingBlinker`) | 0.25 m deep, inside the 0.55 m wall clearance, clear of the doors, console, battery and overcharge anchors |
 | Assembly (and one pair in Painting) | Eight wall gears in meshing pairs that turn (`DressingSpinner`); a small gear turns faster than its partner, at the tooth ratio | `GearMesh` builds the toothed discs |
 
+**Surfaces:** a hazard-stripe skirting (0.6 m) runs along every room wall except across the doorways, with a dark plum band (0.3 m) under the ceiling; floors are tiled; the Control Room floor has a glowing grid; the two Assembly presses have hazard outlines on the floor. All are thin, flat and without colliders (the skirting stands 0.04 m off the wall, inside the 0.55 m clearance). See the Art Bible.
+
 **At the shutdown:** the gears wind down to a stop and every server light goes dark on `CutsceneSignals.FactoryShutdown`, in step with `LightingState`.
 
 ## NavMesh and grid
@@ -140,5 +142,3 @@ Tracker: Assembly. Guard: Painting. Saboteur A: Storage. B: Assembly. C: Paintin
 ## Not done yet
 
 - More prototype dressing that would change the grid: a denser Storage shelf maze, paint mixers in Painting, more server pillars in Control. Each needs the grid, the agents' routes and the evidence tables redone, so it is left out for now.
-- Wall trims (the prototype's hazard skirting and dark top band).
-- Floor detail (tiles, stripes, paint splats) and the prototype's darker fog.
