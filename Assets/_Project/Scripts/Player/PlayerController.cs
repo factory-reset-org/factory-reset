@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using ToyFactory.Interaction;
@@ -59,6 +60,11 @@ namespace ToyFactory.Player
         // the ground collider changes, never every frame.
         Collider _groundCollider;
         ConveyorBelt _groundBelt;
+
+        // Slippery patches the player is standing in, and the walking velocity carried over
+        // between frames so the player can slide on them.
+        readonly List<SlipperyFloor> _slipperyFloors = new List<SlipperyFloor>();
+        Vector3 _walkVelocity;
 
         /// <summary>Current world position, for the blackboard.</summary>
         public Vector3 Position => transform.position;
@@ -185,7 +191,15 @@ namespace ToyFactory.Player
             Vector2 moveInput = _moveAction.ReadValue<Vector2>();
             float speed = _sprintAction.IsPressed() ? sprintSpeed : walkSpeed;
 
-            Vector3 horizontal = (transform.right * moveInput.x + transform.forward * moveInput.y) * speed;
+            Vector3 wanted = (transform.right * moveInput.x + transform.forward * moveInput.y) * speed;
+
+            // On normal floor the player moves exactly as asked. On a slippery patch their
+            // speed only eases towards it, so they slide on when they turn or let go.
+            float traction = SlipperyTraction();
+            _walkVelocity = traction > 0f
+                ? Vector3.Lerp(_walkVelocity, wanted, 1f - Mathf.Exp(-traction * Time.deltaTime))
+                : wanted;
+            Vector3 horizontal = _walkVelocity;
 
             // A running belt carries the player along with it.
             if (_controller.isGrounded && _groundBelt != null)
@@ -202,6 +216,36 @@ namespace ToyFactory.Player
 
             _controller.Move(motion * Time.deltaTime);
             Velocity = motion;
+        }
+
+        /// <summary>Called by a slippery patch when the player steps into it.</summary>
+        public void EnterSlipperyFloor(SlipperyFloor floor)
+        {
+            if (!_slipperyFloors.Contains(floor))
+                _slipperyFloors.Add(floor);
+        }
+
+        /// <summary>Called by a slippery patch when the player steps out of it.</summary>
+        public void ExitSlipperyFloor(SlipperyFloor floor) => _slipperyFloors.Remove(floor);
+
+        // The lowest traction of the patches the player is in, or 0 on normal floor. No exit
+        // is reported when a patch, or the player's own collider, is switched off while the
+        // player stands in it, so a patch that no longer holds the player is dropped here.
+        float SlipperyTraction()
+        {
+            float lowest = 0f;
+            for (int i = _slipperyFloors.Count - 1; i >= 0; i--)
+            {
+                SlipperyFloor floor = _slipperyFloors[i];
+                if (floor == null || !floor.isActiveAndEnabled || !floor.Contains(transform.position))
+                {
+                    _slipperyFloors.RemoveAt(i);
+                    continue;
+                }
+                if (lowest == 0f || floor.Traction < lowest)
+                    lowest = floor.Traction;
+            }
+            return lowest;
         }
     }
 }
