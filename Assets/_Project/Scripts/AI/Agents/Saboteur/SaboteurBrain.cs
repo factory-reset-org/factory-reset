@@ -9,9 +9,10 @@ using ToyFactory.AI.Core.Search;
 namespace ToyFactory.AI.Agents.Saboteur
 {
     /// <summary>
-    /// One Saboteur instance's utility brain. This skeleton runs selection at 4 Hz through
-    /// <see cref="ActionSelector"/> with Idle/Patrol as the only action, handles stun, graph
-    /// changes and permanent destruction. Sabotage and combat actions are added on top of
+    /// One Saboteur instance's utility brain. It runs selection at 4 Hz through
+    /// <see cref="ActionSelector"/> with Idle/Patrol and, when a candidate source is given,
+    /// AttackPlayer, and handles stun, graph changes and permanent destruction. The other
+    /// sabotage and combat actions are added on top of
     /// the same selection loop as their world facts become available: an
     /// <see cref="ICandidateSource"/> supplies them, and the brain then applies the squad layer
     /// (the "not claimed" veto and attack saturation), claims its target on commit and staggers its
@@ -26,6 +27,9 @@ namespace ToyFactory.AI.Agents.Saboteur
     /// </remarks>
     public sealed class SaboteurBrain : IAgentBrain, IDropsItems
     {
+        /// <summary>Seconds between two shots while attacking (provisional pacing, tuned in play).</summary>
+        public const float AttackIntervalSeconds = 1.5f;
+
         /// <summary>Starting move speed in metres per second (plan Appendix A).</summary>
         public const float MoveSpeed = 4.3f;
 
@@ -78,6 +82,11 @@ namespace ToyFactory.AI.Agents.Saboteur
         // Set after no patrol point could be reached, so A* is not rerun every tick while
         // holding; cleared by the next selection pass or any grid change.
         bool _routeRetryWaiting;
+
+        // AttackPlayer: whether the body has been stopped for the current attack, and when it
+        // may next ask for a shot.
+        bool _attacking;
+        float _nextShotTime;
 
         bool _destroyed;
 
@@ -180,7 +189,19 @@ namespace ToyFactory.AI.Agents.Saboteur
                 _nextDecisionTime = NextSlotAfter(ctx.Time);
             }
 
-            // Only Idle/Patrol exists so far; later actions branch here on CurrentAction.
+            if (ctx.World != null && _selector.HasCurrent && _selector.Current.Kind == SaboteurActionKind.AttackPlayer
+                && AttackPlayerSource.InRange(ctx.World.Player, ctx.Position, out _))
+                return Attack(ctx);
+
+            // Back to patrolling after an attack: the body was stopped, so route again.
+            if (_attacking)
+            {
+                _attacking = false;
+                _needsRoute = true;
+                _holdSent = false;
+            }
+
+            // The other actions branch here on CurrentAction as they are added.
             return Patrol(ctx.Cell, ctx.Position);
         }
 
@@ -220,6 +241,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             _squad.EndPlan(_identity.AgentId);
             _needsRoute = true;
             _holdSent = false;
+            _attacking = false;
         }
 
         /// <inheritdoc />
@@ -323,6 +345,35 @@ namespace ToyFactory.AI.Agents.Saboteur
             // plan and let the next decision see the new holder.
             if (!_squad.TryCommit(id, result.Key, result.BaseScore))
                 _selector.CancelCurrent();
+        }
+
+        // Face the player and ask for a shot. The body is stopped once when the attack starts and
+        // the weapon turns it to face the player while it aims, so the brain only paces the
+        // requests; the weapon ignores a request while a shot is still in progress.
+        AgentIntent Attack(in AgentContext ctx)
+        {
+            List<Vector3> path = null;
+            if (!_attacking)
+            {
+                _attacking = true;
+                path = new List<Vector3>();
+            }
+
+            AgentAction action = AgentAction.None;
+            if (ctx.Time >= _nextShotTime)
+            {
+                action = AgentAction.Shoot;
+                _nextShotTime = ctx.Time + AttackIntervalSeconds;
+            }
+
+            return new AgentIntent
+            {
+                Path = path,
+                DesiredSpeed = MoveSpeed,
+                LookTarget = ctx.World.Player.Position,
+                Action = action,
+                DebugState = "AttackPlayer"
+            };
         }
 
         AgentIntent Patrol(Vector2Int currentCell, Vector3 position)
