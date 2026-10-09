@@ -82,6 +82,7 @@ namespace ToyFactory.AI.Agents.Guard
         }
 
         static readonly Comparison<RankedCandidate> ByScoreDescending = (a, b) => b.Score.CompareTo(a.Score);
+        static readonly Vector2Int[] NoRoute = new Vector2Int[0];
 
         // Cardinals first, so the Guard peeks sideways before it peeks diagonally.
         static readonly Vector2Int[] PeekOffsets =
@@ -102,6 +103,9 @@ namespace ToyFactory.AI.Agents.Guard
         readonly List<CoverCandidate> _candidates = new List<CoverCandidate>();
         readonly List<RankedCandidate> _ranked = new List<RankedCandidate>();
         readonly List<RankedCandidate> _retreatOptions = new List<RankedCandidate>();
+
+        // What the latest evaluation costed with a real path, kept for the debug overlay.
+        readonly List<ScoredCover> _scored = new List<ScoredCover>(TopCandidates + 1);
         readonly Dictionary<Vector2Int, bool> _exposure = new Dictionary<Vector2Int, bool>();
         Vector2Int _exposureCell;
         bool _exposureCellKnown;
@@ -302,6 +306,31 @@ namespace ToyFactory.AI.Agents.Guard
         /// <summary>The ideal distance to the player for the current battery tier, in metres.</summary>
         public float IdealRange => _idealRange;
 
+        /// <summary>The player's battery tier the tactics follow: High, Mid, Low or Overcharge.</summary>
+        public string BatteryTierName => _tier.ToString();
+
+        /// <summary>True if the Guard can step out of its cover to shoot; only meaningful while <see cref="HasCover"/>.</summary>
+        public bool CoverCanPeek => _coverCanPeek;
+
+        /// <summary>True while a living player is in range and the Guard is fighting them.</summary>
+        public bool IsEngaged => _engaged;
+
+        /// <summary>Where the Guard believes the player is; only meaningful while <see cref="IsEngaged"/>.</summary>
+        public Vector3 PlayerPosition => Player.Position;
+
+        /// <summary>The cells of the route being walked, start to goal. Empty when there is none.</summary>
+        public IReadOnlyList<Vector2Int> RouteCells => _routeCells != null ? _routeCells : (IReadOnlyList<Vector2Int>)NoRoute;
+
+        /// <summary>
+        /// Appends the cover cells the latest evaluation costed with a real path (the top
+        /// candidates and the cover it already held), with their final scores. Empty while not engaged.
+        /// </summary>
+        public void GetScoredCover(List<ScoredCover> into)
+        {
+            for (int i = 0; i < _scored.Count; i++)
+                into.Add(_scored[i]);
+        }
+
         /// <summary>The full transition table, highest priority first: for the debug overlay and the viva.</summary>
         public string DescribeTransitions()
         {
@@ -340,6 +369,7 @@ namespace ToyFactory.AI.Agents.Guard
                 _seesPlayer = false;
                 if (_hasCover)
                     ReleaseCover();
+                _scored.Clear();
                 _reconsider = false;
                 _evaluateNow = true;
                 return;
@@ -444,6 +474,7 @@ namespace ToyFactory.AI.Agents.Guard
             _evaluator.FindCandidates(playerCell, _candidates);
 
             _ranked.Clear();
+            _scored.Clear();
             bool currentValid = false;
             CoverCandidate current = default;
             CellReservations reservations = World.Reservations;
@@ -477,6 +508,7 @@ namespace ToyFactory.AI.Agents.Guard
                 if (!TryPathCost(candidate.Cell, out float cost))
                     continue;
                 float score = _evaluator.Score(candidate, playerCell, _idealRange, cost, MaxPathCost);
+                _scored.Add(new ScoredCover(candidate, cost, score));
                 if (!found || score > bestScore)
                 {
                     found = true;
@@ -488,6 +520,7 @@ namespace ToyFactory.AI.Agents.Guard
             if (currentValid && TryPathCost(current.Cell, out float currentCost))
             {
                 float currentScore = _evaluator.Score(current, playerCell, _idealRange, currentCost, MaxPathCost);
+                RecordCurrentCover(current, currentCost, currentScore);
                 if (!found || best.Cell == current.Cell || bestScore <= currentScore + CoverHysteresis)
                 {
                     _coverCanPeek = current.CanPeek;
@@ -508,6 +541,15 @@ namespace ToyFactory.AI.Agents.Guard
             if (_hasCover)
                 _reconsider = true;
             ReleaseCover();
+        }
+
+        // The cover already held is costed even when it is not among the top candidates.
+        void RecordCurrentCover(CoverCandidate current, float cost, float score)
+        {
+            for (int i = 0; i < _scored.Count; i++)
+                if (_scored[i].Cell == current.Cell)
+                    return;
+            _scored.Add(new ScoredCover(current, cost, score));
         }
 
         /// <summary>The tactical cost of walking from here to <paramref name="goal"/>, or false if unreachable.</summary>
