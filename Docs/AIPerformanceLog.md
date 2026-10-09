@@ -67,25 +67,26 @@ Level grid with the prototype rooms (`Env.unity`, 83 x 83 cells of 0.5 m, 4,963 
 ### Tracker brain tick (S1, and S1's share of the stress test)
 
 **Setup:**
-- `TrackerBrain.Tick` driven on the real level grid as it was before the prototype rooms: 83 x 83 cells, 5,310 walkable, doors 3 and 4 closed as in Chapter 1. Not re-run on the prototype rooms: the tick's cost is per tick, not per obstacle, and the route count changes only with the script.
-- 60 s of game time at 30 ticks/s. A simple body walks each route at the brain's speed.
+- `TrackerBrain.Tick` driven on the level grid with the prototype rooms: 83 x 83 cells, 4,963 walkable, doors 3 and 4 closed as in Chapter 1.
+- 60 s of game time at 30 ticks/s. A simple body walks each route at the brain's speed. The Trackers patrol S4's Tracker waypoints round the Assembly Floor ((4, 14), (17, 14), (17, 5), (4, 5)); with 7, each starts at a different waypoint.
 - Script:
   - patrol on the Assembly Floor
   - from 10 s, the colour terminal beeps from the Painting Room (60, every 0.8 s for 6.4 s)
-  - at 30 s, a blaster shot (100)
-  - from 40 s to 46 s, the player is in sight, then gone
-- The brains went through every state: Patrol, Investigate, Distracted, Chase, Rewind and Search.
+  - at 30 s, a blaster shot (100) on the Assembly Floor
+  - from 40 s to 46 s, the player is in sight in the middle of the Assembly Floor, then gone
+- Noise reaches a brain only where `NoisePropagation` says the Tracker's cell hears it, as at runtime.
+- States reached: Patrol, Investigate, Chase, Rewind and Search. **Not Distracted:** on this layout the terminal (31, 10.5) is about 14 m from the nearest point of the patrol, just past the beep's 12.5 m audible radius, so the beeps never reach the patrol. In play the Tracker hears the terminal only if it is already near the Painting door; Distracted is covered by `TrackerBrainTests` and the `Test_TerminalNoise` scene.
 - Only `Tick` is timed. Noise propagation runs in S4's runtime once per noise, so it is excluded (its cost is in the table above).
-- Unity editor (Mono), 2026-10-08, Intel Core Ultra 7 155H. Allocations are counted with the "GC.Alloc" profiler recorder (see the note below).
+- Unity editor (Mono), 2026-10-09, Intel Core Ultra 7 155H. Allocations are counted with the "GC.Alloc" profiler recorder (see the note below).
 
 | Trackers | Ticks | Tick mean | Median | p99 | Max | Whole frame, all Trackers: mean / p99 / max | Ticks that allocate |
 | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| 1 | 1,800 | 2.7 µs | 0.8 µs | 18.7 µs | 1.66 ms | 2.7 / 18.7 µs / 1.66 ms | 23 (1.3%), 99 allocations |
-| 7 | 12,600 | 1.3 µs | 0.9 µs | 7.8 µs | 0.13 ms | 8.9 / 95.5 µs / 0.43 ms | 154 (1.2%), 665 allocations |
+| 1 | 1,800 | 1.1 µs | 0.5 µs | 8.2 µs | 95 µs | 1.1 / 8.2 / 95 µs | 20 (1.1%), 86 allocations |
+| 7 | 12,600 | 0.9 µs | 0.5 µs | 4.8 µs | 103 µs | 6.3 / 59.3 µs / 0.31 ms | 134 (1.1%), 582 allocations |
 
-- **Allocations happen only when the brain hands the body a new route.** That covers 21 replans plus 2 stops for one Tracker; every allocating tick returned a path. Each one allocates the route cells and the world-space path, about 4 small allocations. Every other tick allocates nothing.
-- **Seven Trackers at once** (the plan's stress test has 7 agents) cost under 0.1 ms per frame at p99. That is about 0.6% of a 16.7 ms frame.
-- **Outlier:** the one 1.66 ms tick is the first time a new state's code runs in the editor (JIT). The second run, with 7 Trackers, has no tick over 0.13 ms.
+- **Allocations happen only when the brain hands the body a new route.** Every allocating tick returned a path (20 of 20 for one Tracker, 134 of 134 for seven). Each one allocates the route cells and the world-space path, about 4 small allocations. Every other tick allocates nothing.
+- **Seven Trackers at once** (the plan's stress test has 7 agents) cost under 0.06 ms per frame at p99. That is about 0.4% of a 16.7 ms frame.
+- **Compared with the run before the prototype rooms** (2026-10-08, 5,310 walkable cells): the same picture. One Tracker then had a mean of 2.7 µs and a single 1.66 ms first-run (JIT) outlier; this run came after the code had already run in the editor, so it has no JIT outlier.
 - **Limits:** these are editor timings for the brain alone, not a player build. The full stress test (`Test_FourAgentsStress`, below) is S4's, with all agent types and the bodies.
 
 **Measuring allocations: `GC.GetAllocatedBytesForCurrentThread()` does not work in Unity.**
