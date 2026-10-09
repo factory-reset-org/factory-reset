@@ -257,6 +257,25 @@ namespace ToyFactory.Tests
         }
 
         [UnityTest]
+        public IEnumerator TheTracerDoesNotStayOnScreenWhileTheGameIsFrozen()
+        {
+            AgentController agent = Agent(armed: true);
+            AgentWeapon weapon = agent.GetComponent<AgentWeapon>();
+            Player(new Vector3(0f, 0f, 5f));
+            LineRenderer line = agent.transform.Find("ShotLine").GetComponent<LineRenderer>();
+
+            weapon.RequestShot();
+            while (weapon.ShotsFired == 0)
+                yield return null;
+            Assert.IsTrue(line.enabled, "The tracer shows after the shot.");
+
+            // The player died on that shot: the game goes to Results and every body freezes.
+            agent.OnGameStateChanged(GameState.Playing, GameState.Results);
+            yield return null;
+            Assert.IsFalse(line.enabled, "No tracer left hanging over the frozen game.");
+        }
+
+        [UnityTest]
         public IEnumerator WallInTheWayTakesTheShot()
         {
             AgentController agent = Agent(armed: true);
