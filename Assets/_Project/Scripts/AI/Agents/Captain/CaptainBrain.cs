@@ -13,7 +13,7 @@ namespace ToyFactory.AI.Agents.Captain
 {
     /// <summary>
     /// The Captain: a boss that predicts where the player is going and gets there first.
-    /// A data-driven FSM (Dormant, Observe, Intercept, Ambush, Engage, Reassess, Stunned) on
+    /// A data-driven FSM (Dormant, Observe, Intercept, Ambush, Engage, Pursue, Reassess, Stunned) on
     /// the shared framework, driven by <see cref="GoalInference"/> (which goal the player is
     /// heading for) and <see cref="InterceptPlanner"/> (where to wait for them).
     /// </summary>
@@ -43,12 +43,22 @@ namespace ToyFactory.AI.Agents.Captain
         public const float SharedGoalGap = 0.1f;         // top two goals this close: plan for both
         public const float DefaultPlayerSprint = 7f;     // if the player reports no sprint speed
 
-        // Vision: Engage when the player is in view within 10 m.
+        // Vision: a fight starts when the player is in view within 10 m.
         public const float EngageRange = 10f;
         public const float VisionHalfAngle = 70f;
         public const float ProximityRange = 2.5f;        // felt all round at close range
         public const float SightEndInset = 0.8f;         // same grid line-of-sight rule as the Tracker
+
+        // Staying in a fight (hysteresis, so the edge of the 10 m range cannot flip it on and
+        // off): once fighting, the Captain keeps contact with the player in line of sight out
+        // to 14 m in any direction, stays engaged for at least 2 s, and only after 0.7 s with
+        // no contact goes to where it last saw them. It searches there briefly, then predicts
+        // again.
+        public const float KeepContactRange = 14f;
+        public const float MinEngageTime = 2f;
         public const float LoseSightDelay = 0.7f;
+        public const float PursueTimeout = 5f;
+        public const float LookAroundTime = 1f;
 
         // Shooting: one shot every 1.2 s. The body's weapon adds the 0.3 s aim telegraph
         // before each, the same for every agent, so the brain only decides when to shoot.
@@ -82,6 +92,7 @@ namespace ToyFactory.AI.Agents.Captain
         readonly IState<CaptainBrain> _intercept;
         readonly IState<CaptainBrain> _ambush;
         readonly IState<CaptainBrain> _engage;
+        readonly IState<CaptainBrain> _pursue;
         readonly IState<CaptainBrain> _reassess;
         readonly IState<CaptainBrain> _stunned;
         readonly List<string> _labels = new List<string>();
@@ -90,9 +101,15 @@ namespace ToyFactory.AI.Agents.Captain
         AgentContext _ctx;
         float Now => _ctx.Time;
 
-        // Perception.
+        // Perception. Seeing starts a fight; contact (line of sight within 14 m, any
+        // direction) keeps one going.
         bool _seesPlayer;
-        float _lastSeenTime = float.NegativeInfinity;
+        bool _inContact;
+        float _lastContactTime = float.NegativeInfinity;
+        Vector3 _lastContactPosition;
+        Vector3 _lastContactHeading;
+        float _engagedAt;
+        bool _pursueOver;
 
         // Prediction and plan, refreshed by Decide at 2 Hz.
         float _nextDecisionTime = float.NegativeInfinity;
@@ -140,6 +157,7 @@ namespace ToyFactory.AI.Agents.Captain
             _intercept = new InterceptState();
             _ambush = new AmbushState();
             _engage = new EngageState();
+            _pursue = new PursueState();
             _reassess = new ReassessState();
             _stunned = new StunnedState();
 
@@ -151,8 +169,12 @@ namespace ToyFactory.AI.Agents.Captain
             Rule(rules, _observe, _engage, 80, "player visible within 10 m", b => b._seesPlayer);
             Rule(rules, _intercept, _engage, 80, "player visible within 10 m", b => b._seesPlayer);
             Rule(rules, _ambush, _engage, 80, "player visible within 10 m", b => b._seesPlayer);
-            Rule(rules, _engage, _reassess, 70, "lost sight for 0.7 s, or the player is gone",
-                b => b.LostSightFor(LoseSightDelay) || !b.PlayerAvailable());
+            Rule(rules, _pursue, _engage, 80, "contact again (line of sight within 14 m)", b => b._inContact);
+            Rule(rules, _engage, _reassess, 75, "the player is gone (dead or missing)", b => !b.PlayerAvailable());
+            Rule(rules, _engage, _pursue, 70, "no contact for 0.7 s, after at least 2 s engaged",
+                b => b.EngagedFor(MinEngageTime) && b.LostContactFor(LoseSightDelay));
+            Rule(rules, _pursue, _reassess, 65, "searched the last-seen spot, 5 s passed, or the player is gone",
+                b => b._pursueOver || !b.PlayerAvailable());
             Rule(rules, _intercept, _reassess, 60, "plan invalid: g* changed, confidence < 0.5, player at g*, cell blocked",
                 b => b._planInvalid);
             Rule(rules, _ambush, _reassess, 60, "plan invalid: g* changed, confidence < 0.5, player at g* or past the cell",
@@ -213,7 +235,7 @@ namespace ToyFactory.AI.Agents.Captain
         AlertLevel CurrentAlert()
         {
             IState<CaptainBrain> state = _machine.Current;
-            if (state == _engage || state == _intercept || state == _ambush)
+            if (state == _engage || state == _pursue || state == _intercept || state == _ambush)
                 return AlertLevel.Alert;
             if ((state == _observe || state == _reassess) && PlayerAvailable())
                 return AlertLevel.Suspicious;
@@ -325,15 +347,35 @@ namespace ToyFactory.AI.Agents.Captain
             return player.IsKnown && player.IsAlive;
         }
 
-        bool LostSightFor(float seconds) => !_seesPlayer && Now - _lastSeenTime >= seconds;
+        bool LostContactFor(float seconds) => !_inContact && Now - _lastContactTime >= seconds;
+
+        bool EngagedFor(float seconds) => Now - _engagedAt >= seconds;
 
         // ---- Perception ----------------------------------------------------------------
 
         void Perceive()
         {
             _seesPlayer = CanSeePlayer();
-            if (_seesPlayer)
-                _lastSeenTime = Now;
+            _inContact = _seesPlayer || InContact();
+            if (!_inContact)
+                return;
+            PlayerSnapshot player = Player;
+            _lastContactTime = Now;
+            _lastContactPosition = player.Position;
+            Vector3 heading = player.Velocity.sqrMagnitude > 0.01f ? player.Velocity : player.Forward;
+            heading.y = 0f;
+            _lastContactHeading = heading.sqrMagnitude > 1e-4f ? heading.normalized : Vector3.zero;
+        }
+
+        // Keeping track of a player already being fought: line of sight within 14 m, in any
+        // direction (the Captain has turned to them), unlike the 10 m view cone that starts a fight.
+        bool InContact()
+        {
+            if (!PlayerAvailable())
+                return false;
+            Vector3 eye = _ctx.Position;
+            Vector3 target = Player.Position;
+            return FlatDistance(eye, target) <= KeepContactRange && GridSight(eye, target);
         }
 
         bool CanSeePlayer()

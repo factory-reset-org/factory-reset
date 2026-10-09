@@ -139,8 +139,11 @@ namespace ToyFactory.AI.Agents.Captain
         }
 
         /// <summary>
-        /// The player is in view within 10 m: stands, faces them and asks for a shot every 1.2 s.
-        /// The body's weapon aims for 0.3 s (the telegraph) before each shot, so the player can react.
+        /// A fight: stands, faces the player and asks for a shot every 1.2 s while in contact.
+        /// The body's weapon aims for 0.3 s (the telegraph) before each shot, so the player can
+        /// react. Starts when the player is seen within 10 m and lasts at least 2 s; contact
+        /// (line of sight within 14 m) keeps it going, so stepping in and out of 10 m does not
+        /// switch it on and off.
         /// </summary>
         sealed class EngageState : CaptainState
         {
@@ -152,6 +155,7 @@ namespace ToyFactory.AI.Agents.Captain
             {
                 base.Enter(b);
                 b.StopMoving();
+                b._engagedAt = b.Now;
                 _lastShotAt = float.NegativeInfinity;
             }
 
@@ -160,13 +164,62 @@ namespace ToyFactory.AI.Agents.Captain
                 b._outSpeed = 0f;
                 if (!b.PlayerAvailable())
                     return;
-                b._outLook = b.Player.Position;
 
-                if (b._seesPlayer && b.Now - _lastShotAt >= FireInterval)
+                // Out of contact it faces where it last saw the player, not where they are now.
+                b._outLook = b._inContact ? b.Player.Position : b._lastContactPosition;
+                if (b._inContact && b.Now - _lastShotAt >= FireInterval)
                 {
                     b._outAction = AgentAction.Shoot;
                     _lastShotAt = b.Now;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Lost the player mid-fight: walks at intercept speed to where it last had contact,
+        /// then stands there for 1 s looking the way the player was heading. Contact again
+        /// returns it to Engage; otherwise, after that look or 5 s, it predicts again.
+        /// </summary>
+        sealed class PursueState : CaptainState
+        {
+            float _enteredAt;
+            float _arrivedAt;
+            bool _arrived;
+
+            public PursueState() : base("Pursue") { }
+
+            public override void Enter(CaptainBrain b)
+            {
+                base.Enter(b);
+                b._pursueOver = false;
+                _enteredAt = b.Now;
+                _arrived = false;
+                if (!b.MoveTo(b.ClampedCell(b._lastContactPosition)))
+                    b._pursueOver = true;   // no route there: give up and predict again
+            }
+
+            public override void Tick(CaptainBrain b)
+            {
+                b._outSpeed = InterceptSpeed;
+                if (b.Now - _enteredAt >= PursueTimeout)
+                {
+                    b._pursueOver = true;
+                    return;
+                }
+
+                if (!_arrived && b.ArrivedAt(b._routeGoal))
+                {
+                    _arrived = true;
+                    _arrivedAt = b.Now;
+                    b.StopMoving();
+                }
+                if (!_arrived)
+                    return;
+
+                b._outSpeed = 0f;
+                b._outLook = b._lastContactPosition + b._lastContactHeading * 3f;
+                if (b.Now - _arrivedAt >= LookAroundTime)
+                    b._pursueOver = true;
             }
         }
 
