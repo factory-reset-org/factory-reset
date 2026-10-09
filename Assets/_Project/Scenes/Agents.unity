@@ -1060,6 +1060,61 @@ Transform:
   m_Children: []
   m_Father: {fileID: 518627956}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &698809279
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 698809281}
+  - component: {fileID: 698809280}
+  m_Layer: 0
+  m_Name: Debug Tools
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &698809280
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 698809279}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 58a7c786accbc9341b1fb9d16ebfe3ac, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Debugging.ChapterJump
+  entrances:
+  - {x: 10.5, y: 0.1, z: 3}
+  - {x: 22.6, y: 0.1, z: 10.5}
+  - {x: 31, y: 0.1, z: 22.6}
+  - {x: 10.5, y: 0.1, z: 22.6}
+  entranceYaw:
+  - 0
+  - 90
+  - 0
+  - 0
+  cutsceneTimeout: 10
+--- !u!4 &698809281
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 698809279}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &699645032
 GameObject:
   m_ObjectHideFlags: 0
@@ -4776,3 +4831,4 @@ SceneRoots:
   - {fileID: 1463621843}
   - {fileID: 1447529303}
   - {fileID: 893032305}
+  - {fileID: 698809281}
