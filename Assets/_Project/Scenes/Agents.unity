@@ -2838,6 +2838,7 @@ GameObject:
   - component: {fileID: 1447529304}
   - component: {fileID: 1447529306}
   - component: {fileID: 1447529307}
+  - component: {fileID: 1447529308}
   m_Layer: 0
   m_Name: CutsceneDirector
   m_TagString: Untagged
@@ -3132,6 +3133,23 @@ MonoBehaviour:
   wordWidth: 1.8
   shortWordWidth: 0.9
   wordSeconds: 1.6
+--- !u!114 &1447529308
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1447529300}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 10c9d6d91fdebbc47923b41712181545, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.ChapterCard
+  seconds: 4.5
+  afterCutsceneDelay: 0.5
+  sortingOrder: 45
+  accent: {r: 0.357, g: 0.89, b: 0.71, a: 1}
+  panelColour: {r: 0.03, g: 0.02, b: 0.07, a: 0.78}
 --- !u!1 &1455621665
 GameObject:
   m_ObjectHideFlags: 0
