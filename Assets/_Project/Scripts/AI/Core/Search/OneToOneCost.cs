@@ -60,7 +60,8 @@ namespace ToyFactory.AI.Core.Search
         /// grid, the target cannot be reached, or every route costs more than
         /// <paramref name="maxCost"/>.
         /// </summary>
-        public float Compute(Vector2Int from, Vector2Int to, ICostModel cost, float maxCost = float.PositiveInfinity)
+        public float Compute(Vector2Int from, Vector2Int to, ICostModel cost, float maxCost = float.PositiveInfinity,
+            int maxExpanded = int.MaxValue)
         {
             if (cost == null)
                 throw new ArgumentNullException(nameof(cost));
@@ -73,14 +74,14 @@ namespace ToyFactory.AI.Core.Search
                 if (_grid.CellCount != _cellCount)
                     AllocateForGridSize();
 
-                float result = Search(from, to, cost, maxCost, out int expanded);
+                float result = Search(from, to, cost, maxCost, maxExpanded, out int expanded);
                 NodesExpanded = expanded;
                 ElapsedMs = (float)_stopwatch.Elapsed.TotalMilliseconds;
                 return result;
             }
         }
 
-        float Search(Vector2Int from, Vector2Int to, ICostModel cost, float maxCost, out int expanded)
+        float Search(Vector2Int from, Vector2Int to, ICostModel cost, float maxCost, int maxExpanded, out int expanded)
         {
             expanded = 0;
             if (!_grid.IsTraversable(from) || !_grid.IsTraversable(to))
@@ -109,6 +110,10 @@ namespace ToyFactory.AI.Core.Search
                     return _cost[current];
                 _closedStamp[current] = _stamp;
                 expanded++;
+
+                // Out of effort: the caller wanted an answer within this many cells, or none.
+                if (expanded > maxExpanded)
+                    return float.PositiveInfinity;
 
                 float currentCost = _cost[current];
                 int firstSlot = current * GridAdjacency.Slots;
