@@ -1,5 +1,185 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &471714382823198421
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1425072843728195648}
+  - component: {fileID: 3262854981635814922}
+  - component: {fileID: 2479118901823534621}
+  m_Layer: 0
+  m_Name: Goggle_Lens_R
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1425072843728195648
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 471714382823198421}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.7071068, y: 0, z: 0, w: 0.7071068}
+  m_LocalPosition: {x: 0.19, y: 1.035, z: 0.413}
+  m_LocalScale: {x: 0.16, y: 0.004, z: 0.16}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 9042529498539615052}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!33 &3262854981635814922
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 471714382823198421}
+  m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &2479118901823534621
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 471714382823198421}
+  m_Enabled: 1
+  m_CastShadows: 0
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_StaticShadowCaster: 0
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RayTracingAccelStructBuildFlagsOverride: 0
+  m_RayTracingAccelStructBuildFlags: 1
+  m_SmallMeshCulling: 1
+  m_ForceMeshLod: -1
+  m_MeshLodSelectionBias: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: dd46163783547f24896c87f25e415eea, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 1
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_GlobalIlluminationMeshLod: 0
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_MaskInteraction: 0
+  m_AdditionalVertexStreams: {fileID: 0}
+--- !u!1 &2622584847718112539
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 9027401471007566485}
+  - component: {fileID: 760523877099052960}
+  - component: {fileID: 1304867298053503792}
+  m_Layer: 0
+  m_Name: Goggle_Lens_L
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &9027401471007566485
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2622584847718112539}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.7071068, y: 0, z: 0, w: 0.7071068}
+  m_LocalPosition: {x: -0.19, y: 1.035, z: 0.413}
+  m_LocalScale: {x: 0.16, y: 0.004, z: 0.16}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 9042529498539615052}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!33 &760523877099052960
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2622584847718112539}
+  m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &1304867298053503792
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2622584847718112539}
+  m_Enabled: 1
+  m_CastShadows: 0
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_StaticShadowCaster: 0
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RayTracingAccelStructBuildFlagsOverride: 0
+  m_RayTracingAccelStructBuildFlags: 1
+  m_SmallMeshCulling: 1
+  m_ForceMeshLod: -1
+  m_MeshLodSelectionBias: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: dd46163783547f24896c87f25e415eea, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 1
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_GlobalIlluminationMeshLod: 0
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_MaskInteraction: 0
+  m_AdditionalVertexStreams: {fileID: 0}
 --- !u!1 &8364676418852828001
 GameObject:
   m_ObjectHideFlags: 0
@@ -14,10 +194,11 @@ GameObject:
   - component: {fileID: 5172471769490426685}
   - component: {fileID: 6835292230290014988}
   - component: {fileID: 1142842270313622872}
-  - component: {fileID: 885581884208109546}
   - component: {fileID: 4357518660318742485}
   - component: {fileID: 1604819290600208341}
   - component: {fileID: 8991962682083835519}
+  - component: {fileID: 1038515747823336303}
+  - component: {fileID: 5280362402737932498}
   m_Layer: 11
   m_Name: Agent_SaboteurBot
   m_TagString: Untagged
@@ -128,23 +309,6 @@ MonoBehaviour:
   - pivot: {fileID: 1465884784387286978}
     radius: 0.365
     localAxis: {x: 1, y: 0, z: 0}
---- !u!114 &885581884208109546
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8364676418852828001}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e722a24db0bd39140b3c205bf825c152, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentFallApart
-  model: {fileID: 720575241433806517}
-  reassembleSeconds: 1
-  burstSpeed: 2.5
-  scrapLingerSeconds: 2
-  scrapShrinkSeconds: 1
 --- !u!114 &4357518660318742485
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -549,6 +713,50 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+--- !u!114 &1038515747823336303
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5839d5c4ed5f2cb4ea167bc66d363f60, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentKnockdown
+  model: {fileID: 720575241433806517}
+  sparkMaterial: {fileID: 2100000, guid: 239af0130747e434099e034c0659c39b, type: 2}
+  knockOutWord: {fileID: 21300000, guid: a019917e8af69944fa8b4fe7d3887b49, type: 3}
+  scrapWord: {fileID: 21300000, guid: 0172a0140e32580459a38ad796afe4fc, type: 3}
+  tipAngle: 78
+  tipSeconds: 0.4
+  standSeconds: 0.5
+  scrapLingerSeconds: 1.2
+  scrapSinkSeconds: 0.7
+  wordWidth: 1.1
+  wordSeconds: 1
+--- !u!114 &5280362402737932498
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a82b91abb02c3fd40a42409acf9f4866, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentLights
+  lights:
+  - {fileID: 1304867298053503792}
+  - {fileID: 2479118901823534621}
+  lightMaterial: {fileID: 2100000, guid: dd46163783547f24896c87f25e415eea, type: 2}
+  colour: {r: 0.49, g: 1, b: 0.42, a: 1}
+  intensity: 2.5
+  outSeconds: 0.35
+  onSeconds: 0.6
+  darkUntilCaptainWakes: 0
 --- !u!1001 &6993411909807918050
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -603,7 +811,13 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
-    m_AddedGameObjects: []
+    m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: 2049159542241470638, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 9027401471007566485}
+    - targetCorrespondingSourceObject: {fileID: 2049159542241470638, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1425072843728195648}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 7185977976637122541, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
       insertIndex: -1
