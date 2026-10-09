@@ -268,6 +268,13 @@ namespace ToyFactory.AI.Agents.Captain
                     return;
                 b._outLook = b.Player.Position;
 
+                // Next to the player the body's stand-off holds it still: that is arriving, not
+                // being stuck, so the stuck check does not count it.
+                if (FlatDistance(b._ctx.Position, b.Player.Position) <= ConvergeArrivedDistance)
+                {
+                    b.ResetProgress();
+                    return;
+                }
                 if (b.NoProgressTowards(b.Player.Position))
                 {
                     b._convergeBlockedUntil = b.Now + AvoidSeconds;

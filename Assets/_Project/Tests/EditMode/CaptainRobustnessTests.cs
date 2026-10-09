@@ -74,6 +74,10 @@ namespace ToyFactory.Tests.EditMode
             public Vector3 Forward = Vector3.left;
             public bool Pinned;   // a prop or a jam holds it where it is
 
+            // The body's stand-off: held still within this distance of HoldNear (the player).
+            public Vector3? HoldNear;
+            public float HoldDistance = 2f;
+
             public Body(GridGraph grid, Vector2Int cell)
             {
                 _grid = grid;
@@ -94,7 +98,8 @@ namespace ToyFactory.Tests.EditMode
                 }
                 while (_next < _path.Count && Flat(_path[_next] - Position).magnitude <= 0.3f)
                     _next++;
-                if (_next < _path.Count && !Pinned)
+                bool held = HoldNear.HasValue && Flat(HoldNear.Value - Position).magnitude <= HoldDistance;
+                if (_next < _path.Count && !Pinned && !held)
                 {
                     Vector3 to = Flat(_path[_next] - Position);
                     float step = Mathf.Min(_speed * Dt, to.magnitude);
@@ -228,6 +233,35 @@ namespace ToyFactory.Tests.EditMode
                 replanned = brain.StateName != "Ambush";
             }
             Assert.IsTrue(replanned, "Not holding a cell it is no longer standing on.");
+        }
+
+        [Test]
+        public void APropBetweenItAndThePlayerAtTheConsoleDoesNotStopTheFight()
+        {
+            // The level after props were added to the grid: the Console's footprint is blocked
+            // (walk round it), the player holds the Console on its east side, the Captain starts
+            // on the west. It used to close in, stop at the stand-off 2 m away on the far side of
+            // the corner, fail to "see" over the Console, give up and stand there.
+            GridGraph grid = Room(60, 40);
+            for (int x = 25; x <= 28; x++)
+                for (int y = 18; y <= 20; y++)
+                    grid.AddBlocker(new Vector2Int(x, y));
+            Vector2Int console = new Vector2Int(27, 19);
+            WorldBlackboard world = World(new ObjectiveTarget(9, console, ObjectiveTargetKind.Console));
+            CaptainBrain brain = Captain(grid, world);
+            Vector3 player = grid.CellToWorld(console) + new Vector3(0.9f, 0f, 0f);   // at the Console, just east of it
+            var body = new Body(grid, new Vector2Int(19, 19)) { HoldNear = player };
+
+            bool converged = false, engaged = false;
+            for (float t = 0f; t < 8f && !engaged; t += Dt)
+            {
+                PlacePlayer(world, grid, player, Vector3.zero);
+                body.Tick(brain, world, t);
+                converged |= brain.StateName == "Converge";
+                engaged = brain.StateName == "Engage";
+            }
+            Assert.IsTrue(converged, "Closes in round the Console.");
+            Assert.IsTrue(engaged, "And sees the player over it and fights.");
         }
 
         [Test]
