@@ -19,6 +19,7 @@ GameObject:
   - component: {fileID: 8644364866380868665}
   - component: {fileID: 6381462699090212895}
   - component: {fileID: 2045013324036941734}
+  - component: {fileID: 4730924927841941763}
   m_Layer: 11
   m_Name: Agent_CaptainBot
   m_TagString: Untagged
@@ -98,6 +99,8 @@ MonoBehaviour:
   hitPoints: 6
   knockOutSeconds: 6
   scrapWhenDown: 0
+  sabotageReach: 2.5
+  sabotageGiveUpSeconds: 2
 --- !u!114 &6658538843940112905
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -267,6 +270,31 @@ MonoBehaviour:
   outSeconds: 0.35
   onSeconds: 0.6
   darkUntilCaptainWakes: 1
+--- !u!114 &4730924927841941763
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2423681692945176304}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1d4edb4deb8fd39489a07fb018fbde17, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentKneel
+  root: {fileID: 1536370014657733836}
+  frontHip: {fileID: 5721731176236549351}
+  frontKnee: {fileID: 6574914570646647936}
+  frontAnkle: {fileID: 5642774029058053510}
+  backHip: {fileID: 1659256609891530521}
+  backKnee: {fileID: 1705178943692293326}
+  backAnkle: {fileID: 6609997832484896166}
+  torso: {fileID: 557454021947322219}
+  head: {fileID: 8566529918625814095}
+  frontArm: {fileID: 2373857575970691528}
+  backArm: {fileID: 5360294489629131018}
+  downSeconds: 0.55
+  standSeconds: 1.2
 --- !u!1 &6231920233453024729
 GameObject:
   m_ObjectHideFlags: 0
@@ -425,6 +453,21 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 5820992869470640075, guid: 12f22ae6271c497419128b0180334639, type: 3}
   m_PrefabInstance: {fileID: 6301709427974699168}
   m_PrefabAsset: {fileID: 0}
+--- !u!4 &1536370014657733836 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 4766606336430775404, guid: 12f22ae6271c497419128b0180334639, type: 3}
+  m_PrefabInstance: {fileID: 6301709427974699168}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &1659256609891530521 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 4644044981913571257, guid: 12f22ae6271c497419128b0180334639, type: 3}
+  m_PrefabInstance: {fileID: 6301709427974699168}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &1705178943692293326 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 4674217861364333678, guid: 12f22ae6271c497419128b0180334639, type: 3}
+  m_PrefabInstance: {fileID: 6301709427974699168}
+  m_PrefabAsset: {fileID: 0}
 --- !u!23 &2160097108017567228 stripped
 MeshRenderer:
   m_CorrespondingSourceObject: {fileID: 5372266273110830428, guid: 12f22ae6271c497419128b0180334639, type: 3}
@@ -472,6 +515,26 @@ Animator:
   m_AllowConstantClipSamplingOptimization: 1
   m_KeepAnimatorStateOnDisable: 0
   m_WriteDefaultValuesOnDisable: 0
+--- !u!4 &5642774029058053510 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 1818049361660570918, guid: 12f22ae6271c497419128b0180334639, type: 3}
+  m_PrefabInstance: {fileID: 6301709427974699168}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &5721731176236549351 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 1734879156576123975, guid: 12f22ae6271c497419128b0180334639, type: 3}
+  m_PrefabInstance: {fileID: 6301709427974699168}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &6574914570646647936 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 885769459187813408, guid: 12f22ae6271c497419128b0180334639, type: 3}
+  m_PrefabInstance: {fileID: 6301709427974699168}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &6609997832484896166 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 923032692347651334, guid: 12f22ae6271c497419128b0180334639, type: 3}
+  m_PrefabInstance: {fileID: 6301709427974699168}
+  m_PrefabAsset: {fileID: 0}
 --- !u!23 &7119253584049345050 stripped
 MeshRenderer:
   m_CorrespondingSourceObject: {fileID: 3870984876842379962, guid: 12f22ae6271c497419128b0180334639, type: 3}
