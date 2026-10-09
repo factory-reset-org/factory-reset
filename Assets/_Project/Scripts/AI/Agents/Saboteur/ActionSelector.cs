@@ -117,6 +117,13 @@ namespace ToyFactory.AI.Agents.Saboteur
                 _cooldownUntil[key] = now + seconds;
         }
 
+        /// <summary>
+        /// Starts the pair's cooldown after an attempt that did not work (the Saboteur could not
+        /// reach the door, or the door stayed open), so the same pair is not tried again at once.
+        /// Uses the same cooldown as <see cref="NotifySuccess"/>.
+        /// </summary>
+        public void NotifyFailure(ActionKey key, float now) => NotifySuccess(key, now);
+
         /// <summary>Drops the current selection (stun, destruction). Cooldowns are kept.</summary>
         public void CancelCurrent() => _hasCurrent = false;
 

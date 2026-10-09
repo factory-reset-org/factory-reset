@@ -83,11 +83,25 @@ Selection runs at 4 Hz (250 ms). Instances are offset by 62.5 ms (A = 0, B = 62.
 
 ### DetourCache
 
-Detour gain is player-centric, so four instances would repeat the same searches. `DetourCache` computes it once per door every 0.5 s for the whole squad and all four brains read the result. With six doors that is about 12 A* runs per pass (one open-route and one closed-route search per door), not four times that. The cache stops updating when all four Saboteurs are destroyed, and its searches are wrapped in the `AI.Saboteur.Detour` profiler marker. That the A* count is the same for one instance and for four is a design expectation until it is measured and recorded in `Docs/AIPerformanceLog.md`.
+Detour gain is player-centric, so four instances would repeat the same searches. `DetourCache` computes it once per door every 0.5 s for the whole squad and all four brains read the result. With six doors that is about 12 A* runs per pass (one open-route and one closed-route search per door), not four times that. The cache stops updating when all four Saboteurs are destroyed, and its searches are wrapped in the `AI.Saboteur.Detour` profiler marker. In code, a refresh does one search for the player's current route and one more only for each door that lies on or right next to that route, so a door off the route costs no search. A refresh runs at most every 0.5 s of game time, or at once when the grid version or the objective list changes. The objective is the Captain's `PredictedGoal` when its confidence is at least 0.5, otherwise the nearest entry of `WorldBlackboard.ObjectiveTargets`. The searches are counted in `DetourCache.Searches`, and `SaboteurDetourTests` checks that four Saboteurs asking at their staggered times cost the same number of searches as one (two on the test map: the route and the one door on it). Timings are not measured yet; they go in `Docs/AIPerformanceLog.md` with the squad evidence.
 
-### Hypothetical door closure (proposal, awaiting S2 review)
+### Hypothetical door closure
 
-The live grid is never changed to test a closure. Proposal: a Saboteur-owned `ICostModel` that wraps the base cost model and returns `float.PositiveInfinity` for steps into the door's cells. `ICostModel` only requires a step cost at least equal to the base cost, so infinity satisfies the contract. Because `PathResult` has no total, the route cost is the sum of step costs under the same model, and an infinite total is a lockout (the objective becomes unreachable), so that door is rejected. Open question for S2: how `AStarSearch` behaves when a step cost is infinite. I found no explicit infinity handling in it, so this must be confirmed and tested before relying on it.
+The live grid is never changed to test a closure. `DoorClosureCostModel` is a Saboteur-owned `ICostModel` that returns the base step cost, except `float.PositiveInfinity` for a step into or out of the door's cells and for a diagonal step that cuts the corner of one (the grid forbids those diagonals once the door is closed). `ICostModel` only requires a step cost at least equal to the base cost, so infinity satisfies the contract. Because `PathResult` has no total, the route cost is the sum of step costs under the same model (`DoorClosureCostModel.PathCost`), and an infinite total is a lockout, so that door is rejected.
+
+**How `AStarSearch` treats an infinite step (tested in `SaboteurDetourTests`).** Nothing in it needs to change. With another route available it expands the finite cells first and returns a finite route around the infinitely priced cell. When the only route crosses it, the search does not fail: it returns that route with `Found = true`, and the route's summed cost is infinite. So a lockout is read from the summed cost, never from `PathResult.Found`. The search terminates and never produces NaN in either case. S2 has not yet confirmed this is the intended behaviour; the result goes to S2 as a note, and nothing else depends on it.
+
+### CloseDoor
+
+`CloseDoorSource` offers `CloseDoor(d)` for every open door on the player's route whose closing lengthens it. Two considerations through `UtilityAction`: the detour gain (`DetourCache.GainScore`, saturating at a 100% longer route) and the Saboteur's distance to the door (`1 - d / 30 m`, a straight octile distance, not a search, because four Saboteurs rank every door at 4 Hz). A door is not offered when it is already closed, when closing it is a lockout, when it adds no detour, or when the player is on or next to its cells. With two considerations the compensated score of a 0.3 gain at 5 m is about 0.34, above Idle (0.1). The squad layer vetoes a door another Saboteur has claimed.
+
+The brain carries it out in two phases, only when it was given the shared `DetourCache` (it needs the door's cells):
+
+- **Travel.** One A* route to the nearest door cell is sent (`Path`), and sent again if a changed cell lies on it. A route that cannot be found, or ends out of reach, ends the plan as a failure.
+- **Execute.** Within 1.5 m of the door the body stops once and each tick the intent is `AgentAction.CloseDoor` with `ActionTargetId` = the door id (`Door.doorId` = `DoorwayMarker.DoorId` = grid `DoorId`).
+- **End.** The runtime reports no result, so success is read from the grid: the door's cells are closed. A door this Saboteur had asked for starts the door cooldown (10 s). A door still open 3 s after the Saboteur reached it is a failure; it starts the same cooldown through `ActionSelector.NotifyFailure`, so the Saboteur does not stand at a door the runtime cannot close. Either way the claim is released and the Saboteur patrols again.
+
+Not wired into the level yet: the controller does not execute `CloseDoor`, so the spawner will pass `CloseDoorSource` only once S4's executor exists. `CompositeCandidateSource` combines it with `AttackPlayerSource`.
 
 ### Permanent destruction
 
@@ -209,7 +223,7 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | `ISabotageable` on traps and batteries | S2 | `Door` only. |
 | `ObjectiveTargets`; `PredictedGoal` with confidence | S1; S4 | Not published. Fixed test objective. |
 | Game time in `AgentContext` | S4 / S2 | `Time.time` today. |
-| Infinite-cost step behaviour in `AStarSearch` | S2 | To be confirmed (see hypothetical closure). |
+| Infinite-cost step behaviour in `AStarSearch` | S2 | Tested, no change needed (see Hypothetical door closure); S2's confirmation outstanding. |
 
 ### Implementation status
 
@@ -220,10 +234,11 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | Brain skeleton: identity, 4 Hz selection, Idle/Patrol, stun, graph changes, destruction | Implemented | `SaboteurIdentity`, `SaboteurBrain`; `SaboteurBrainTests` |
 | Decision trace for the debug panel: each candidate's raw and base score, each consideration's input and score, ranking, and why a candidate lost | Implemented; filled by the brain and `ActionSelector`, no allocation per decision | `UtilityDecisionTrace`, `SaboteurBrain.LastDecision`; `UtilityDecisionTraceTests` |
 | AttackPlayer | Implemented in the brain and tested; not yet wired to the level's line-of-sight check (see AttackPlayer) | `AttackPlayerSource`, `IPlayerSight`, `CoverVisibilitySight`, `SaboteurBrain`; `SaboteurAttackTests` |
-| CloseDoor, ArmTrap, StealBattery, Flee | Not started | Need the blackboard facts in the handoff table |
+| CloseDoor | Implemented in the brain and tested (travel, execute, cooldown); not wired into the level until the controller executes `CloseDoor` | `CloseDoorSource`, `CompositeCandidateSource`, `SaboteurBrain`; `SaboteurDetourTests` |
+| ArmTrap, StealBattery, Flee | Not started | Need the blackboard facts in the handoff table |
 | Squad layer: claim on commit, "not claimed" veto, displacement check, release, attack saturation, tick stagger | Implemented in the brain: claims on commit, the veto and saturation applied to every candidate, stagger by letter, release on stun and destruction. The candidates come from an `ICandidateSource`; `AttackPlayerSource` is the first | `SquadCoordinator`, `ICandidateSource`, `SaboteurBrain`; `SquadClaimTests`, `SaboteurSquadTests` |
 | Keycard drop through `IDropsItems` | Implemented; the battery drop waits for StealBattery | `IDropsItems`, `SaboteurBrain.GetDrops`; `SaboteurDropTests` |
-| `DetourCache` | Not started | Build on the brain skeleton |
+| `DetourCache` and `DoorClosureCostModel` | Implemented and tested; refresh at most every 0.5 s, searches only for doors on the route, `AI.Saboteur.Detour` profiler marker | `DetourCache`, `DoorClosureCostModel`; `SaboteurDetourTests` |
 
 The skeleton's behaviour:
 
