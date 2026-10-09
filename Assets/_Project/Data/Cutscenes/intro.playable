@@ -32,6 +32,23 @@ MonoBehaviour:
   VirtualCamera:
     exposedName: intro.0.to
     defaultValue: {fileID: 0}
+--- !u!114 &-7919497696343145690
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4534622b074ff7149a0fa9c0a3b1dc01, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.CutsceneCueMarker
+  m_Time: 19.165788650512695
+  kind: 1
+  word: 2
+  onActor: 1
+  point: {x: 0, y: 2.8, z: 0}
 --- !u!114 &-7907901794286346144
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -154,6 +171,23 @@ MonoBehaviour:
   VirtualCamera:
     exposedName: intro.5.from
     defaultValue: {fileID: 0}
+--- !u!114 &-3711100737735396958
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4534622b074ff7149a0fa9c0a3b1dc01, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.CutsceneCueMarker
+  m_Time: 5.672368049621582
+  kind: 1
+  word: 0
+  onActor: 0
+  point: {x: 4, y: 2.1, z: 14}
 --- !u!114 &-3420005529621786615
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -183,6 +217,40 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.ShotEndMarker
   m_Time: 23.34736747741699
+--- !u!114 &-3137302411736875455
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4534622b074ff7149a0fa9c0a3b1dc01, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.CutsceneCueMarker
+  m_Time: 8.299999475479126
+  kind: 1
+  word: 1
+  onActor: 0
+  point: {x: 31, y: 3.1, z: 15}
+--- !u!114 &-1591274605243173399
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4534622b074ff7149a0fa9c0a3b1dc01, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.CutsceneCueMarker
+  m_Time: 0
+  kind: 0
+  word: 0
+  onActor: 0
+  point: {x: 0, y: 0, z: 0}
 --- !u!114 &-1046784595252697796
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -468,6 +536,10 @@ MonoBehaviour:
     - {fileID: 3277299669566962039}
     - {fileID: -1003597755022095859}
     - {fileID: 7013392950071260884}
+    - {fileID: -1591274605243173399}
+    - {fileID: -3711100737735396958}
+    - {fileID: -3137302411736875455}
+    - {fileID: -7919497696343145690}
 --- !u!114 &7013392950071260884
 MonoBehaviour:
   m_ObjectHideFlags: 1

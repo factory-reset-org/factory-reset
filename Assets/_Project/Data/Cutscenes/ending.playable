@@ -28,6 +28,7 @@ MonoBehaviour:
     - {fileID: 7754096435744249454}
     - {fileID: -3908961172144872276}
     - {fileID: 1192311829024070071}
+    - {fileID: 5299591785710491875}
 --- !u!114 &-6676851820876850237
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -366,6 +367,23 @@ MonoBehaviour:
   m_Time: 5.364473342895508
   shot: 1
   waitForLines: 0
+--- !u!114 &5299591785710491875
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4534622b074ff7149a0fa9c0a3b1dc01, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.CutsceneCueMarker
+  m_Time: 0
+  kind: 1
+  word: 3
+  onActor: 0
+  point: {x: 10.5, y: 2.8, z: 31}
 --- !u!114 &5542740535331418779
 MonoBehaviour:
   m_ObjectHideFlags: 1

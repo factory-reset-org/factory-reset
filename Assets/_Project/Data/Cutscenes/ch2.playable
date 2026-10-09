@@ -402,6 +402,23 @@ MonoBehaviour:
   VirtualCamera:
     exposedName: ch2.0.from
     defaultValue: {fileID: 0}
+--- !u!114 &-4993130416736852258
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4534622b074ff7149a0fa9c0a3b1dc01, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.CutsceneCueMarker
+  m_Time: 5.193420886993408
+  kind: 0
+  word: 0
+  onActor: 0
+  point: {x: 0, y: 0, z: 0}
 --- !u!114 &-4499954913927566695
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -477,6 +494,7 @@ MonoBehaviour:
     - {fileID: 4317397804833471406}
     - {fileID: 2063701165031976378}
     - {fileID: 3246254183684356064}
+    - {fileID: -4993130416736852258}
 --- !u!114 &-141902236011512163
 MonoBehaviour:
   m_ObjectHideFlags: 1

@@ -61,6 +61,7 @@ namespace ToyFactory.Journey.Cutscenes
         DialogueRunner _dialogue;
         VoiceBlips _blips;
         CutsceneCameraRig _camera;
+        CutsceneCuePlayer _cues;
         readonly List<string> _missingBindings = new List<string>();
         CutsceneDefinition _playing;
         bool _usingTimeline;
@@ -112,6 +113,7 @@ namespace ToyFactory.Journey.Cutscenes
             _runner = new CutsceneRunner(cutscenes, this, () => GameClock.Current);
             _dialogue = new DialogueRunner(ConditionHolds);
             _camera = new CutsceneCameraRig(transform, cameraBlend);
+            _cues = GetComponent<CutsceneCuePlayer>();
             if (blipSource != null)
             {
                 _blips = new VoiceBlips(blipSource);
@@ -309,6 +311,14 @@ namespace ToyFactory.Journey.Cutscenes
             if (notification is CriticalSignalMarker marker)
             {
                 _runner.SignalReached(marker.SignalId);
+                return;
+            }
+
+            // Show only: an alarm or a comic word. Nothing depends on it.
+            if (notification is CutsceneCueMarker cue)
+            {
+                if (_cues != null)
+                    _cues.Play(cue);
                 return;
             }
 
