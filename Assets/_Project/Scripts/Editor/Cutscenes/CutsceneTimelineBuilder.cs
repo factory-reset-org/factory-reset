@@ -182,6 +182,12 @@ namespace ToyFactory.Editor.Cutscenes
             aim.Damping = Vector2.zero;
             aim.CenterOnActivate = true;
 
+            // A follow shot is placed relative to wherever the player stands, so it can land
+            // inside a server pillar at the console; the Decollider pushes it back out.
+            CinemachineDecollider decollider = go.AddComponent<CinemachineDecollider>();
+            decollider.CameraRadius = 0.3f;
+            decollider.Decollision.Enabled = true;
+
             camera.Follow = actor;
             if (shot.LooksAtActor)
             {
