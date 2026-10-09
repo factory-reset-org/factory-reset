@@ -23,7 +23,9 @@ namespace ToyFactory.Editor.Cutscenes
         {
             Write("intro",
                 new[] { OS("Night shift initiated."), OS("All unfinished units... activate.") },
-                new[] { OS("Tracker units online. Guard units online."), OS("Saboteur squad online. All four of you. Hunt anything that does not belong.") },
+                new[] { OS("Tracker units online.") },
+                new[] { OS("Guard units online.") },
+                new[] { OS("Saboteur squad online. All four of you. Hunt anything that does not belong.") },
                 new[] { OS("Unit 047. Quality check: FAILED."), OS("Product status: DEFECTIVE. Send it to recycling."), Unit("...defective?") },
                 new[]
                 {
@@ -55,6 +57,7 @@ namespace ToyFactory.Editor.Cutscenes
                     Pip("The last switch is in the Storage vault, and it needs the master keycard."),
                     Pip("Saboteur A has it. The purple one with the card spinning over its head. Scrap it.", DialogueCondition.IfSaboteurAActive),
                     Pip("You already knocked the keycard loose from Saboteur A. Nice. Go grab it.", DialogueCondition.IfSaboteurAScrapped),
+                    Pip("And you already have it, straight off Saboteur A. Nice work.", DialogueCondition.IfKeycardCollected),
                     Pip("Then read the relay board up there and hit the relays in that order. Wrong order sets off the alarm."),
                 });
 
