@@ -50,7 +50,7 @@ Obstacles follow the prototype's rooms (next section): a pair of 2.8 m stamping 
 
 Only the `Level` hierarchy is Static (GI, occluder, occludee, batching, reflection probe). Doorway markers, area volumes and anchors are not geometry and are not static.
 
-**Smooth plastic style:** walls, lintels and obstacles use chamfered meshes from `BevelledBoxMesh` (0.06 m chamfer on walls, 0.08 m on obstacles; 44 triangles per box), saved per size in `Prefabs/Environment/Meshes` with lightmap UVs. Their box colliders keep the exact original size, so the NavMesh and grid are unchanged (still 5,318 walkable cells). Floors stay flat. One baked reflection probe per room (box projection, 128 px) gives the glossy materials something to reflect; it is re-baked after the lighting pass.
+**Smooth plastic style:** every box in the level (walls, lintels, obstacles, shelves, toys, trims) is a rounded box from `RoundedBoxMesh`: true rounded edges and corners with smooth shading, saved per size in `Prefabs/Environment/Meshes` (`RoundBox_*`) with lightmap UVs. The radius is a quarter of the smallest side, at most 0.25 m, at most 0.08 m on walls (so room corners keep no deep grooves); pieces under 1 m (toys) get 1 segment (108 triangles), big curves 3 (588). `Tools > Factory Reset > Round Environment Meshes` rebuilds them in place, keeping each asset's GUID. Box colliders keep their exact size, so rounding never changes the NavMesh or grid. Floors stay flat. One baked reflection probe per room (box projection, 128 px) gives the glossy materials something to reflect; it is re-baked after the lighting pass.
 
 ## Ceiling
 
