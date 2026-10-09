@@ -37,7 +37,7 @@ All plastic is non-metallic; the gloss comes from smoothness and reflection prob
 | Blue plastic | `#3A6CF4` | 0 | 0.8 | the Guard, machine bodies |
 | Yellow plastic | `#FFC933` | 0 | 0.8 | warning stripes, belt rails, doors, levers |
 | White plastic | `#E8ECF2` | 0 | 0.6 | walls and large panels (lower smoothness so walls are not mirrors) |
-| Grey plastic | `#5B6B8C` | 0 | 0.7 | machine bases, shelves, pillars, cover blocks |
+| Grey plastic | `#5B6B8C` | 0 | 0.7 | machine bases, paint-tank lids |
 | Floor plastic | room key colour | 0 | 0.6 | floors; one variant per room (see Room identity) |
 | Chrome | `#B8C4D6` | 1 | 0.9 | small parts only: joints, antennae, gears, bolts |
 | Glow circuit | `#3DDBB0`, emission | 0 | 0.5 | screens, lamps, circuit trims (emissive, drives bloom) |
@@ -64,6 +64,8 @@ Power-of-two, BC7. Props atlas 1024×1024. Plastic needs no detail textures: fla
 The environment has three small tiling textures from the prototype, each 256 x 256, BC7, mipmapped, trilinear, anisotropic 8, in `Textures/Environment`:
 - `T_Env_HazardStripes`: yellow and plum 45 degree bands, four per metre, seamless both ways. Used on the wall skirting and the press outlines (`M_Env_HazardStripe`).
 - `T_Env_FloorTiles`: a 2 m tile of 4 x 4 grey tiles with darker grout, multiplied by each room's floor tint (`M_Env_FloorTiled_<Room>`, tiling 10.375 over a 20.75 m floor).
+- `T_Env_Bullseye`: the prototype's red, cream, blue and yellow rings with a plum rim, on the Painting Room targets (`M_Env_Bullseye`, a little emission so they read from across the room; a hit tints them green through S2's `PropTint`).
+- `T_Env_ServerLights`: rows of small mint, yellow, cyan and pink LEDs on black, the emission map of the Control Room's server pillars (`M_Env_ServerPillar`, dark `#151228` plastic, caps in `M_Env_PlasticPurple` `#8F6BFF`).
 - `T_Env_FloorGlowGrid`: thin outlines inset in each tile, used as the Control Room floor's emission map (cyan `#3DD9FF`).
 
 ## Lighting and post-processing
@@ -83,6 +85,7 @@ As built in `Env.unity` (S1, Week 12):
   - Lighting settings are in `Settings/Lighting/LS_Env`.
 - The plain `M_Env_Floor_<Room>` tints are now used by the dressing (toys, puddles, rack trims); the floors themselves use the tiled `M_Env_FloorTiled_<Room>` copies, so the tile texture never lands on a toy.
 - Wall trims, as in the prototype: a 0.6 m hazard-stripe skirting along the foot of every room wall (broken at the doorways), and a 0.3 m dark plum band under the ceiling.
+- Prototype rooms (Week 13): paint tanks are smooth lathed meshes (rounded rims, 320 to 480 triangles per part) in white plastic with a coloured band; presses are bevelled boxes in the toy colours with a chrome piston. The alarm beacons' materials (`M_Env_GlowAlarm`, `M_Env_GlowAlarmOff`, `M_Env_GlowAmber`) had lost their `_EMISSION` keyword on save and rendered as dull red; they now keep it (Realtime Emissive, since they swap at runtime), and the alarm red is saturated so it reads as red, not pink.
 - Room dressing (Week 13) adds no new materials. Toys reuse the red, yellow and blue plastics and the four floor tints; puddles reuse the plastics, whose 0.8 smoothness reads as wet paint; server racks are the ceiling plum with Control trims; server lights reuse `M_Env_GlowCircuit`; gears are yellow, red, blue or chrome. Small or moving pieces (toys, gears, server lights) are lit by light probes instead of lightmaps.
 - Ambient is Trilight, but with the ceiling closed it no longer reaches inside the rooms; the panels and their bounce light do the work. Fog is exponential, density 0.006, in dark plum `#2B2450` like the prototype (it was pale lavender, which looked like haze under a ceiling).
 - 629 light probes: a 3 m grid at 0.5, 2 and 4 m, six probes at each doorway, and 118 more along the agents' patrol routes and the player's route through the four doorways (pairs at 0.75 m and 2 m wherever a route point was more than 1.25 m from a probe).
