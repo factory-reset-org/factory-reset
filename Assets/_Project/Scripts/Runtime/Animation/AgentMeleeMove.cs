@@ -1,4 +1,5 @@
 using UnityEngine;
+using ToyFactory.Interfaces;
 using ToyFactory.Runtime.Agents;
 using ToyFactory.Runtime.Movement;
 
@@ -10,13 +11,17 @@ namespace ToyFactory.Runtime.Animation
     /// A move starts when <see cref="PlayerStandOff"/> holds the body in front of the player
     /// (then again every <see cref="interval"/> seconds, start to start), and also whenever
     /// the body starts an attack of its own (<see cref="AgentController.IsAttacking"/>).
-    /// Cosmetic only: no damage, and the brain never sees it.
+    /// Each move deals <see cref="Damage"/> once, at the moment of contact, if the player is
+    /// still alive, within reach and in front; the brain never sees it. A move with no damage
+    /// (the Tracker's pounce) is cosmetic.
     /// </summary>
     /// <remarks>
     /// The subclass poses the rig in <see cref="Pose"/>, from normalised time 0 to 1, in
     /// LateUpdate after the Animator has written the clip pose. Pivots the clips key are
     /// added to (the Animator resets them next frame); the model root, which no clip animates,
     /// is set from its rest pose here and never added to.
+    /// The hit lands at <c>contactAt</c>, not when the move starts, so a player who backs off
+    /// during the wind-up dodges it: the wind-up is the telegraph.
     /// </remarks>
     [RequireComponent(typeof(PlayerStandOff), typeof(AgentController))]
     public abstract class AgentMeleeMove : MonoBehaviour
@@ -30,6 +35,14 @@ namespace ToyFactory.Runtime.Animation
         [Tooltip("Seconds one move takes.")]
         [SerializeField, Min(0.1f)] protected float duration = 0.6f;
 
+        [Tooltip("When in the move (normalised time) the hit lands: the end of the wind-up, as the strike connects.")]
+        [SerializeField, Range(0f, 1f)] protected float contactAt = 0.5f;
+
+        [Tooltip("Metres beyond the stand-off distance the player may be and still be hit (the strike lunges forward).")]
+        [SerializeField, Min(0f)] protected float reachMargin = 0.6f;
+
+        const float MaxHeightDifference = 1.5f;
+
         PlayerStandOff _standOff;
         AgentController _agent;
         Vector3 _rootRestPosition;
@@ -37,9 +50,16 @@ namespace ToyFactory.Runtime.Animation
         float _sinceStart = float.PositiveInfinity;
         float _time = -1f;
         bool _wasAttacking;
+        bool _contactDone;
 
         /// <summary>Moves started since this body spawned (for tests and the debug overlay).</summary>
         public int Strikes { get; private set; }
+
+        /// <summary>Moves that hit the player (for tests and the debug overlay).</summary>
+        public int Hits { get; private set; }
+
+        /// <summary>Damage one move deals to the player (Saboteur 10; the Tracker's pounce 0, cosmetic). 0 never hits.</summary>
+        public abstract float Damage { get; }
 
         /// <summary>True while a move is playing.</summary>
         public bool IsStriking => _time >= 0f;
@@ -86,8 +106,15 @@ namespace ToyFactory.Runtime.Animation
             {
                 _sinceStart = 0f;
                 _time = 0f;
+                _contactDone = false;
                 Strikes++;
                 OnStrikeStarted(Strikes);
+            }
+
+            if (IsStriking && !_contactDone && Progress >= contactAt)
+            {
+                _contactDone = true;
+                TryHitPlayer();
             }
             else if (!held)
             {
@@ -105,6 +132,27 @@ namespace ToyFactory.Runtime.Animation
             }
             if (IsStriking)
                 Pose(Progress);
+        }
+
+        // The player must be alive, within the stand-off distance plus the lunge, and in front
+        // (the body faces the player while held; a move started for some other reason, from
+        // too far or facing away, whiffs). Distance is flat, like the stand-off itself.
+        void TryHitPlayer()
+        {
+            IPlayerState player = PlayerState.Current;
+            if (player == null || !player.IsAlive || Damage <= 0f)
+                return;
+
+            Vector3 offset = player.Position - transform.position;
+            if (Mathf.Abs(offset.y) > MaxHeightDifference)
+                return;   // on a ledge or a box above or below, like the stand-off ignores
+            offset.y = 0f;
+            float reach = _standOff.StandOffDistance + reachMargin;
+            if (offset.sqrMagnitude > reach * reach || Vector3.Dot(offset, transform.forward) <= 0f)
+                return;
+
+            Hits++;
+            player.TakeDamage(Damage, _agent.Identity.Id);
         }
 
         /// <summary>Called when a move starts; <paramref name="count"/> is 1 for the first.</summary>
