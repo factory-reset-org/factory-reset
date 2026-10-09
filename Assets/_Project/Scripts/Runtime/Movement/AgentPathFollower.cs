@@ -28,6 +28,8 @@ namespace ToyFactory.Runtime.Movement
         int _targetIndex;
         float _speed;
         float _verticalVelocity;
+        bool _holding;
+        Vector3 _holdLook;
 
         /// <summary>True while there are waypoints left to walk to.</summary>
         public bool HasPath => _targetIndex < _path.Count;
@@ -37,6 +39,9 @@ namespace ToyFactory.Runtime.Movement
 
         /// <summary>The <paramref name="index"/>-th waypoint still to walk (0 = the next one).</summary>
         public Vector3 RemainingWaypoint(int index) => _path[_targetIndex + index];
+
+        /// <summary>True while <see cref="Hold"/> keeps the agent standing where it is.</summary>
+        public bool IsHolding => _holding;
 
         /// <summary>Horizontal speed this frame in metres per second, for animation.</summary>
         public float CurrentSpeed { get; private set; }
@@ -72,6 +77,19 @@ namespace ToyFactory.Runtime.Movement
             SkipReachedWaypoints();
         }
 
+        /// <summary>
+        /// Keeps the agent standing where it is, turning to face <paramref name="lookAt"/>,
+        /// without dropping its route: <see cref="Release"/> carries on along it.
+        /// </summary>
+        public void Hold(Vector3 lookAt)
+        {
+            _holding = true;
+            _holdLook = lookAt;
+        }
+
+        /// <summary>Ends a <see cref="Hold"/>; the agent walks its route again.</summary>
+        public void Release() => _holding = false;
+
         /// <summary>Clears the route; the agent stops where it is.</summary>
         public void Stop()
         {
@@ -82,8 +100,14 @@ namespace ToyFactory.Runtime.Movement
         void Update()
         {
             Vector3 horizontalVelocity = Vector3.zero;
+            Vector3 facing = Vector3.zero;
 
-            if (HasPath)
+            if (_holding)
+            {
+                facing = _holdLook - transform.position;
+                facing.y = 0f;
+            }
+            else if (HasPath)
             {
                 Vector3 toTarget = _path[_targetIndex] - transform.position;
                 toTarget.y = 0f;
@@ -95,10 +119,11 @@ namespace ToyFactory.Runtime.Movement
                     // does not overshoot the waypoint on a long frame.
                     float frameSpeed = Mathf.Min(_speed, distance / Time.deltaTime);
                     horizontalVelocity = toTarget / distance * frameSpeed;
+                    facing = horizontalVelocity;
                 }
             }
 
-            TurnTowards(horizontalVelocity);
+            TurnTowards(facing);
             ApplyGravity();
 
             Vector3 velocity = horizontalVelocity;
@@ -109,15 +134,15 @@ namespace ToyFactory.Runtime.Movement
             SkipReachedWaypoints();
         }
 
-        // Turns to face the direction of travel, on the ground plane only, at most
-        // turnSpeed degrees per second so the agent never snaps round instantly.
-        void TurnTowards(Vector3 horizontalVelocity)
+        // Turns to face the direction of travel (or the held look point), on the ground plane
+        // only, at most turnSpeed degrees per second so the agent never snaps round instantly.
+        void TurnTowards(Vector3 direction)
         {
             float previousYaw = transform.eulerAngles.y;
 
-            if (horizontalVelocity.sqrMagnitude > 0.0001f)
+            if (direction.sqrMagnitude > 0.0001f)
             {
-                Quaternion target = Quaternion.LookRotation(horizontalVelocity, Vector3.up);
+                Quaternion target = Quaternion.LookRotation(direction, Vector3.up);
                 transform.rotation = Quaternion.RotateTowards(
                     transform.rotation, target, turnSpeed * Time.deltaTime);
             }
