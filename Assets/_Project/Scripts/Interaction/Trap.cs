@@ -17,6 +17,9 @@ namespace ToyFactory.Interaction
         [Tooltip("Armed from the start, without a Saboteur.")]
         [SerializeField] bool startArmed;
 
+        [Tooltip("The id the Saboteur names this trap by. Must be different for every trap.")]
+        [SerializeField, Min(0)] int sabotageId;
+
         [SerializeField, Min(0f)] float damage = 15f;
         [SerializeField, Min(0f)] float loudness = NoiseLoudness.BoxImpact;
 
@@ -30,6 +33,10 @@ namespace ToyFactory.Interaction
 
         /// <summary>Raised when the player steps on the trap while it is armed.</summary>
         public event Action<Trap> OnSprung;
+
+        void OnEnable() => SabotageTargets.Register(SabotageKind.Trap, sabotageId, this, transform);
+
+        void OnDisable() => SabotageTargets.Unregister(SabotageKind.Trap, sabotageId, this);
 
         void Awake()
         {
