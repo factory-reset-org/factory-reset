@@ -149,7 +149,9 @@ namespace ToyFactory.AI.Agents.Captain
                 if (!b._decidedThisTick)
                     return;
 
-                if (!b._plan.HasPlan || b._planGoalId != b._targetGoalId || !b.IsAheadOfPlayer(b._targetCell))
+                // Pushed off its cell (a box, another body): it is not holding it any more.
+                bool offCell = FlatDistance(b._ctx.Position, b._grid.CellToWorld(b._targetCell)) > AmbushLeaveDistance;
+                if (!b._plan.HasPlan || b._planGoalId != b._targetGoalId || !b.IsAheadOfPlayer(b._targetCell) || offCell)
                     b._planInvalid = true;
             }
         }
