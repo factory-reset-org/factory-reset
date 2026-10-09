@@ -18,7 +18,8 @@ namespace ToyFactory.Runtime.Animation
     /// <para><b>Tipping over</b> rotates the model about the body's feet and lifts it so its
     /// side rests on the floor, and pauses the Animator so the pose holds. The model root is
     /// not animated by any clip, so nothing fights the tilt. The capsule stays upright: a
-    /// downed agent does not move, so it does not matter.</para>
+    /// downed agent does not move, so it does not matter. A body with an
+    /// <see cref="AgentKneel"/> (the Captain) kneels and steps back up instead.</para>
     /// <para><b>Particles:</b> one world-space system per agent, emitting only on demand, so
     /// sparks stay where they were thrown when the body moves or tips.</para>
     /// </remarks>
@@ -65,6 +66,7 @@ namespace ToyFactory.Runtime.Animation
         enum Phase { Up, Down, StandingUp, Scrapped }
 
         AgentController _agent;
+        AgentKneel _kneel;
         Animator _animator;
         ParticleSystem _particles;
         Transform _word;
@@ -97,6 +99,7 @@ namespace ToyFactory.Runtime.Animation
         void Awake()
         {
             _agent = GetComponent<AgentController>();
+            _kneel = GetComponent<AgentKneel>();
             if (model == null)
                 model = transform;
             _animator = model.GetComponentInChildren<Animator>();
@@ -153,7 +156,7 @@ namespace ToyFactory.Runtime.Animation
                         GoDown(Phase.Scrapped, scrapWord);
                     else if (_agent.IsDisabled)
                         GoDown(Phase.Down, knockOutWord);
-                    else if (_phaseTime >= standSeconds)
+                    else if (_phaseTime >= StandSeconds)
                         _phase = Phase.Up;
                     break;
             }
@@ -178,9 +181,17 @@ namespace ToyFactory.Runtime.Animation
                 ShowWord(word);
         }
 
+        float StandSeconds => _kneel != null ? _kneel.StandSeconds : standSeconds;
+
         // The tip follows the phase: falls with a small overshoot, stands up smoothly.
         void UpdateTip()
         {
+            if (_kneel != null)
+            {
+                UpdateKneel();
+                return;
+            }
+
             switch (_phase)
             {
                 case Phase.Up:
@@ -205,6 +216,27 @@ namespace ToyFactory.Runtime.Animation
             // Lift by the half-width so the side rests on the floor instead of sinking into it.
             float lift = _radius * 0.7f * Mathf.Sin(Mathf.Clamp01(_tip) * tipAngle * Mathf.Deg2Rad);
             model.localPosition = _restPosition + Vector3.up * lift;
+        }
+
+        // The Captain: kneels where it stands instead of tipping, and steps back up.
+        void UpdateKneel()
+        {
+            _tip = 0f;
+            model.localRotation = _restRotation;
+            model.localPosition = _restPosition;
+            switch (_phase)
+            {
+                case Phase.Up:
+                    if (_kneel.Amount != 0f)
+                        _kneel.Release();
+                    break;
+                case Phase.StandingUp:
+                    _kneel.PoseStandUp(_phaseTime);
+                    break;
+                default:
+                    _kneel.PoseDown(_phaseTime);
+                    break;
+            }
         }
 
         // Ease-out with a small overshoot: lands, rocks past and settles.

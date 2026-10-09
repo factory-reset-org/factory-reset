@@ -100,6 +100,84 @@ namespace ToyFactory.Tests
             return agent;
         }
 
+        static Transform Pivot(string name, Transform parent, Vector3 at)
+        {
+            var pivot = new GameObject(name).transform;
+            pivot.SetParent(parent, false);
+            pivot.localPosition = at;
+            return pivot;
+        }
+
+        // A legged body like the Captain's: the same pivots, no meshes, no Animator.
+        AgentController KneelingBody(out Transform model, out AgentKneel kneel, out Transform rig, out Transform frontHip)
+        {
+            var root = new GameObject("Captain");
+            _created.Add(root);
+            root.SetActive(false);
+            var capsule = root.AddComponent<CharacterController>();
+            capsule.height = 3.2f;
+            capsule.radius = 0.55f;
+            AgentController agent = root.AddComponent<AgentController>();
+            SetField(agent, "hitPoints", 1);
+            SetField(agent, "knockOutSeconds", 1f);
+
+            model = new GameObject("Model").transform;
+            model.SetParent(root.transform, false);
+            rig = Pivot("CaptainBot_Root", model, Vector3.zero);
+            frontHip = Pivot("Leg_L_Pivot", rig, new Vector3(-0.285f, 1.08f, 0f));
+            Transform frontKnee = Pivot("Knee_L_Pivot", frontHip, new Vector3(0f, -0.44f, 0f));
+            Transform backHip = Pivot("Leg_R_Pivot", rig, new Vector3(0.285f, 1.08f, 0f));
+            Transform backKnee = Pivot("Knee_R_Pivot", backHip, new Vector3(0f, -0.44f, 0f));
+            Transform torso = Pivot("Torso_Pivot", rig, new Vector3(0f, 1.04f, 0f));
+
+            AgentKnockdown knockdown = root.AddComponent<AgentKnockdown>();
+            SetField(knockdown, "model", model);
+            SetField(knockdown, "knockOutWord", Word("KnockOut"));
+            kneel = root.AddComponent<AgentKneel>();
+            SetField(kneel, "root", rig);
+            SetField(kneel, "frontHip", frontHip);
+            SetField(kneel, "frontKnee", frontKnee);
+            SetField(kneel, "frontAnkle", Pivot("Ankle_L_Pivot", frontKnee, new Vector3(0f, -0.4f, 0f)));
+            SetField(kneel, "backHip", backHip);
+            SetField(kneel, "backKnee", backKnee);
+            SetField(kneel, "backAnkle", Pivot("Ankle_R_Pivot", backKnee, new Vector3(0f, -0.4f, 0f)));
+            SetField(kneel, "torso", torso);
+            SetField(kneel, "head", Pivot("Head_Pivot", torso, new Vector3(0f, 1.08f, 0f)));
+            SetField(kneel, "frontArm", Pivot("CannonArm_L_Pivot", torso, new Vector3(-0.72f, 0.91f, 0f)));
+            SetField(kneel, "backArm", Pivot("CannonArm_R_Pivot", torso, new Vector3(0.72f, 0.91f, 0f)));
+
+            root.SetActive(true);
+            agent.Initialise(new AgentIdentity(AgentType.Captain, 0), new IdleBrain(), new WorldBlackboard());
+            return agent;
+        }
+
+        [UnityTest]
+        public IEnumerator TheCaptainKneelsInsteadOfTippingThenStepsBackUp()
+        {
+            AgentController agent = KneelingBody(out Transform model, out AgentKneel kneel, out Transform rig, out Transform frontHip);
+            AgentKnockdown knockdown = agent.GetComponent<AgentKnockdown>();
+
+            agent.TakeHit();   // knocked out for 1 s
+            yield return Seconds(0.7f);
+            Assert.IsTrue(knockdown.IsDown);
+            Assert.AreEqual(0f, knockdown.Tip, "Does not tip over.");
+            Assert.Less(Vector3.Angle(model.up, Vector3.up), 0.5f, "The model stays upright.");
+            Assert.That(kneel.Amount, Is.EqualTo(1f).Within(0.02f), "On one knee.");
+            Assert.That(rig.localPosition.y, Is.EqualTo(-0.45f).Within(0.02f), "Dropped 0.45 m.");
+            Assert.Less(Quaternion.Angle(frontHip.localRotation, Quaternion.Euler(-91f, 0f, 0f)), 1f, "Front leg forward.");
+
+            yield return Seconds(0.9f);   // rebooted at 1 s; 0.6 s into the 1.2 s stand-up
+            Assert.IsFalse(agent.IsDisabled);
+            Assert.IsTrue(knockdown.IsDown, "Still stepping back up.");
+            Assert.That(kneel.Amount, Is.InRange(0.01f, 0.99f));
+
+            yield return Seconds(0.9f);
+            Assert.IsFalse(knockdown.IsDown, "Standing.");
+            Assert.AreEqual(0f, kneel.Amount);
+            Assert.Less(rig.localPosition.magnitude, 1e-4f, "Back at its rest height.");
+            Assert.Less(Quaternion.Angle(frontHip.localRotation, Quaternion.identity), 0.5f, "Legs back at rest.");
+        }
+
         static string WordShown(AgentController agent) =>
             agent.transform.Find("ComicWord").GetComponent<SpriteRenderer>().sprite.name;
 

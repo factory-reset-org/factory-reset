@@ -444,6 +444,10 @@ namespace ToyFactory.Editor.Animation
             knockdown.FindProperty("scrapWord").objectReferenceValue = ComicSprite("Comic_Scrapped.png");
             knockdown.ApplyModifiedPropertiesWithoutUndo();
 
+            // The Captain kneels instead of tipping over, and steps back up.
+            if (modelName == "CaptainBot")
+                AddKneel(root, model);
+
             if (!Lights.TryGetValue(modelName, out (LightPart[] parts, Color colour) light))
                 return;
             var lights = new SerializedObject(GetOrAdd<AgentLights>(root));
@@ -460,6 +464,32 @@ namespace ToyFactory.Editor.Animation
             lights.FindProperty("colour").colorValue = light.colour;
             lights.FindProperty("darkUntilCaptainWakes").boolValue = modelName == "CaptainBot";
             lights.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        static void AddKneel(GameObject root, Transform model)
+        {
+            const string rig = "CaptainBot_Root";
+            const string legL = rig + "/Leg_L_Pivot", legR = rig + "/Leg_R_Pivot";
+            const string kneeL = legL + "/Knee_L_Pivot", kneeR = legR + "/Knee_R_Pivot";
+            const string torso = rig + "/Torso_Pivot";
+            (string field, string path)[] pivots =
+            {
+                ("root", rig),
+                ("frontHip", legL), ("frontKnee", kneeL), ("frontAnkle", kneeL + "/Ankle_L_Pivot"),
+                ("backHip", legR), ("backKnee", kneeR), ("backAnkle", kneeR + "/Ankle_R_Pivot"),
+                ("torso", torso), ("head", torso + "/Head_Pivot"),
+                ("frontArm", torso + "/CannonArm_L_Pivot"), ("backArm", torso + "/CannonArm_R_Pivot"),
+            };
+
+            var kneel = new SerializedObject(GetOrAdd<AgentKneel>(root));
+            foreach ((string field, string path) in pivots)
+            {
+                Transform pivot = model.Find(path);
+                if (pivot == null)
+                    Debug.LogError($"CaptainBot: no pivot at {path} for the kneel.");
+                kneel.FindProperty(field).objectReferenceValue = pivot;
+            }
+            kneel.ApplyModifiedPropertiesWithoutUndo();
         }
 
         // The renderer of an existing part, or of a lens, added under its pivot the first time
