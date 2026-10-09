@@ -117,6 +117,15 @@ namespace ToyFactory.Tests.EditMode
             var knockdownSettings = new SerializedObject(knockdown);
             foreach (string field in new[] { "model", "sparkMaterial", "knockOutWord", "scrapWord" })
                 Assert.IsNotNull(knockdownSettings.FindProperty(field).objectReferenceValue, field);
+            Component kneel = body.GetComponent("AgentKneel");
+            Assert.AreEqual(model == "CaptainBot", kneel != null, "Only the Captain kneels instead of tipping over.");
+            if (kneel != null)
+            {
+                var kneelSettings = new SerializedObject(kneel);
+                foreach (string field in new[] { "root", "frontHip", "frontKnee", "frontAnkle", "backHip", "backKnee",
+                             "backAnkle", "torso", "head", "frontArm", "backArm" })
+                    Assert.IsNotNull(kneelSettings.FindProperty(field).objectReferenceValue, field);
+            }
             var lights = body.GetComponent("AgentLights");
             Assert.IsNotNull(lights, "Its lights go out when downed.");
             var lightSettings = new SerializedObject(lights);
