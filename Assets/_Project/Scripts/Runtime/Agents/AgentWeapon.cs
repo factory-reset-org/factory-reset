@@ -133,7 +133,14 @@ namespace ToyFactory.Runtime.Agents
         void Update()
         {
             if (_agent.IsFrozen)
-                return;   // game time is stopped too, so the aim resumes where it was
+            {
+                // Game time is stopped too, so the aim resumes where it was and redraws its
+                // line. Hide the line meanwhile: a tracer left showing stayed on screen for the
+                // whole pause, cutscene or Results screen.
+                if (_line != null)
+                    _line.enabled = false;
+                return;
+            }
 
             IPlayerState player = LivePlayer();
             if (IsAiming)
