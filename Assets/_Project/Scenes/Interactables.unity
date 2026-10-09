@@ -715,6 +715,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.BatteryPickup
   spinDegreesPerSecond: 90
+  sabotageId: 3
 --- !u!23 &88981530
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -880,6 +881,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.BatteryPickup
   spinDegreesPerSecond: 90
+  sabotageId: 2
 --- !u!23 &160482675
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -1302,6 +1304,7 @@ MonoBehaviour:
   loudness: 50
   body: {fileID: 0}
   armedColour: {r: 1, g: 0.25, b: 0.2, a: 1}
+  sabotageId: 1
 --- !u!65 &266655310
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -1501,6 +1504,7 @@ MonoBehaviour:
   loudness: 50
   body: {fileID: 0}
   armedColour: {r: 1, g: 0.25, b: 0.2, a: 1}
+  sabotageId: 2
 --- !u!65 &370414608
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -1657,6 +1661,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.BatteryPickup
   spinDegreesPerSecond: 90
+  sabotageId: 6
 --- !u!23 &544572573
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -4620,6 +4625,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.BatteryPickup
   spinDegreesPerSecond: 90
+  sabotageId: 1
 --- !u!23 &1111604645
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -5986,6 +5992,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.BatteryPickup
   spinDegreesPerSecond: 90
+  sabotageId: 5
 --- !u!23 &1489136406
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -8107,6 +8114,7 @@ MonoBehaviour:
   loudness: 50
   body: {fileID: 0}
   armedColour: {r: 1, g: 0.25, b: 0.2, a: 1}
+  sabotageId: 3
 --- !u!65 &1929681645
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -8236,6 +8244,7 @@ MonoBehaviour:
   loudness: 50
   body: {fileID: 0}
   armedColour: {r: 1, g: 0.25, b: 0.2, a: 1}
+  sabotageId: 4
 --- !u!65 &1982385046
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -8305,6 +8314,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.BatteryPickup
   spinDegreesPerSecond: 90
+  sabotageId: 4
 --- !u!23 &1999783604
 MeshRenderer:
   m_ObjectHideFlags: 0
