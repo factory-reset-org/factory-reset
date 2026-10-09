@@ -40,15 +40,16 @@ The Captain is a finite-state machine built on the shared FSM framework: each st
 | State | What the Captain does |
 | --- | --- |
 | **Dormant** | Start state. Stands powered down in the Control Room and ignores the player. The brain skips goal inference and returns an empty intent. Leaves only when the Chapter 3 wake signal arrives. |
-| **Observe** | Prediction is too uncertain to commit. Watches the player and backs off 4 m whenever they come within 8 m, so it never simply chases while the prediction settles. |
-| **Intercept** | Confident about `g*`. Picks the first chokepoint on the player's predicted route it can reach at least 1 s before them, and walks there with A*. If no cell qualifies, it heads to `g*` itself to defend it. |
-| **Ambush** | At the intercept cell. Stands still, facing the route cell the player will arrive from. Holds its ground while the cell is still ahead of the player on their predicted route. |
+| **Observe** | Prediction is too uncertain to commit. Faces and watches the player and backs off 4 m whenever they come within 8 m, so it never simply chases while the prediction settles. |
+| **Intercept** | Confident about `g*`. Picks the first chokepoint on the player's predicted route it can reach at least 1 s before them, and walks there with A*. If no cell qualifies, it heads to `g*` itself to defend it, but only if it can reach `g*`. If it has no route yet (a door was still shut), it asks again at every decision. If it does not move for 2 s, it gives the cell up (see Getting unstuck). |
+| **Ambush** | At the intercept cell. Stands still, facing the route cell the player will arrive from (the body turns to the brain's look target while standing, so it can see them coming). Holds its ground while the cell is still ahead of the player on their predicted route. |
+| **Converge** | The player is busy at a goal they reached (a task, the console hold) and nothing else is predicted. Closes in on them at intercept speed until they are in view, then fights. Gives up for 10 s if it gets stuck on the way. |
 | **Engage** | Starts when the player is in view within 10 m (a 70° half-angle cone, or anywhere within 2.5 m, with line of sight traced on the grid). Faces the player and asks for a shot every 1.2 s while in contact; the body's weapon aims for 0.3 s (the telegraph, the same for every agent) before each hitscan shot. Once started, contact (line of sight within 14 m, in any direction) keeps it going, and it lasts at least 2 s. Out of contact it faces where it last saw the player and holds fire. |
 | **Pursue** | Lost contact for 0.7 s mid-fight. Walks at intercept speed to where it last saw the player, then stands there for 1 s looking the way they were heading. Contact again returns it to Engage; otherwise it predicts again (Reassess), after that look or 5 s at most. |
 | **Reassess** | Something invalidated the plan. Discards the current intercept cell, re-runs goal inference immediately, then hands over to Observe or Intercept. Lasts one decision tick. |
 | **Stunned** | Knocked out. The controller owns the 6 s reboot and does not tick the brain meanwhile; the brain drops its plan and prediction at once. On the first tick after the reboot it passes straight through to Reassess. |
 
-**Alert icon:** the brain sets `AgentIntent.Alert`: "!" once it has committed to the player (Intercept, Ambush, Engage, Pursue), "?" while it watches and re-predicts (Observe, Reassess, with a player present), nothing while Dormant or down.
+**Alert icon:** the brain sets `AgentIntent.Alert`: "!" once it has committed to the player (Intercept, Ambush, Converge, Engage, Pursue), "?" while it watches and re-predicts (Observe, Reassess, with a player present), nothing while Dormant or down.
 
 **Waking up:** the Chapter 3 cutscene fires the `CaptainWake` Critical signal. The runtime's `CaptainWakeWriter` turns it into `WorldBlackboard.CaptainAwake`, and the brain reads the flag. The signal fires even when the player skips the cutscene. As a second safety net the Captain also wakes once Chapter 3 has started (`ChapterIndex ≥ 3`), so it can never stay asleep for the chapters it guards. Test scenes have no cutscene, so a spawn point can start it awake.
 
@@ -63,15 +64,18 @@ Higher priority wins when several conditions are true on the same tick.
 | Dormant | Observe | Wake signal received | 110 |
 | Any except Dormant | Stunned | Hit points reach 0 | 100 |
 | Stunned | Reassess | Stun timer ends | 90 |
-| Observe, Intercept, Ambush | Engage | Player visible within 10 m | 80 |
+| Observe, Intercept, Ambush, Converge | Engage | Player visible within 10 m | 80 |
 | Pursue | Engage | Contact again (line of sight within 14 m) | 80 |
 | Engage | Reassess | Player dead or missing | 75 |
 | Engage | Pursue | No contact for 0.7 s, after at least 2 s engaged | 70 |
-| Pursue | Reassess | Looked round the last-seen spot for 1 s, 5 s passed, no route there, or the player is gone | 65 |
-| Intercept, Ambush | Reassess | `g*` changes, confidence drops below 0.5 (so there is no plan), the player reaches `g*`, the intercept cell becomes blocked, or (Ambush) the player has passed the cell | 60 |
+| Pursue | Reassess | Looked round the last-seen spot for 1 s, 5 s passed, no route there, stuck for 2 s, or the player is gone | 65 |
+| Intercept, Ambush | Reassess | `g*` changes by a clear margin, confidence drops below 0.4 (so there is no plan), the player reaches `g*`, the intercept cell becomes blocked, (Intercept) stuck for 2 s, or (Ambush) the player has passed the cell | 60 |
+| Converge | Reassess | The player left the goal, or the way to them is blocked | 60 |
 | Intercept | Ambush | Captain reaches the intercept cell | 50 |
+| Reassess | Converge | The player is busy at a goal | 45 |
 | Reassess | Intercept | Confidence ≥ 0.5 | 40 |
 | Reassess | Observe | Confidence < 0.5 | 30 |
+| Observe | Converge | The player is busy at a goal | 25 |
 | Observe | Intercept | Confidence ≥ 0.5 | 20 |
 
 ```text
@@ -97,6 +101,12 @@ Higher priority wins when several conditions are true on the same tick.
 - It starts at 10 m in view and keeps going out to 14 m with line of sight, so a 4 m band separates the two.
 - It lasts at least 2 s once started.
 - When contact is lost, it goes where it last saw the player instead of backing off.
+
+**Why committing has hysteresis too.** The same edge problem existed for the plan: it was made at confidence ≥ 0.5 and dropped below 0.5. A player weaving between two goals kept the confidence near 0.5. In a scripted run that caused three switches between Intercept and Observe in 13 s, each one a dead stop mid-route, including a turn back towards the other goal. Now a plan is made at 0.5 but kept down to 0.4. While committed, the Captain keeps planning for its goal unless another goal leads it by 0.15. The prediction it publishes for the Saboteurs is still the true most likely goal. The same run now commits once.
+
+**Getting unstuck.** Heading for a target without moving 0.25 m in 2 s (pinned on a prop the grid does not know about, a jam of bodies, no route) gives the target up. Its cell and the eight cells round it are not chosen again for 10 s, through the planner's existing "reserved cell" check. The measure is movement, not distance to the target, because a route round a shelf row can lead away from the target for a while. Pursue and Converge use the same check. This is the safety net, not the fix: solid props must also block the grid.
+
+**Why a goal the Captain cannot reach is no plan.** "Defend `g*`" used to be returned even when the Captain had no path to `g*`, with an arrival time of infinity. It then sat in Intercept with no route, showing "!". This happened when the Chapter 3 cutscene was skipped: the Captain decided before the Control Room door had finished opening. A goal it cannot reach now gives no plan, so it watches. When the door opens, the grid change brings the next decision forward, and Intercept also re-asks for a route at every decision while it has none.
 
 Locking on until the player leaves the room was considered and not used. The brain has no room data; it would turn the Captain into a plain chaser and give up its prediction; and standing in a doorway would beat it. Pursue ends in Reassess, so the Captain goes back to predicting.
 
@@ -245,13 +255,17 @@ Once confidence ≥ 0.5, the Captain picks where to wait.
 | Two goals nearly equally likely (top two within 0.1) | Look for a chokepoint shared by both predicted routes and ambush there. If none exists, stay in Observe. | `InterceptPlannerTests.TwoCloseGoalsBehindTheSameDoorwayShareTheChokepoint`, `TwoCloseGoalsWithNoSharedChokepointGiveNoPlan` |
 | Player standing still | Every detour is 0, so the posterior equals the prior. The Captain keeps its current plan and does not replan. | `GoalInferenceTests.StandingStillGivesThePrior` |
 | Player too close to `g*` (no cell passes the 1 s margin) | Go straight to `g*` and defend it. | `InterceptPlannerTests.NoQualifyingCellDefendsTheGoal` |
+| ...and the Captain cannot reach `g*` (shut door, walled off) | No plan: Observe. A door that opens triggers a new decision, and the plan is made then. | `CaptainRobustnessTests.AGoalTheCaptainCannotReachGivesNoPlan`, `ADoorThatOpensAfterTheWakeGetsTheCaptainMoving` |
 | Player reaches `g*` (within 1 m) | Remove `g*` from the candidate set and re-predict (Reassess). It counts again once the player is 4 m away or its task completes. | `CaptainBrainTests.GoalThePlayerHasReachedIsLeftOutUntilTheyLeave` |
+| Player busy at the only goal (the console hold) | Converge: close in at intercept speed until they are in view, then Engage. | `CaptainRobustnessTests.WhileThePlayerHoldsTheOnlyGoalTheCaptainClosesInAndEngages` |
+| Pinned on a prop the grid does not know about, or in a jam | No movement for 2 s gives the target up; its cell and neighbours are avoided for 10 s. | `CaptainRobustnessTests.ATargetItMakesNoProgressTowardsIsGivenUpAndAvoided` |
+| Confidence hovering round 0.5 (player weaving between two goals) | Commit at 0.5, keep down to 0.4; switch goal only on a 0.15 lead. | `CaptainRobustnessTests.WeavingBetweenTwoGoalsDoesNotStopAndStartTheCaptain` |
 | Route blocked by a pushed box or closed door | Repair the stale goal fields in place, one per frame (predicted goal first), and decide again at once. If the intercept cell is blocked, Reassess. | `DijkstraFieldRepairTests`, `GoalInferenceTests.TheLastPredictedGoalsFieldIsRebuiltFirst` |
 | Player steps in and out of the 10 m range | The fight keeps going while in line of sight within 14 m, lasts at least 2 s, and then goes to the last-seen spot instead of backing off. | `CaptainBrainTests.SteppingInAndOutOfTenMetresDoesNotFlipTheFight` |
 | Player ducks out of sight mid-fight | Hold fire, face the last-seen spot, then Pursue there; contact resumes the fight; give up after a 1 s look or 5 s. | `CaptainBrainTests.AFightLastsAtLeastTwoSecondsThenPursuesToTheLastSeenSpot`, `ContactDuringThePursuitResumesTheFight`, `PursuitGivesUpAfterFiveSecondsIfItNeverGetsThere` |
 | Player dies mid-fight | Leave Engage at once, despite the 2 s minimum. | `CaptainBrainTests.ADeadPlayerEndsTheFightAtOnce` |
 | Goal unreachable (walled off) | Its field cost is infinite, so it is left out of the candidate set. | `GoalInferenceTests.UnreachableGoalIsLeftOut` |
-| All goals unreachable, or no active goals | No prediction: stay in Observe and keep distance from the player. | `GoalInferenceTests.NoGoalsGivesNoPrediction` |
+| All goals unreachable, or no active goals | No prediction: stay in Observe and keep distance from the player (unless the player is busy at a goal: Converge). | `GoalInferenceTests.NoGoalsGivesNoPrediction` |
 | Player's cell 5 s ago not available yet (game start, respawn) | Use the oldest recorded cell. With fewer than 2 samples, stay in Observe. | `PlayerTrackTests.ShortHistoryFallsBackToTheOldestSample`, `PlayerTrackTests.FewerThanTwoSamplesGivesNoPast` |
 | Player off the grid (jumping, standing on a box) | Snap to the nearest traversable cell before looking up field costs. | `GoalInferenceTests.PlayerOnABlockedCellIsSnappedToANearbyWalkableCell` |
 | Chosen ambush cell reserved by another agent | Take the next qualifying chokepoint on the route. | `InterceptPlannerTests.ReservedCellIsSkippedForTheNextChokepoint` |
