@@ -28,6 +28,12 @@ namespace ToyFactory.Runtime.Agents
         [Tooltip("Seconds between the request and the shot: the telegraph.")]
         [SerializeField, Min(0f)] float aimSeconds = 0.3f;
 
+        [Tooltip("The shot waits until the body faces within this many degrees of the target, so it never leaves sideways.")]
+        [SerializeField, Range(1f, 90f)] float maxFireAngle = 25f;
+
+        [Tooltip("Extra seconds the aim may wait to face the target; past that the shot is dropped.")]
+        [SerializeField, Min(0f)] float maxTurnWait = 0.5f;
+
         [Tooltip("Damage per hit, passed to the player's TakeDamage.")]
         [SerializeField, Min(0f)] float damage = 10f;
 
@@ -47,6 +53,7 @@ namespace ToyFactory.Runtime.Agents
         [SerializeField] Color tracerColour = new Color(1f, 0.9f, 0.4f, 1f);
 
         AgentController _agent;
+        ToyFactory.Runtime.Movement.AgentPathFollower _follower;
         LineRenderer _line;
         int _hitMask;
         int _nextBarrel;
@@ -70,9 +77,19 @@ namespace ToyFactory.Runtime.Agents
         /// <summary>True if the most recent shot hit the player.</summary>
         public bool LastShotHit { get; private set; }
 
+        /// <summary>Index into the barrels of the most recent shot (the Captain alternates 0 and 1).</summary>
+        public int LastBarrel { get; private set; }
+
+        /// <summary>Shots dropped because the body could not face the target in time.</summary>
+        public int ShotsDropped { get; private set; }
+
+        /// <summary>Raised when a shot leaves the barrel, with the barrel's index.</summary>
+        public event System.Action<int> Fired;
+
         void Awake()
         {
             _agent = GetComponent<AgentController>();
+            _follower = GetComponent<ToyFactory.Runtime.Movement.AgentPathFollower>();
 
             // Everything solid blocks a shot except agents (no friendly fire). Layers that do
             // not exist in a project simply add nothing to the mask.
@@ -106,6 +123,8 @@ namespace ToyFactory.Runtime.Agents
         public void Cancel()
         {
             IsAiming = false;
+            if (_follower != null)
+                _follower.StopFacing();
             _tracerUntil = 0f;
             if (_line != null)
                 _line.enabled = false;
@@ -124,13 +143,29 @@ namespace ToyFactory.Runtime.Agents
                     Cancel();
                     return;
                 }
+                // Turn to the target while aiming, even on the move, and only fire once
+                // facing it: the shot leaves along the cannon, never out of its side.
+                if (_follower != null)
+                    _follower.FaceTowards(player.Position);
                 Vector3 from = Muzzle();
                 Vector3 to = player.Position + Vector3.up * chestHeight;
                 Show(from, to, aimColour, 0.02f);
                 if (Now >= _fireAt)
-                    Fire(from, to, player);
+                {
+                    bool facing = _follower == null || _follower.FacingErrorTo(player.Position) <= maxFireAngle;
+                    if (facing)
+                        Fire(from, to, player);
+                    else if (Now >= _fireAt + maxTurnWait)
+                    {
+                        ShotsDropped++;
+                        Cancel();
+                    }
+                }
                 return;
             }
+
+            if (_follower != null && Now >= _tracerUntil)
+                _follower.StopFacing();
 
             if (_line.enabled && Now >= _tracerUntil)
                 _line.enabled = false;
@@ -161,7 +196,9 @@ namespace ToyFactory.Runtime.Agents
 
             Show(from, end, tracerColour, 0.05f);
             _tracerUntil = Now + tracerSeconds;
+            LastBarrel = barrels.Length > 0 ? _nextBarrel % barrels.Length : 0;
             _nextBarrel++;
+            Fired?.Invoke(LastBarrel);
         }
 
         // The front of the current barrel, along the agent's facing; the agent's chest if it has none.

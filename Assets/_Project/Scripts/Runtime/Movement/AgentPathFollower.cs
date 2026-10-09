@@ -30,6 +30,8 @@ namespace ToyFactory.Runtime.Movement
         float _verticalVelocity;
         bool _holding;
         Vector3 _holdLook;
+        bool _facing;
+        Vector3 _facePoint;
 
         /// <summary>True while there are waypoints left to walk to.</summary>
         public bool HasPath => _targetIndex < _path.Count;
@@ -90,6 +92,29 @@ namespace ToyFactory.Runtime.Movement
         /// <summary>Ends a <see cref="Hold"/>; the agent walks its route again.</summary>
         public void Release() => _holding = false;
 
+        /// <summary>
+        /// Turns the agent to face <paramref name="point"/> while it keeps walking its route,
+        /// for aiming on the move. Lasts until <see cref="StopFacing"/>.
+        /// </summary>
+        public void FaceTowards(Vector3 point)
+        {
+            _facing = true;
+            _facePoint = point;
+        }
+
+        /// <summary>Ends <see cref="FaceTowards"/>; the agent faces where it walks again.</summary>
+        public void StopFacing() => _facing = false;
+
+        /// <summary>Degrees between where the agent faces and <paramref name="point"/>, on the ground plane.</summary>
+        public float FacingErrorTo(Vector3 point)
+        {
+            Vector3 to = point - transform.position;
+            to.y = 0f;
+            Vector3 forward = transform.forward;
+            forward.y = 0f;
+            return to.sqrMagnitude < 0.0001f ? 0f : Vector3.Angle(forward, to);
+        }
+
         /// <summary>Clears the route; the agent stops where it is.</summary>
         public void Stop()
         {
@@ -121,6 +146,12 @@ namespace ToyFactory.Runtime.Movement
                     horizontalVelocity = toTarget / distance * frameSpeed;
                     facing = horizontalVelocity;
                 }
+            }
+
+            if (_facing && !_holding)
+            {
+                facing = _facePoint - transform.position;
+                facing.y = 0f;
             }
 
             TurnTowards(facing);
