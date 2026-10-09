@@ -41,9 +41,16 @@ namespace ToyFactory.Runtime.Agents
         [Tooltip("Seconds a door, trap or battery request may stay out of reach before it fails.")]
         [SerializeField, Min(0f)] float sabotageGiveUpSeconds = 2f;
 
+        [Tooltip("Curve into a new route from the current heading when the brain replans mid-walk, instead of pivoting on the spot. Untick to compare.")]
+        [SerializeField] bool blendReplans = true;
+
         // Reused for every new route, so smoothing allocates nothing once they have grown.
         readonly List<Vector3> _pulledPath = new List<Vector3>();
         readonly List<Vector3> _smoothedPath = new List<Vector3>();
+        readonly List<Vector3> _blendedPath = new List<Vector3>();
+
+        // Frames this agent's brain has waited for the AI frame budget (BrainTickScheduler).
+        int _waitedFrames;
 
         AgentPathFollower _follower;
         AgentWeapon _weapon;
@@ -352,6 +359,15 @@ namespace ToyFactory.Runtime.Agents
                 return;
             }
 
+            // The frame's AI budget is spent (another brain made a heavy decision this frame):
+            // wait a frame, at most a few, while the body keeps walking its route.
+            if (!BrainTickScheduler.TryBegin(_waitedFrames))
+            {
+                _waitedFrames++;
+                return;
+            }
+            _waitedFrames = 0;
+
             Vector3 position = transform.position;
             var context = new AgentContext(CurrentCell(position), position, transform.forward,
                 Now, _blackboard, _heard);
@@ -359,8 +375,10 @@ namespace ToyFactory.Runtime.Agents
 
             AgentIntent intent;
             int type = (int)Type;
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
             using (TickMarkers[type < TickMarkers.Length ? type : 0].Auto())
                 intent = _brain.Tick(context);
+            BrainTickScheduler.End(System.Diagnostics.Stopwatch.GetTimestamp() - started);
 
             // Brains never write the blackboard: copy the Captain's goal prediction for the others.
             if (_predictor != null)
@@ -559,19 +577,26 @@ namespace ToyFactory.Runtime.Agents
             if (intent.Path.Count == 0)
             {
                 _follower.Stop();
+                return;
             }
-            else if (smoothPaths && _grid != null && intent.Path.Count > 2)
+
+            IReadOnlyList<Vector3> route = intent.Path;
+            if (smoothPaths && _grid != null && intent.Path.Count > 2)
             {
                 // Both stages keep the first and last waypoints and never cross a cell the
                 // brain's path avoided, so the brain's route is still respected.
                 PathSmoother.StringPull(_grid, intent.Path, _pulledPath);
                 PathSmoother.CatmullRom(_grid, _pulledPath, _smoothedPath);
-                _follower.SetPath(_smoothedPath, intent.DesiredSpeed);
+                route = _smoothedPath;
             }
-            else
-            {
-                _follower.SetPath(intent.Path, intent.DesiredSpeed);
-            }
+
+            // A replan while walking: curve into the new route from the current heading rather
+            // than pivoting on the spot (PathBlender checks the curve against the grid).
+            if (blendReplans && _grid != null && _follower.HasPath &&
+                PathBlender.Blend(_grid, transform.position, _follower.MoveDirection, _follower.CurrentSpeed, route, _blendedPath))
+                route = _blendedPath;
+
+            _follower.SetPath(route, intent.DesiredSpeed);
         }
     }
 }
