@@ -47,6 +47,7 @@ namespace ToyFactory.Runtime.Agents
 
         AgentPathFollower _follower;
         AgentWeapon _weapon;
+        bool _facingLook;   // the body is turned to the brain's LookTarget
 
         // One marker per agent type around the brain's Tick, for the Profiler and the
         // four-agent stress test (AI time per frame, by brain). Indexed by AgentType.
@@ -283,6 +284,7 @@ namespace ToyFactory.Runtime.Agents
             _sabotageAction = AgentAction.None;   // the brain is released below; no answer
             _weapon?.Cancel();
             _follower.Stop();
+            ReleaseLook();
 
             // Release the brain's claims before the event, so listeners such as the
             // Saboteur squad already see the freed targets when they react.
@@ -308,6 +310,7 @@ namespace ToyFactory.Runtime.Agents
             _weapon?.Cancel();
             _heard = default; // a noise from before the knock-out is stale by the reboot
             _follower.Stop();
+            ReleaseLook();   // a downed body does not turn
             ResolveSabotage(false);         // went down before it got there
             _lastAction = AgentAction.None; // a request repeated after the reboot is a new one
             _brain?.OnStunned(_rebootAt - Now);
@@ -364,6 +367,7 @@ namespace ToyFactory.Runtime.Agents
                 _blackboard.SetPredictedGoal(_predictor.Prediction);
 
             ApplyPath(intent);
+            ApplyLook(intent);
             ApplyAction(intent);
             DebugState = intent.DebugState ?? string.Empty;
             _alert = intent.Alert != AlertLevel.None ? intent.Alert : AlertFromState.For(DebugState);
@@ -497,6 +501,37 @@ namespace ToyFactory.Runtime.Agents
                 default:
                     kind = default;
                     return false;
+            }
+        }
+
+        // The brain's LookTarget, honoured while the body stands still: a Captain in ambush
+        // faces the way the player will come, a watching agent faces the player. Vision uses
+        // the body's facing, so this is what lets them see what they are looking for. While
+        // walking the body faces where it goes (no walking sideways), and while the weapon
+        // aims it turns the body itself, so the weapon wins.
+        void ReleaseLook()
+        {
+            if (_facingLook)
+                _follower.StopFacing();
+            _facingLook = false;
+        }
+
+        void ApplyLook(in AgentIntent intent)
+        {
+            if (_weapon != null && _weapon.IsBusy)
+            {
+                _facingLook = false;   // the weapon owns the facing and releases it when done
+                return;
+            }
+            if (intent.LookTarget.HasValue && !_follower.HasPath)
+            {
+                _follower.FaceTowards(intent.LookTarget.Value);
+                _facingLook = true;
+            }
+            else if (_facingLook)
+            {
+                _follower.StopFacing();
+                _facingLook = false;
             }
         }
 

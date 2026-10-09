@@ -77,6 +77,28 @@ namespace ToyFactory.Runtime.Movement
             _targetIndex = 0;
             _speed = Mathf.Max(0f, speed);
             SkipReachedWaypoints();
+            SkipPassedFirstWaypoint();
+        }
+
+        // A new route starts at the centre of the cell the agent stands in. Re-planned
+        // mid-walk, that centre is often just behind it, and walking back to it first shows as
+        // a hitch. If the agent is already nearer the next waypoint than the first one is, it
+        // has effectively passed the first: go straight on.
+        void SkipPassedFirstWaypoint()
+        {
+            if (_path.Count - _targetIndex < 2)
+                return;
+            Vector3 first = _path[_targetIndex];
+            Vector3 next = _path[_targetIndex + 1];
+            if (FlatSqrDistance(transform.position, next) < FlatSqrDistance(first, next))
+                _targetIndex++;
+        }
+
+        static float FlatSqrDistance(Vector3 a, Vector3 b)
+        {
+            float dx = a.x - b.x;
+            float dz = a.z - b.z;
+            return dx * dx + dz * dz;
         }
 
         /// <summary>
