@@ -16,7 +16,8 @@ namespace ToyFactory.AI.Agents.Captain
     /// qualifies    when t_captain(i) + margin ≤ t_player(i)
     /// </code>
     /// The first qualifying chokepoint wins; if there is none, the first qualifying route
-    /// cell; if no cell qualifies, the Captain defends g* itself. See Docs/AI/CaptainBot.md
+    /// cell; if no cell qualifies, the Captain defends g* itself, provided it can reach g*
+    /// at all (otherwise there is no plan). See Docs/AI/CaptainBot.md
     /// for why the first cell, why a 1 s margin and why the sprint speed.
     /// </summary>
     /// <remarks>
@@ -103,7 +104,14 @@ namespace ToyFactory.AI.Agents.Captain
             // An unbounded field here cost the whole level for that one number.
             int last = _route.Count - 1;
             Vector2Int goalCell = _route[last];
+            if (isReserved != null && isReserved(goalCell))
+                return InterceptPlan.None;
             float captainCost = _toGoal.Compute(captain, goalCell, BaseCostModel.Instance);
+            // The Captain cannot get there at all (a shut door, a box): there is nothing to
+            // defend from here, so no plan. A plan it cannot walk would leave it standing
+            // still in Intercept.
+            if (float.IsPositiveInfinity(captainCost))
+                return InterceptPlan.None;
             return new InterceptPlan(InterceptKind.DefendGoal, goalCell, last,
                 PlayerArrival(goalField, playerTotal, goalCell, playerSpeed),
                 captainCost * GridGraph.CellSize / captainSpeed);
