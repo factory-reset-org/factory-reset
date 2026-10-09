@@ -4,6 +4,7 @@ using UnityEngine;
 using ToyFactory.AI.Agents.Captain;
 using ToyFactory.AI.Agents.Guard;
 using ToyFactory.AI.Agents.Mock;
+using ToyFactory.AI.Agents.Saboteur;
 using ToyFactory.AI.Agents.Tracker;
 using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
@@ -198,7 +199,15 @@ namespace ToyFactory.Runtime.Agents
                         return new GuardBrain(setup.Grid, setup.Pathfinder, setup.Blackboard,
                             new PhysicsCoverVisibility(setup.Grid), setup.Identity.Id, setup.PatrolPoints);
                     return new MockPathProvider(setup.PatrolPoints);
-                case AgentType.Saboteur:  // S3: replace with the Saboteur brain when ready
+                case AgentType.Saboteur:
+                    // The four Saboteurs share one squad through the blackboard's claims; the
+                    // squad slot is the letter. Without a grid, or a spawn point with no squad
+                    // slot (A-D), it falls back to the mock.
+                    if (setup.HasGrid && setup.Identity.IsInSquad && setup.Identity.SquadIndex <= (int)SaboteurLetter.D)
+                        return new SaboteurBrain(
+                            new SaboteurIdentity(setup.Identity.Id, (SaboteurLetter)setup.Identity.SquadIndex),
+                            setup.Grid, setup.Pathfinder, setup.Blackboard.Claims, setup.PatrolPoints);
+                    return new MockPathProvider(setup.PatrolPoints);
                 default:
                     return new MockPathProvider(setup.PatrolPoints);
             }
