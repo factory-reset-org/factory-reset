@@ -121,7 +121,37 @@ Level grid with the prototype rooms (`Env.unity`, 83 x 83 cells of 0.5 m, 4,963 
 
 **What it shows:**
 - **On average the AI is cheap:** 0.18 ms a frame for all seven agents, about 1% of a 16.7 ms frame.
-- **But it spikes past the 2 ms budget on about 1% of frames** (p99 5.2 ms). The test logs a warning for this rather than failing, until the fix lands; the hard check comes back with it. Two brains cause it:
+- **But it spikes past the 2 ms budget on about 1% of frames** (p99 5.2 ms). The test logged a warning for this rather than failing; see the re-run after the Captain fix below. Two brains cause it:
   - **Captain:** 67 frames over 1 ms in 30 s, about two a second, which is its 2 Hz decision. Every spike is `DijkstraField.Compute`. With the player still, the cached goal fields are never rebuilt (5 computations, then none); the spikes come from the two fields each decision rebuilds while the player moves, the player's field (goal inference) and the Captain's own (intercept). One full-level field costs 4.33 ms median (6.95 ms worst, 4,878 cells expanded) in the editor; a bounded one 2.0 ms. Two in one decision exceed the budget. This is fixed and re-measured in `OptimisationLog.md`.
   - **Guard:** 83 frames over 1 ms. A* accounts for 19 of them (worst 5.8 ms); the rest is other work in the Guard's tick, probably cover scoring. Reported to S2.
 - **Limits:** editor timings with Mono; a player build is faster. The worst frame (44.6 ms) includes editor work outside the AI.
+
+### After the Captain fix (2026-10-09)
+
+Three changes, each written up in `OptimisationLog.md`:
+1. a shared neighbour table (`GridAdjacency`) that every field reads;
+2. a cost-only A* (`OneToOneCost`) for the two single-pair questions that used to build a whole field;
+3. goal fields repaired in place after a grid change (`DijkstraField.Refresh`), one per frame.
+
+Before and after were run back to back in one editor session: `develop` first, then this branch. That session ran the editor slower than the first run above (about 129 FPS, not 196), so compare the rows with each other, not with the table above.
+
+| Captain (S4), `Test_FourAgentsStress` | Avg ms / frame | p99 | Worst | Frames over 1 ms |
+| --- | --- | --- | --- | --- |
+| Before (`develop`, 3,843 frames) | 0.174 | 7.167 | 15.069 | 67 |
+| After (this branch, 3,875 frames) | 0.014 | 0.139 | 1.136 | 1 |
+
+`AI.DijkstraField.Compute` worst per frame: 14.98 ms before, 0.09 ms after. The new `AI.OneToOneCost.Compute` worst is 0.48 ms.
+
+**Pushed box (`Test_PushedBoxStress`).** This is a new evidence test in the same fixture: the same Chapter 4 run for 20 s, with a box-sized blocker moved one cell every 0.5 s through `GridManager.SetBlocker`, the call `PushableBox` makes. That is 40 moves and 41 grid changes, and every move makes all four of the Captain's goal fields stale.
+
+| Captain (S4), `Test_PushedBoxStress` | Avg ms / frame | p99 | Worst | Frames over 1 ms |
+| --- | --- | --- | --- | --- |
+| Before (`develop`, 2,476 frames) | 0.575 | 32.014 | 39.077 | 45 |
+| After (this branch, 2,670 frames) | 0.016 | 0.201 | 0.920 | 0 |
+
+After the change, all of the field work is repairs: 157 frames held one (40 moves × 4 goal fields, give or take a decision), with a worst of 0.51 ms. Before it, each move recomputed every goal field, plus the player's field and the Captain's own, all in one decision.
+
+**What it shows now:**
+- **The Captain** is at p99 0.14 ms in normal play and 0.20 ms with a box being pushed. Both tests now check its p99 against 1 ms, half the AI budget, and fail above it.
+- **The Guard** is what remains over the 2 ms AI budget: p99 4.93 ms, worst 23.6 ms, 78 frames over 1 ms. `AStarSearch` accounts for 41 of those frames (worst 19.2 ms). The total budget stays a warning until S2's fix; the test cannot fix another agent's brain. `AStarSearch` could read `GridAdjacency` the way `DijkstraField` now does, which took the field from 4.8 to 0.7 ms; this has been offered to S2.
+- **Limits:** editor timings. One Captain frame of 1.14 ms in the stress run is not a field: the field marker never went above 0.09 ms in the whole run. It is probably the Captain's own A* route (`MoveTo`) or editor noise.
