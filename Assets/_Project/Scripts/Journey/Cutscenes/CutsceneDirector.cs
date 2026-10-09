@@ -38,6 +38,9 @@ namespace ToyFactory.Journey.Cutscenes
         [Min(0f)]
         [SerializeField] float startDelay = CutsceneRunner.DefaultStartDelay;
 
+        // Task id of the keycard Saboteur A drops (Data/Chapters/Tasks/ch3.keycard).
+        const string KeycardTaskId = "ch3.keycard";
+
         [Tooltip("Let the player skip a playing cutscene with Escape.")]
         [SerializeField] bool allowSkip = true;
 
@@ -67,6 +70,7 @@ namespace ToyFactory.Journey.Cutscenes
         readonly HashSet<int> _shotsStarted = new HashSet<int>();
         bool _held;
         bool _saboteurAScrapped;
+        bool _keycardCollected;
         bool _introRequested;
 
         /// <summary>True once the intro has been asked for this run (it is never asked for twice).</summary>
@@ -113,6 +117,7 @@ namespace ToyFactory.Journey.Cutscenes
             ChapterEvents.OnSwitchRestored += HandleSwitchRestored;
             ChapterEvents.OnTaskCompleted += HandleTaskCompleted;
             AgentEvents.OnDestroyed += HandleAgentDestroyed;
+            TaskEvents.OnTaskSpawned += HandleTaskSpawned;
             CutsceneEvents.OnCutsceneEnded += HandleCutsceneEnded;
         }
 
@@ -121,6 +126,7 @@ namespace ToyFactory.Journey.Cutscenes
             ChapterEvents.OnSwitchRestored -= HandleSwitchRestored;
             ChapterEvents.OnTaskCompleted -= HandleTaskCompleted;
             AgentEvents.OnDestroyed -= HandleAgentDestroyed;
+            TaskEvents.OnTaskSpawned -= HandleTaskSpawned;
             CutsceneEvents.OnCutsceneEnded -= HandleCutsceneEnded;
         }
 
@@ -168,8 +174,9 @@ namespace ToyFactory.Journey.Cutscenes
         {
             switch (condition)
             {
-                case DialogueCondition.IfSaboteurAActive: return !_saboteurAScrapped;
-                case DialogueCondition.IfSaboteurAScrapped: return _saboteurAScrapped;
+                case DialogueCondition.IfSaboteurAActive: return !_saboteurAScrapped && !_keycardCollected;
+                case DialogueCondition.IfSaboteurAScrapped: return _saboteurAScrapped && !_keycardCollected;
+                case DialogueCondition.IfKeycardCollected: return _keycardCollected;
                 default: return true;
             }
         }
@@ -179,6 +186,14 @@ namespace ToyFactory.Journey.Cutscenes
         {
             if (agent != null && agent.Type == AgentType.Saboteur && agent.Identity.SquadIndex == 0)
                 _saboteurAScrapped = true;
+        }
+
+        // The keycard is a task created during play (S2's KeycardDrop announces it); once it is
+        // picked up, Pip stops telling the player to go and get it.
+        void HandleTaskSpawned(ITask task)
+        {
+            if (task != null && task.Id == KeycardTaskId)
+                task.OnCompleted += () => _keycardCollected = true;
         }
 
         // The intro waits for the first Playing state, so it starts after the scene loader has

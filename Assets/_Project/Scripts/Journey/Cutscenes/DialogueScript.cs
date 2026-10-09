@@ -11,8 +11,11 @@ namespace ToyFactory.Journey.Cutscenes
         /// <summary>Only while Saboteur A (the keycard carrier) is still active.</summary>
         IfSaboteurAActive,
 
-        /// <summary>Only once Saboteur A has been scrapped.</summary>
-        IfSaboteurAScrapped
+        /// <summary>Only once Saboteur A has been scrapped and its keycard is still on the floor.</summary>
+        IfSaboteurAScrapped,
+
+        /// <summary>Only once the keycard Saboteur A dropped has been picked up.</summary>
+        IfKeycardCollected
     }
 
     /// <summary>One line: who says it, what they say, and when.</summary>
