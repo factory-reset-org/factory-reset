@@ -15,6 +15,7 @@ GameObject:
   - component: {fileID: 5183236661379562606}
   - component: {fileID: 8113869875364931116}
   - component: {fileID: 2986423053530059453}
+  - component: {fileID: 7160304162156384356}
   m_Layer: 6
   m_Name: Player
   m_TagString: Untagged
@@ -159,6 +160,25 @@ MonoBehaviour:
   tracerSeconds: 0.05
   tracerWidth: 0.04
   lineMaterial: {fileID: 0}
+--- !u!114 &7160304162156384356
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1503289532830950443}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a6d4ff87aa99bed438d170a8b9dcf5ae, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Player.PlayerToyThrower
+  toyPrefab: {fileID: 4506506130593554064, guid: 84d5f2bcc774386438eec19ba16e7708, type: 3}
+  aim: {fileID: 5399716465226662200}
+  maxToys: 3
+  rewindSeconds: 15
+  throwSpeed: 8
+  throwLift: 2.5
+  spawnDistance: 0.7
 --- !u!1 &5810225151088404182
 GameObject:
   m_ObjectHideFlags: 0
