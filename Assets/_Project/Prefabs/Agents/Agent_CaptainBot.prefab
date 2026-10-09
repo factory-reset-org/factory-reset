@@ -14,10 +14,11 @@ GameObject:
   - component: {fileID: 7075240395378938352}
   - component: {fileID: 6658538843940112905}
   - component: {fileID: 4788375802282383868}
-  - component: {fileID: 226665710546748617}
   - component: {fileID: 5280218360834695168}
   - component: {fileID: 5345454812785796067}
   - component: {fileID: 8644364866380868665}
+  - component: {fileID: 6381462699090212895}
+  - component: {fileID: 2045013324036941734}
   m_Layer: 11
   m_Name: Agent_CaptainBot
   m_TagString: Untagged
@@ -137,23 +138,6 @@ MonoBehaviour:
   lineMaterial: {fileID: 2100000, guid: f7a1b61649e9f404b8a6efe2fac01eb8, type: 2}
   aimColour: {r: 1, g: 0.25, b: 0.2, a: 0.6}
   tracerColour: {r: 1, g: 0.9, b: 0.4, a: 1}
---- !u!114 &226665710546748617
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2423681692945176304}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e722a24db0bd39140b3c205bf825c152, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentFallApart
-  model: {fileID: 4680304842691956594}
-  reassembleSeconds: 1
-  burstSpeed: 2.5
-  scrapLingerSeconds: 2
-  scrapShrinkSeconds: 1
 --- !u!114 &5280218360834695168
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -240,6 +224,139 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+--- !u!114 &6381462699090212895
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2423681692945176304}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5839d5c4ed5f2cb4ea167bc66d363f60, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentKnockdown
+  model: {fileID: 4680304842691956594}
+  sparkMaterial: {fileID: 2100000, guid: 239af0130747e434099e034c0659c39b, type: 2}
+  knockOutWord: {fileID: 21300000, guid: a019917e8af69944fa8b4fe7d3887b49, type: 3}
+  scrapWord: {fileID: 21300000, guid: 0172a0140e32580459a38ad796afe4fc, type: 3}
+  tipAngle: 78
+  tipSeconds: 0.4
+  standSeconds: 0.5
+  scrapLingerSeconds: 1.2
+  scrapSinkSeconds: 0.7
+  wordWidth: 1.1
+  wordSeconds: 1
+--- !u!114 &2045013324036941734
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2423681692945176304}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a82b91abb02c3fd40a42409acf9f4866, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentLights
+  lights:
+  - {fileID: 3951970823839501141}
+  lightMaterial: {fileID: 2100000, guid: dd46163783547f24896c87f25e415eea, type: 2}
+  colour: {r: 1, g: 0.16, b: 0.24, a: 1}
+  intensity: 2.5
+  outSeconds: 0.35
+  onSeconds: 0.6
+  darkUntilCaptainWakes: 1
+--- !u!1 &6231920233453024729
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2241861725758920615}
+  - component: {fileID: 2341705119830439437}
+  - component: {fileID: 3951970823839501141}
+  m_Layer: 0
+  m_Name: Visor_Lens
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2241861725758920615
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6231920233453024729}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0.455, z: 0.337}
+  m_LocalScale: {x: 0.54, y: 0.11, z: 0.006}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 8566529918625814095}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!33 &2341705119830439437
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6231920233453024729}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &3951970823839501141
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6231920233453024729}
+  m_Enabled: 1
+  m_CastShadows: 0
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_StaticShadowCaster: 0
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RayTracingAccelStructBuildFlagsOverride: 0
+  m_RayTracingAccelStructBuildFlags: 1
+  m_SmallMeshCulling: 1
+  m_ForceMeshLod: -1
+  m_MeshLodSelectionBias: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: dd46163783547f24896c87f25e415eea, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 1
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_GlobalIlluminationMeshLod: 0
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_MaskInteraction: 0
+  m_AdditionalVertexStreams: {fileID: 0}
 --- !u!1001 &6301709427974699168
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -294,7 +411,10 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
-    m_AddedGameObjects: []
+    m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: 2420199661300870895, guid: 12f22ae6271c497419128b0180334639, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2241861725758920615}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 2075090220330052968, guid: 12f22ae6271c497419128b0180334639, type: 3}
       insertIndex: -1

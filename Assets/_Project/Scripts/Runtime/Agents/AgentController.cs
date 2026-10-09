@@ -117,6 +117,12 @@ namespace ToyFactory.Runtime.Agents
         /// <summary>Hits this agent can take, for the HUD and tests.</summary>
         public int MaxHitPoints => hitPoints;
 
+        /// <summary>
+        /// Raised for each hit that counts (<see cref="TakeHit"/>), before the agent goes down
+        /// if it was the last hit point. The body's hit effects listen.
+        /// </summary>
+        public event Action Hit;
+
         /// <summary>True once <see cref="Scrap"/> has been called. Never becomes false again.</summary>
         public bool IsDead { get; private set; }
 
@@ -173,6 +179,7 @@ namespace ToyFactory.Runtime.Agents
                 return;
 
             HitPointsLeft--;
+            Hit?.Invoke();
             if (HitPointsLeft > 0)
                 return;
 
