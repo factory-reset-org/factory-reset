@@ -11,7 +11,8 @@ namespace ToyFactory.UI
     /// The in-game HUD, built in code under one object in <c>UI.unity</c>: the objectives panel with
     /// the switch lamps, the integrity, charge and overcharge bars, the crosshair, the damage
     /// vignette, the arrow to the current objective, the chapter card and the subtitle bar. It is
-    /// hidden in cutscenes and outside play.
+    /// hidden in cutscenes and outside play. It also hosts the title and results screens
+    /// (<see cref="ScreensPresenter"/>), which own the other two game states.
     /// </summary>
     /// <remarks>
     /// <para><b>Reads, never reaches in.</b> Chapter progress comes from <see cref="ChapterEvents"/>
@@ -43,6 +44,7 @@ namespace ToyFactory.UI
         Canvas _dynamic;
         ChapterCardView _card;
         SubtitleView _subtitles;
+        ScreensPresenter _screens;
 
         // Objectives panel.
         RectTransform _panel;
@@ -85,6 +87,9 @@ namespace ToyFactory.UI
 
         /// <summary>The subtitle bar, for tests.</summary>
         public SubtitleView Subtitles => _subtitles;
+
+        /// <summary>The title and results screens, for tests.</summary>
+        public ScreensPresenter Screens => _screens;
 
         /// <summary>The text of the objectives panel's title line, for tests.</summary>
         public string TitleText => _titleText != null ? _titleText.text : string.Empty;
@@ -477,6 +482,10 @@ namespace ToyFactory.UI
             subtitleObject.transform.SetParent(transform, false);
             _subtitles = subtitleObject.AddComponent<SubtitleView>();
             _subtitles.Build(subtitleSortingOrder);
+
+            var screensObject = new GameObject("Screens");
+            screensObject.transform.SetParent(transform, false);
+            _screens = screensObject.AddComponent<ScreensPresenter>();
         }
 
         void BuildObjectivesPanel(Transform parent)

@@ -71,6 +71,18 @@ namespace ToyFactory.UI
         /// <summary>The highest chapter started this run.</summary>
         public int ChaptersReached { get; private set; }
 
+        /// <summary>
+        /// Chapters finished: all of them in a won run, otherwise the ones before the chapter the
+        /// player was in (a chapter only starts once the one before it is done).
+        /// </summary>
+        public int ChaptersCleared => Outcome == RunOutcome.Won ? RunSummary.ChapterCount : Mathf.Max(0, ChaptersReached - 1);
+
+        /// <summary>Blaster shots fired this run, as last reported through <see cref="ReportShots"/>.</summary>
+        public int ShotsFired => _shotsFired;
+
+        /// <summary>Of those, the shots that hit.</summary>
+        public int ShotsHit => _shotsHit;
+
         /// <summary>True from the start of Chapter 1 until the run ends.</summary>
         public bool IsRunning => _running;
 
@@ -145,6 +157,10 @@ namespace ToyFactory.UI
             _shotsFired = Mathf.Max(0, fired);
             _shotsHit = Mathf.Clamp(hit, 0, _shotsFired);
         }
+
+        /// <summary>The run's numbers for the Results screen. A run that has not ended reads as a recall.</summary>
+        public RunSummary CreateSummary() =>
+            new RunSummary(Outcome, RunSeconds, ChaptersCleared, _rules.Takedowns, _shotsFired, _shotsHit, _rules.Score, _rules.Grade, _rules.History);
 
         /// <summary>Starts a run now: clears the score and the run's state.</summary>
         public void BeginRun()

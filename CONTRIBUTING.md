@@ -76,7 +76,7 @@ Check your weekly count: `git shortlog -sn --since="1 week ago"`.
 | `Env` | S1 (only scene with static geometry; bake lighting with Env alone loaded) |
 | `Interactables` | S2 (everything non-static, lit by Light Probes) |
 | `Agents` | S4 |
-| `UI` | S3 (HUD, subtitles, chapter card, results; added to Build Settings and loaded by S2) |
+| `UI` | S3 (HUD, subtitles, chapter card, title, results; added to Build Settings and loaded by S2) |
 | `ModelShowcase` | S3 (model turntable and wireframe line-up; never in build) |
 
 Only the owner edits a scene, including its metadata. Everyone else works in a personal test scene and hands over prefabs. Test scenes live under `Scenes/Test/` and stay out of the build.
