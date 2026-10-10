@@ -56,7 +56,11 @@ namespace ToyFactory.AI.Agents.Tracker
     /// so a fresh beep beats an older, louder shot. Entries whose score falls to the hearing
     /// threshold (10) are forgotten.</para>
     /// <para><b>Repeating:</b> a source heard again within 1.5 s of its previous noise is
-    /// repeating; it stops counting as repeating once it has been silent for 1.5 s.</para>
+    /// repeating; it stops counting as repeating once it has been silent for 1.5 s. The player
+    /// (<see cref="PlayerSourceId"/>) is never repeating: footsteps every 0.45 s are a trail to
+    /// follow, not a lure to watch. A source that marks its noise as a lure (the thrown toy)
+    /// counts as repeating from its first noise, so the Tracker reacts to the toy's first tick
+    /// instead of 0.6 s later.</para>
     /// <para>Fixed capacity and no allocation after construction.</para>
     /// </remarks>
     public sealed class NoiseMemory
@@ -66,6 +70,9 @@ namespace ToyFactory.AI.Agents.Tracker
         public const float RepeatWindow = 1.5f;
         public const int DefaultCapacity = 8;
 
+        /// <summary>The source id of every noise the player makes (the <c>NoiseEvent</c> contract).</summary>
+        public const int PlayerSourceId = -1;
+
         struct Entry
         {
             public bool Used;
@@ -74,6 +81,7 @@ namespace ToyFactory.AI.Agents.Tracker
             public float Level;
             public float Time;
             public int RepeatCount;   // consecutive noises less than RepeatWindow apart
+            public bool Lure;         // the source marks its noise as a lure (the thrown toy)
             public bool Handled;      // investigated already; ignored until the source makes a new noise
         }
 
@@ -87,8 +95,11 @@ namespace ToyFactory.AI.Agents.Tracker
         /// <summary>Score of a noise of <paramref name="level"/> heard <paramref name="age"/> seconds ago.</summary>
         public static float Score(float level, float age) => level * Mathf.Exp(-DecayPerSecond * Mathf.Max(0f, age));
 
-        /// <summary>Records a heard noise. A noise not newer than the source's last one is ignored.</summary>
-        public void Remember(int sourceId, Vector3 position, float level, float time)
+        /// <summary>
+        /// Records a heard noise. A noise not newer than the source's last one is ignored.
+        /// <paramref name="isLure"/> marks the source as a lure from now on (the thrown toy).
+        /// </summary>
+        public void Remember(int sourceId, Vector3 position, float level, float time, bool isLure = false)
         {
             int slot = Find(sourceId);
             if (slot >= 0)
@@ -101,6 +112,7 @@ namespace ToyFactory.AI.Agents.Tracker
                 existing.Level = level;
                 existing.Time = time;
                 existing.Handled = false;
+                existing.Lure |= isLure;
                 return;
             }
 
@@ -108,7 +120,7 @@ namespace ToyFactory.AI.Agents.Tracker
             _entries[slot] = new Entry
             {
                 Used = true, SourceId = sourceId, Position = position, Level = level,
-                Time = time, RepeatCount = 1, Handled = false
+                Time = time, RepeatCount = 1, Handled = false, Lure = isLure
             };
         }
 
@@ -208,7 +220,9 @@ namespace ToyFactory.AI.Agents.Tracker
         }
 
         bool IsRepeating(int slot, float now) =>
-            _entries[slot].RepeatCount >= 2 && now - _entries[slot].Time <= RepeatWindow;
+            _entries[slot].SourceId != PlayerSourceId &&
+            (_entries[slot].Lure || _entries[slot].RepeatCount >= 2) &&
+            now - _entries[slot].Time <= RepeatWindow;
 
         bool IsAlive(int slot, float now)
         {

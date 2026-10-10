@@ -53,6 +53,36 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void ALureCountsAsRepeatingFromItsFirstNoiseUntilItGoesQuiet()
+        {
+            var memory = new NoiseMemory();
+            memory.Remember(9, new Vector3(0f, 0f, 5f), 40f, 1f, isLure: true);   // the toy's first tick
+
+            Assert.IsTrue(memory.TryGetBestRepeating(1f, Vector3.zero, out NoiseTarget lure));
+            Assert.AreEqual(9, lure.SourceId);
+            Assert.IsTrue(memory.IsStillRepeating(9, 2.4f));
+            Assert.IsFalse(memory.IsStillRepeating(9, 2.6f), "Silent for 1.6 s: no longer a lure.");
+
+            memory.Remember(9, new Vector3(0f, 0f, 5f), 40f, 5f);   // later ticks keep it a lure
+            Assert.IsTrue(memory.IsStillRepeating(9, 5.1f));
+        }
+
+        [Test]
+        public void ThePlayerIsNeverARepeatingSource()
+        {
+            // Footsteps every 0.45 s are a trail to follow, not a lure to watch.
+            var memory = new NoiseMemory();
+            for (int step = 0; step < 4; step++)
+                memory.Remember(NoiseMemory.PlayerSourceId, new Vector3(step, 0f, 0f), 20f, step * 0.45f);
+
+            Assert.IsTrue(memory.TryGetBest(1.4f, Vector3.zero, out NoiseTarget best));
+            Assert.IsFalse(best.IsRepeating);
+            Assert.AreEqual(new Vector3(3f, 0f, 0f), best.Position, "The latest step.");
+            Assert.IsFalse(memory.IsStillRepeating(NoiseMemory.PlayerSourceId, 1.4f));
+            Assert.IsFalse(memory.TryGetBestRepeating(1.4f, Vector3.zero, out _));
+        }
+
+        [Test]
         public void ASingleNoiseIsNotRepeating()
         {
             var memory = new NoiseMemory();

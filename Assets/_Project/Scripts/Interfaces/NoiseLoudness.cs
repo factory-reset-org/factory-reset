@@ -17,7 +17,7 @@ namespace ToyFactory.Interfaces
         /// <summary>Chapter 4 power core explosion: 20 m.</summary>
         public const float CoreExplosion = 90f;
 
-        /// <summary>Thrown wind-up toy landing, repeated every 1 s for 5 s: 15 m.</summary>
+        /// <summary>Thrown wind-up toy, ticking every 0.6 s for 8 s from its landing: 15 m.</summary>
         public const float ToyLanding = 70f;
 
         /// <summary>Door slam: 12.5 m.</summary>
@@ -32,7 +32,10 @@ namespace ToyFactory.Interfaces
         /// <summary>Chapter 1 pressure plate click: 7.5 m.</summary>
         public const float PlateClick = 40f;
 
-        /// <summary>Player running footsteps: 3.75 m.</summary>
+        /// <summary>Player walking footsteps, every 0.45 s: 3.75 m.</summary>
         public const float Footsteps = 25f;
+
+        /// <summary>Player sprinting footsteps, every 0.32 s: 9 m, as in the prototype.</summary>
+        public const float SprintFootsteps = 46f;
     }
 }

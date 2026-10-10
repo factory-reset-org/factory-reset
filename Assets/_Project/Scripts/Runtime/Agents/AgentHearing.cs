@@ -72,7 +72,7 @@ namespace ToyFactory.Runtime.Agents
 
                 float level = _propagation.Level(grid.WorldToCell(listener.HearingPosition));
                 if (level > NoisePropagation.HearingThreshold)
-                    listener.Hear(new SensorSnapshot(noise.Position, level, noise.SourceId, noise.Time));
+                    listener.Hear(new SensorSnapshot(noise.Position, level, noise.SourceId, noise.Time, noise.IsLure));
             }
         }
     }
