@@ -33,9 +33,10 @@ namespace ToyFactory.Tests
     /// <c>AI.Brain.Tick.*</c> markers in <see cref="AgentController"/>, which contain the
     /// searches); the searches on their own; and memory allocated in the frame by everything
     /// (Unity's "GC Allocated In Frame" counter). Editor timings: a player build is faster.</para>
-    /// <para>Explicit, so they only run when asked for (about 40 s and 30 s).</para>
+    /// <para>The stress run also runs with the brain scheduler off, to compare the two in one
+    /// session. Explicit, so they only run when asked for (about 40 s each, and 30 s).</para>
     /// </remarks>
-    [Explicit("Evidence runs: about 40 s and 30 s. Run them on their own for the performance logs.")]
+    [Explicit("Evidence runs: about 40 s each and 30 s. Run them on their own for the performance logs.")]
     [Category("Evidence")]
     public sealed class FourAgentsStressTests
     {
@@ -108,9 +109,22 @@ namespace ToyFactory.Tests
         }
 
         [UnityTest]
-        public IEnumerator Test_FourAgentsStress()
+        public IEnumerator Test_FourAgentsStress() => RunStress(nameof(Test_FourAgentsStress), BrainTickScheduler.FrameBudgetMs);
+
+        /// <summary>
+        /// The same run with the brain scheduler effectively off (an unlimited budget, so no
+        /// decision ever waits). Run it next to <see cref="Test_FourAgentsStress"/> in one
+        /// session to see what the scheduler changes.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Test_FourAgentsStress_NoScheduler() => RunStress(nameof(Test_FourAgentsStress_NoScheduler), float.MaxValue);
+
+        IEnumerator RunStress(string name, float budgetMs)
         {
+            float budgetBefore = BrainTickScheduler.FrameBudgetMs;
             yield return LoadChapterFour();
+            BrainTickScheduler.FrameBudgetMs = budgetMs;
+            int waitsBefore = BrainTickScheduler.TotalWaits;
 
             var player = (Component)PlayerState.Current;
             var body = player.GetComponent<CharacterController>();
@@ -172,13 +186,16 @@ namespace ToyFactory.Tests
                 foreach (var r in brainRecorders) r.Dispose();
                 foreach (var r in searchRecorders) r.Dispose();
                 allocRecorder.Dispose();
+                BrainTickScheduler.FrameBudgetMs = budgetBefore;
             }
+            int waits = BrainTickScheduler.TotalWaits - waitsBefore;
 
             int frames = frameMs.Count;
             var report = new StringBuilder();
-            report.AppendLine($"Test_FourAgentsStress: {frames} frames over {Measure} s, 7 agents (1 Tracker, 1 Guard, 4 Saboteurs, Captain awake), Chapter 4, editor");
+            string budget = budgetMs >= float.MaxValue ? "off" : $"{budgetMs:0.#} ms";
+            report.AppendLine($"{name}: {frames} frames over {Measure} s, 7 agents (1 Tracker, 1 Guard, 4 Saboteurs, Captain awake), Chapter 4, editor, brain scheduler {budget}");
             report.AppendLine($"  Avg FPS {frames / frameMs.Sum() * 1000.0:F1}; frame ms avg {frameMs.Average():F2}, p99 {Percentile(frameMs, 0.99):F2}, worst {frameMs.Max():F2}");
-            report.AppendLine($"  AI (all brain ticks) ms/frame avg {aiMs.Average():F3}, p99 {Percentile(aiMs, 0.99):F3}, worst {aiMs.Max():F3}");
+            report.AppendLine($"  AI (all brain ticks) ms/frame avg {aiMs.Average():F3}, p99 {Percentile(aiMs, 0.99):F3}, worst {aiMs.Max():F3}; frames over {AiBudgetMs} ms {aiMs.Count(v => v > AiBudgetMs)}; decisions deferred {waits}");
             report.AppendLine($"  of which searches ms/frame avg {searchMs.Average():F3}, p99 {Percentile(searchMs, 0.99):F3}");
             for (int i = 0; i < Brains.Length; i++)
                 report.AppendLine($"  {Brains[i]} ticks: avg {brainTotals[i] / frames:F4}, p99 {Percentile(brainMs[i], 0.99):F3}, worst {brainMs[i].Max():F3} ms/frame; frames over 1 ms {brainMs[i].Count(v => v > 1.0)}");
