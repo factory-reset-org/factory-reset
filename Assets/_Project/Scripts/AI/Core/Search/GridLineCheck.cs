@@ -9,6 +9,8 @@ namespace ToyFactory.AI.Core.Search
     /// brains plan on. Used by path smoothing to drop waypoints the agent does not need.
     /// <see cref="IsSightClear"/> answers "can a tall agent see from A to B?": the same trace,
     /// but props and boxes (grid blockers) do not block it, only walls and closed doors.
+    /// <see cref="HasLineOfSight"/> answers "can an agent's eye see from A to B?" on the grid's
+    /// sight layer, where only tall obstacles block.
     /// </summary>
     /// <remarks>
     /// The segment is traced cell by cell through every cell it touches (a supercover
@@ -26,7 +28,7 @@ namespace ToyFactory.AI.Core.Search
         const float CornerTolerance = 1e-4f;
 
         /// <summary>True if every cell the segment from <paramref name="from"/> to <paramref name="to"/> touches is traversable.</summary>
-        public static bool IsWalkable(GridGraph grid, Vector3 from, Vector3 to) => Trace(grid, from, to, overProps: false);
+        public static bool IsWalkable(GridGraph grid, Vector3 from, Vector3 to) => Trace(grid, from, to, Mode.Walk);
 
         /// <summary>
         /// True if a tall agent standing at <paramref name="from"/> can see <paramref name="to"/>:
@@ -34,21 +36,36 @@ namespace ToyFactory.AI.Core.Search
         /// by a box or a prop (grid blockers: the console, a switch cage, a crate) do not, because
         /// those are low enough to see over. For walking, use <see cref="IsWalkable"/>.
         /// </summary>
-        public static bool IsSightClear(GridGraph grid, Vector3 from, Vector3 to) => Trace(grid, from, to, overProps: true);
+        public static bool IsSightClear(GridGraph grid, Vector3 from, Vector3 to) => Trace(grid, from, to, Mode.OverProps);
+
+        /// <summary>
+        /// True if an eye at <paramref name="from"/> can see <paramref name="to"/>: no cell in
+        /// between blocks sight (<see cref="GridGraph.BlocksSight"/>: on a measured level, only
+        /// something at least eye height tall, or a closed door). Low props are seen over and the
+        /// walking clearance round walls does not count. The cells at both ends are not tested,
+        /// because an agent brushing a wall, or a player pressed against a press, stands in a cell
+        /// the obstacle overlaps. A line through a cell corner is blocked only if both side cells are.
+        /// </summary>
+        public static bool HasLineOfSight(GridGraph grid, Vector3 from, Vector3 to) => Trace(grid, from, to, Mode.Sight);
+
+        enum Mode { Walk, OverProps, Sight }
 
         // A cell the line may pass through: traversable for walking; for sight over props, any
-        // walkable floor that is not a closed door, whatever stands on it.
-        static bool Passable(GridGraph grid, Vector2Int cell, bool overProps)
+        // walkable floor that is not a closed door, whatever stands on it; for sight, any cell
+        // the sight layer leaves clear.
+        static bool Passable(GridGraph grid, Vector2Int cell, Mode mode)
         {
-            if (!overProps)
+            if (mode == Mode.Walk)
                 return grid.IsTraversable(cell);
+            if (mode == Mode.Sight)
+                return !grid.BlocksSight(cell);
             if (!grid.Contains(cell))
                 return false;
             GridNode node = grid.GetNode(cell);
             return node.Walkable && !node.IsDoorClosed;
         }
 
-        static bool Trace(GridGraph grid, Vector3 from, Vector3 to, bool overProps)
+        static bool Trace(GridGraph grid, Vector3 from, Vector3 to, Mode mode)
         {
             if (grid == null) throw new ArgumentNullException(nameof(grid));
 
@@ -63,7 +80,8 @@ namespace ToyFactory.AI.Core.Search
             int endX = Mathf.FloorToInt(u1);
             int endY = Mathf.FloorToInt(v1);
 
-            if (!Passable(grid, new Vector2Int(x, y), overProps))
+            bool sight = mode == Mode.Sight;
+            if (!sight && !Passable(grid, new Vector2Int(x, y), mode))
                 return false;
 
             float du = u1 - u0;
@@ -89,8 +107,9 @@ namespace ToyFactory.AI.Core.Search
                 if (Mathf.Abs(tMaxX - tMaxY) <= tolerance && remaining >= 2)
                 {
                     // Exactly through a corner: a diagonal step, which needs both side cells.
-                    if (!Passable(grid, new Vector2Int(x + stepX, y), overProps) ||
-                        !Passable(grid, new Vector2Int(x, y + stepY), overProps))
+                    bool sideX = Passable(grid, new Vector2Int(x + stepX, y), mode);
+                    bool sideY = Passable(grid, new Vector2Int(x, y + stepY), mode);
+                    if (sight ? !sideX && !sideY : !sideX || !sideY)
                         return false;
                     x += stepX;
                     y += stepY;
@@ -111,7 +130,9 @@ namespace ToyFactory.AI.Core.Search
                     remaining--;
                 }
 
-                if (!Passable(grid, new Vector2Int(x, y), overProps))
+                if (sight && x == endX && y == endY)
+                    break;   // the target's own cell is not tested
+                if (!Passable(grid, new Vector2Int(x, y), mode))
                     return false;
             }
 

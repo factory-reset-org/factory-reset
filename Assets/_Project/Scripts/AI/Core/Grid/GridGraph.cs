@@ -24,6 +24,9 @@ namespace ToyFactory.AI.Core.Grid
         };
 
         readonly GridNode[] _nodes;
+        // Optional sight layer: which cells hold something tall enough to hide what is behind
+        // it. Null until the runtime measures the level (see SetBlocksSight).
+        bool[] _blocksSight;
 
         public int Width { get; }
         public int Height { get; }
@@ -99,6 +102,42 @@ namespace ToyFactory.AI.Core.Grid
         }
 
         public bool IsTraversable(Vector2Int cell) => Contains(cell) && GetNode(cell).IsTraversable;
+
+        /// <summary>True once <see cref="SetBlocksSight"/> has measured which cells hide what is behind them.</summary>
+        public bool HasSightLayer => _blocksSight != null;
+
+        /// <summary>
+        /// Marks whether <paramref name="cell"/> holds something too tall to see over (true): a
+        /// wall, a press or a shelf, but not a crate or a belt (false). Static level
+        /// geometry, set once by the runtime when the grid is built, so it raises no
+        /// <see cref="Changed"/> event. The first call creates the layer, with every other cell clear.
+        /// </summary>
+        public void SetBlocksSight(Vector2Int cell, bool blocks)
+        {
+            int index = ToIndex(cell);
+            if (_blocksSight == null)
+                _blocksSight = new bool[CellCount];
+            _blocksSight[index] = blocks;
+        }
+
+        /// <summary>
+        /// True if a line of sight through <paramref name="cell"/> is blocked: outside the grid, a
+        /// closed door, or a tall obstacle on the sight layer. Without a sight layer, every cell
+        /// that is not walkable floor blocks, as walls do on a grid built by hand.
+        /// </summary>
+        /// <remarks>
+        /// Unlike walkability, the sight layer has no agent clearance round walls and props, and
+        /// low props do not block it, so an agent sees over a crate and past the corner of a press.
+        /// </remarks>
+        public bool BlocksSight(Vector2Int cell)
+        {
+            if (!Contains(cell))
+                return true;
+            GridNode node = GetNode(cell);
+            if (node.IsDoorClosed)
+                return true;
+            return _blocksSight != null ? _blocksSight[ToIndex(cell)] : !node.Walkable;
+        }
 
         /// <summary>
         /// Finds the closest traversable cell by Euclidean centre distance within maxRadius
