@@ -38,6 +38,15 @@ namespace ToyFactory.Runtime.Animation
         int _aimLayer = -1;
         float _aimWeight;
 
+        /// <summary>True if the controller has an Aim layer (the Guard and the Captain) and is running.</summary>
+        public bool HasAimLayer => enabled && _aimLayer >= 0;
+
+        /// <summary>
+        /// The Aim layer's weight, 0 to 1. Read before this component's LateUpdate, it is the
+        /// weight the Animator built this frame's pose with (it is set for the next one).
+        /// </summary>
+        public float AimWeight => _aimWeight;
+
         void Awake()
         {
             _agent = GetComponent<AgentController>();
