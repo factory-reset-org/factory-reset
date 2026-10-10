@@ -209,6 +209,20 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void TheCommitmentIsOfferedForTheCallouts()
+        {
+            CaptainBrain watching = Captain();
+            Tick(watching, new Vector2Int(22, 3), 0f);
+            Assert.IsFalse(watching.TryGetCommitment(out _, out _, out _), "Watching: no commitment.");
+
+            CaptainBrain brain = CommittedToTheSecondDoorway(out _);
+            Assert.IsTrue(brain.TryGetCommitment(out CandidateGoal goal, out Vector3 position, out bool guarding));
+            Assert.AreEqual(EastId, goal.Id);
+            Assert.AreEqual(_grid.CellToWorld(EastGoal), position, "The goal itself, not the intercept cell.");
+            Assert.IsFalse(guarding);
+        }
+
+        [Test]
         public void AmbushHoldsWhileTheCellIsStillAheadOfThePlayer()
         {
             CaptainBrain brain = CommittedToTheSecondDoorway(out _);
