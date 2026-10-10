@@ -61,7 +61,11 @@ namespace ToyFactory.Runtime.Debugging
 
         // Domain reload is off, so registrations from the last play session must not linger.
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void ClearRegistrations() => Registered.Clear();
+        static void ClearRegistrations()
+        {
+            Registered.Clear();
+            LabelCamera = null;
+        }
 
         static bool Allowed => Application.isEditor || Debug.isDebugBuild;
 
@@ -155,11 +159,18 @@ namespace ToyFactory.Runtime.Debugging
             GL.PopMatrix();
         }
 
+        /// <summary>
+        /// A camera to place the labels for instead of the main camera, with no distance limit
+        /// (the demo's top-down view, 37 m up). Null for the main camera.
+        /// </summary>
+        public static Camera LabelCamera { get; set; }
+
         void OnGUI()
         {
             if (!Shown)
                 return;
-            Camera camera = Camera.main;
+            Camera camera = LabelCamera != null ? LabelCamera : Camera.main;
+            float labelDistance = LabelCamera != null ? float.PositiveInfinity : maxLabelDistance;
 
             if (_labelStyle == null)
             {
@@ -177,7 +188,7 @@ namespace ToyFactory.Runtime.Debugging
             foreach (OverlayCanvas.Label label in _canvas.Labels)
             {
                 Vector3 screen = camera.WorldToScreenPoint(label.Position);
-                if (screen.z <= 0f || screen.z > maxLabelDistance)
+                if (screen.z <= 0f || screen.z > labelDistance)
                     continue;   // behind the camera, or too far away to read
                 var rect = new Rect(screen.x - 150f, Screen.height - screen.y - 40f, 300f, 40f);
 
