@@ -109,6 +109,24 @@ As built in `Env.unity` (S1, Week 12):
 | Storage Area | Orange `#FF9F1C` | warm and cramped: tall shelves, shadows between aisles |
 | Control Room | Grape `#8F6BFF` | cold and ominous: screens, red alarm beacons until unlocked |
 
+## Character materials (S3)
+
+The agents, Unit 047 and the keycard use 17 shared plastics in `Materials/Characters/` (`M_Char_*`), built by `Factory Reset > Materials > Build Character Materials` from the colours of each character's reference sheet. All are URP Lit, Metallic 0 and Smoothness 0.7 to 0.9; no part uses chrome, because a metal part reads black without reflection probes. The FBX files keep the three colour zones they were exported with; the builder sets each part's materials on the character prefab variants.
+
+| Model | Light zone (main body) | Mid zone (secondary) | Dark zone (joints, tyres, frames) | Parts that differ |
+| --- | --- | --- | --- | --- |
+| Tracker Toy | Red `#FF5A4E` | Cream `#FFF1D6` | Black `#1D1A2A` | gold key, black antenna stem, pink inside the ears, cream snout with black nose |
+| Saboteur Bot | Purple `#8F6BFF`, tinted per unit | Pink `#FF5CA8` | Black | steel arms, joints and neck, pale goggle lenses |
+| Guard Bot | Blue `#3A6CF4` | Yellow `#FFC933` | Black | navy hip, steel cannon with a red ring, cyan visor, grey head vents, treads with the tread texture |
+| Captain Bot | White `#F4F1FF` | Gold `#FFC933` | Black | navy legs and hat band, steel cannons with a pink ring, blue visor, gold shoulders |
+| Unit 047 | Cyan `#62D8FF` (its speaker colour) | White | Navy `#22306A` | gold key, red sticker, grey legs, emissive cyan eyes |
+| Keycard | Yellow | Steel | Black | none |
+
+- **Saboteur tint.** Only the body's first slot carries `M_Char_SaboteurBody`; `SaboteurTint` overrides its base colour per squad letter, and no other slot uses that material, so nothing else is tinted.
+- **Guard treads.** The belt body has its own material, `M_Char_GuardTread`, with a 128 x 128 seamless texture (BC7, repeat). The belt's UVs run along its length (U along the body's Z), so S4 scrolls the texture's U offset with the Guard's speed.
+- **Unit 047's eyes.** `M_Char_Unit047Eyes` has emission on (cyan, HDR intensity 2), so the keyword survives builds; S4 animates `_EmissionColor` down to black for "off".
+- **No overlapping faces.** Faces of two zones must never lie in the same plane and overlap: with two colours they flicker. The Captain's torso, arms and hat band and the Guard's cannon arm, shield arm and treads had such faces (flush details laid over a larger face); they are lifted 2 mm in the `.blend` files. `CharacterMaterialTests` checks every model.
+
 ## Saboteur squad tints
 
 One Saboteur material, tinted per unit with a MaterialPropertyBlock (S3's `SaboteurTint`).
