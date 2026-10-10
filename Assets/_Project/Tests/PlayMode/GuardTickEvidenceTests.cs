@@ -19,9 +19,10 @@ using Object = UnityEngine.Object;
 namespace ToyFactory.Tests
 {
     /// <summary>
-    /// Evidence for the performance log: where the Guard's tick time goes. It runs the same
-    /// scenario as <see cref="FourAgentsStressTests"/> (Bootstrap, Chapter 4, the player walking
-    /// the same loop at 4 m/s for 30 s) and breaks every slow Guard frame down by the markers
+    /// Evidence for the performance log: where the Guard's tick time goes. It runs the scenario
+    /// of <see cref="FourAgentsStressTests"/> (Bootstrap, Chapter 4, the player walking a loop at
+    /// 4 m/s for 30 s), but round the Painting room, because the Guard fights only for its own
+    /// room. It breaks every slow Guard frame down by the markers
     /// inside <see cref="GuardBrain"/>, the two search markers, the line-of-sight checks made
     /// and the Guard's state.
     /// <para>Explicit, so it only runs when asked for (about 40 s). It reports and never fails
@@ -44,14 +45,13 @@ namespace ToyFactory.Tests
             "AI.AStarSearch.FindPath", "AI.OneToOneCost.Compute",
         };
 
-        // The loop FourAgentsStressTests walks: through the Control Room, out through door 3
-        // into Storage and back.
+        // A loop round the Painting room, the Guard's own room: it fights only for that room, so
+        // the evidence has to be taken there. Waypoints keep clear of the paint tanks.
         static readonly Vector3[] Loop =
         {
-            new Vector3(10.5f, 0.1f, 23f), new Vector3(16f, 0.1f, 26f), new Vector3(18.5f, 0.1f, 31f),
-            new Vector3(23.5f, 0.1f, 31f), new Vector3(27f, 0.1f, 27.5f), new Vector3(23.5f, 0.1f, 31f),
-            new Vector3(18.5f, 0.1f, 31f), new Vector3(16f, 0.1f, 37f), new Vector3(10.5f, 0.1f, 39f),
-            new Vector3(3f, 0.1f, 31f), new Vector3(5.5f, 0.1f, 26f),
+            new Vector3(23f, 0.1f, 8f), new Vector3(29f, 0.1f, 5f), new Vector3(36f, 0.1f, 9f),
+            new Vector3(38f, 0.1f, 13f), new Vector3(33f, 0.1f, 18.5f), new Vector3(27f, 0.1f, 15.5f),
+            new Vector3(23f, 0.1f, 11f),
         };
 
         struct Frame
