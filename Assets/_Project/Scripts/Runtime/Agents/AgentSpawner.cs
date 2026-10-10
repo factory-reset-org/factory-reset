@@ -216,10 +216,12 @@ namespace ToyFactory.Runtime.Agents
                     return new MockPathProvider(setup.PatrolPoints);
                 case AgentType.Guard:
                     // The Guard picks cover on the grid and checks sight lines with physics;
-                    // without a grid it falls back to the mock.
+                    // without a grid it falls back to the mock. It holds the room its patrol
+                    // is in, and fights only for it.
                     if (setup.HasGrid)
                         return new GuardBrain(setup.Grid, setup.Pathfinder, setup.Blackboard,
-                            new PhysicsCoverVisibility(setup.Grid), setup.Identity.Id, setup.PatrolPoints);
+                            new PhysicsCoverVisibility(setup.Grid), setup.Identity.Id, setup.PatrolPoints,
+                            AreaGuardHome.ForPatrol(setup.PatrolPoints));
                     return new MockPathProvider(setup.PatrolPoints);
                 case AgentType.Saboteur:
                     // The four Saboteurs share one squad through the blackboard's claims and one
