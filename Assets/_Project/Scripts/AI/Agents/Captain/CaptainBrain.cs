@@ -21,8 +21,10 @@ namespace ToyFactory.AI.Agents.Captain
     /// <para><b>Decisions at 2 Hz.</b> Every 0.5 s of game time the brain records the player's
     /// cell, re-runs goal inference and, when the most likely goal has a posterior of at
     /// least 0.5, plans an intercept. When the top two goals are within 0.1 it plans a
-    /// chokepoint shared by both routes instead. The states only act on the result, so no
-    /// state runs a search of its own except the A* walk to the chosen cell.</para>
+    /// chokepoint shared by both routes instead. Unsure and out of contact with the player
+    /// for 3 s, it guards the most likely goal rather than watching nothing. The states only
+    /// act on the result, so no state runs a search of its own except the A* walk to the
+    /// chosen cell.</para>
     /// <para><b>Waking.</b> The Captain sleeps until the Chapter 3 cutscene's wake signal
     /// (<see cref="WorldBlackboard.CaptainAwake"/>). As a safety net it also wakes once
     /// Chapter 3 has started, so it can never stay asleep for the boss chapters.</para>
@@ -49,6 +51,12 @@ namespace ToyFactory.AI.Agents.Captain
         // another goal once that goal leads the committed one by 0.15.
         public const float KeepConfidence = 0.4f;
         public const float GoalSwitchMargin = 0.15f;
+
+        // Guarding: watching only makes sense while there is something to watch. Unsure and out
+        // of contact with the player for 3 s (they are hiding, or standing still away from every
+        // goal, so their movement says nothing), it waits at the likeliest goal instead: the
+        // place they must come to in the end.
+        public const float GuardDelay = 3f;
 
         // Progress: heading for a target but not moving 0.25 m in 2 s (pinned on a prop, a jam
         // of bodies, no route) gives the target up; its cell and neighbours are not chosen
@@ -91,6 +99,7 @@ namespace ToyFactory.AI.Agents.Captain
 
         // Distances, metres.
         public const float ArrivalRadius = 0.6f;
+        public const int ApproachLookCells = 6;          // waiting, it faces the route cell 3 m before its own
         public const float AmbushLeaveDistance = 1.5f;   // pushed this far off its cell, it re-plans
         public const float ConvergeArrivedDistance = 3f; // closing in: within this, the stand-off (2 m) holds it, not a jam
         public const float ObserveDistance = 8f;         // keeps at least this far while unsure
@@ -172,6 +181,9 @@ namespace ToyFactory.AI.Agents.Captain
         bool _decideNow;
         bool _decidedThisTick;
         PredictedGoal _prediction;
+        // When it last had something to go on besides watching: a confident prediction, or
+        // waking (its first decision), so a freshly woken Captain watches before it guards.
+        float _lastSureAt = float.NegativeInfinity;
         InterceptPlan _plan;
         int _planGoalId = NoGoal;
         Vector2Int _approachCell;
@@ -245,10 +257,10 @@ namespace ToyFactory.AI.Agents.Captain
                 b => !b.PlayerBusyAtGoal);
             Rule(rules, _intercept, _ambush, 50, "reached the intercept cell", b => b.ArrivedAt(b._targetCell));
             Rule(rules, _reassess, _converge, 45, "the player is busy at a goal: close in", b => b.PlayerBusyAtGoal);
-            Rule(rules, _reassess, _intercept, 40, "a plan exists (confidence >= 0.5)", b => b._plan.HasPlan);
-            Rule(rules, _reassess, _observe, 30, "no plan (confidence < 0.5, or no shared chokepoint)", b => !b._plan.HasPlan);
+            Rule(rules, _reassess, _intercept, 40, "a plan exists (confidence >= 0.5, or guarding g* after 3 s unsure and out of contact)", b => b._plan.HasPlan);
+            Rule(rules, _reassess, _observe, 30, "no plan (confidence < 0.5 with the player in contact, or no shared chokepoint)", b => !b._plan.HasPlan);
             Rule(rules, _observe, _converge, 25, "the player is busy at a goal: close in", b => b.PlayerBusyAtGoal);
-            Rule(rules, _observe, _intercept, 20, "a plan exists (confidence >= 0.5)", b => b._plan.HasPlan);
+            Rule(rules, _observe, _intercept, 20, "a plan exists (confidence >= 0.5, or guarding g* after 3 s unsure and out of contact)", b => b._plan.HasPlan);
 
             _machine = new StateMachine<CaptainBrain>(startAwake ? _observe : _dormant, rules);
         }
@@ -422,6 +434,9 @@ namespace ToyFactory.AI.Agents.Captain
 
         bool EngagedFor(float seconds) => Now - _engagedAt >= seconds;
 
+        // Neither in contact with the player nor confident about their goal for GuardDelay.
+        bool ShouldGuard => Now - Mathf.Max(_lastContactTime, _lastSureAt) >= GuardDelay;
+
         // ---- Perception ----------------------------------------------------------------
 
         void Perceive()
@@ -491,6 +506,8 @@ namespace ToyFactory.AI.Agents.Captain
             _decidedThisTick = true;
             _decideNow = false;
             _nextDecisionTime = Now + DecisionInterval;
+            if (float.IsNegativeInfinity(_lastSureAt))
+                _lastSureAt = Now;
 
             if (!PlayerAvailable())
             {
@@ -531,39 +548,57 @@ namespace ToyFactory.AI.Agents.Captain
             int committed = IsCommitted ? IndexOfGoal(_targetGoalId) : -1;
             if (committed >= 0)
             {
-                threshold = KeepConfidence;
+                // A guard was never a confident commitment, so it does not lower the bar.
+                if (_plan.Kind != InterceptKind.Guard)
+                    threshold = KeepConfidence;
                 if (_inference.Posterior(committed) >= _inference.Confidence - GoalSwitchMargin)
                     planIndex = committed;
             }
             CandidateGoal planGoal = _goals[planIndex];
             float planConfidence = _inference.Posterior(planIndex);
 
-            if (planConfidence < threshold ||
-                !_inference.TryGetGoalField(planGoal.Id, out DijkstraField field))
+            if (!_inference.TryGetGoalField(planGoal.Id, out DijkstraField field))
             {
                 _plan = InterceptPlan.None;
                 return;
             }
 
             float playerSpeed = player.SprintSpeed > 0f ? player.SprintSpeed : DefaultPlayerSprint;
-            int second = SecondMostLikelyIndex(planIndex);
-            if (second >= 0 && planConfidence - _inference.Posterior(second) <= SharedGoalGap &&
-                _inference.TryGetGoalField(_goals[second].Id, out DijkstraField otherField))
-                _plan = _planner.PlanShared(field, otherField, player.Cell, _ctx.Cell, playerSpeed, InterceptSpeed, _isAvoided);
+            if (planConfidence < threshold)
+            {
+                // Unsure: watch while the player is in contact, guard g* once they have been
+                // out of it (and the Captain unsure) for a while.
+                if (!ShouldGuard)
+                {
+                    _plan = InterceptPlan.None;
+                    return;
+                }
+                _plan = _planner.PlanGuard(field, player.Cell, _ctx.Cell, playerSpeed, InterceptSpeed, _isAvoided);
+            }
             else
-                _plan = _planner.Plan(field, player.Cell, _ctx.Cell, playerSpeed, InterceptSpeed, _isAvoided);
+            {
+                _lastSureAt = Now;
+                int second = SecondMostLikelyIndex(planIndex);
+                if (second >= 0 && planConfidence - _inference.Posterior(second) <= SharedGoalGap &&
+                    _inference.TryGetGoalField(_goals[second].Id, out DijkstraField otherField))
+                    _plan = _planner.PlanShared(field, otherField, player.Cell, _ctx.Cell, playerSpeed, InterceptSpeed, _isAvoided);
+                else
+                    _plan = _planner.Plan(field, player.Cell, _ctx.Cell, playerSpeed, InterceptSpeed, _isAvoided);
+            }
 
             // Shut out by a closed door: the planner only walks open cells, but the Captain can
             // open doors, so defend g* by way of the door instead of standing and watching.
             if (!_plan.HasPlan)
-                _plan = PlanThroughDoors(field, playerSpeed);
+                _plan = PlanThroughDoors(field, playerSpeed,
+                    planConfidence < threshold ? InterceptKind.Guard : InterceptKind.DefendGoal);
 
             _planGoalId = planGoal.Id;
             if (_plan.HasPlan)
             {
-                // Face the cell the player will come from.
+                // Face the way the player will come: a route cell 3 m back, not the next cell,
+                // which the body (stopping up to 0.6 m off the cell) may already stand past.
                 IReadOnlyList<Vector2Int> route = _planner.PredictedRoute;
-                int from = Mathf.Clamp(_plan.RouteIndex - 1, 0, route.Count - 1);
+                int from = Mathf.Clamp(_plan.RouteIndex - ApproachLookCells, 0, route.Count - 1);
                 _approachCell = route.Count > 0 ? route[from] : player.Cell;
             }
         }
@@ -610,7 +645,7 @@ namespace ToyFactory.AI.Agents.Captain
         // Defend g* through a closed door, only when a door is what stands in the way: the route
         // to g* must cross one. Any other reason for no plan (two goals with no shared
         // chokepoint, a goal behind a wall) keeps the Captain watching.
-        InterceptPlan PlanThroughDoors(DijkstraField goalField, float playerSpeed)
+        InterceptPlan PlanThroughDoors(DijkstraField goalField, float playerSpeed, InterceptKind kind)
         {
             IReadOnlyList<Vector2Int> route = _planner.PredictedRoute;
             if (route.Count == 0 || !TryWalkable(_ctx.Cell, out Vector2Int start))
@@ -625,7 +660,7 @@ namespace ToyFactory.AI.Agents.Captain
 
             float playerArrival = goalField.Cost(route[0]) * GridGraph.CellSize / playerSpeed;
             float captainArrival = _doors.LastCost * GridGraph.CellSize / InterceptSpeed;
-            return new InterceptPlan(InterceptKind.DefendGoal, goalCell, route.Count - 1, playerArrival, captainArrival);
+            return new InterceptPlan(kind, goalCell, route.Count - 1, playerArrival, captainArrival);
         }
 
         static float RouteCost(List<Vector2Int> cells)

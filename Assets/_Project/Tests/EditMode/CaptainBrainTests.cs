@@ -194,6 +194,21 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void StoppedShortOnThePlayersSideItStillFacesThePlayersWay()
+        {
+            // The body stops up to 0.6 m off its cell. Coming from the player's side it stands
+            // past the next route cell, so facing that cell turned it round (seen guarding the
+            // console in Chapter 4: facing the wall, back to the Storage door).
+            CaptainBrain brain = CommittedToTheSecondDoorway(out _);
+            Vector3 standing = _grid.CellToWorld(DoorB) + new Vector3(-0.55f, 0f, 0f);
+
+            AgentIntent intent = brain.Tick(new AgentContext(DoorB, standing, Vector3.right, 0.6f, _world, default(SensorSnapshot)));
+
+            Assert.AreEqual("Ambush", brain.StateName);
+            Assert.Less(intent.LookTarget.Value.x, standing.x - 1f, "Faces well west, the way the player comes.");
+        }
+
+        [Test]
         public void AmbushHoldsWhileTheCellIsStillAheadOfThePlayer()
         {
             CaptainBrain brain = CommittedToTheSecondDoorway(out _);

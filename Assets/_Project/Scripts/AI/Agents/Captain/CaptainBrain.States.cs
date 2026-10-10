@@ -40,6 +40,8 @@ namespace ToyFactory.AI.Agents.Captain
         /// <summary>
         /// Not confident enough to commit. Watches the player from a distance and backs off
         /// if they come within 8 m, so it is not simply chasing while the prediction settles.
+        /// A back-off step that makes no progress for 2 s is dropped. With nothing to watch
+        /// (no contact for 3 s), the decision turns into guarding g*, which leaves this state.
         /// </summary>
         sealed class ObserveState : CaptainState
         {
@@ -62,6 +64,15 @@ namespace ToyFactory.AI.Agents.Captain
 
                 // Back off at most once per decision, and only once the last step is done.
                 bool stepping = b._routeCells != null && !b.ArrivedAt(b._routeGoal);
+                if (stepping && b.NoProgressTowards(b._grid.CellToWorld(b._routeGoal)))
+                {
+                    // Pressed against something the grid does not know about (a body lying in
+                    // the aisle, another agent): drop the step and stand, which turns it to face
+                    // the player. That spot is not stepped to again for a while.
+                    b.Avoid(b._routeGoal);
+                    b.StopMoving();
+                    return;
+                }
                 if (!b._decidedThisTick || stepping || FlatDistance(b._ctx.Position, player) >= ObserveDistance)
                     return;
 
@@ -70,14 +81,18 @@ namespace ToyFactory.AI.Agents.Captain
                 if (away.sqrMagnitude < 1e-4f)
                     away = -b._ctx.Forward;
                 Vector3 target = b._ctx.Position + away.normalized * RetreatStep;
-                b.MoveTo(b.ClampedCell(target));
+                Vector2Int cell = b.ClampedCell(target);
+                if (b.TryWalkable(cell, out Vector2Int step) && b.IsAvoided(step))
+                    return;
+                b.ResetProgress();
+                b.MoveTo(cell);
             }
         }
 
         /// <summary>
         /// Confident about g*: walks with A* to the planned cell, the first chokepoint (or
-        /// route cell) it reaches 1 s before the player. Follows the plan as it is refreshed,
-        /// and gives it up if the goal changes or the plan disappears.
+        /// route cell) it reaches 1 s before the player; or, guarding, to g* itself. Follows the
+        /// plan as it is refreshed, and gives it up if the goal changes or the plan disappears.
         /// </summary>
         sealed class InterceptState : CaptainState
         {

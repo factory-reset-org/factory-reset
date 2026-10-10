@@ -14,7 +14,8 @@ namespace ToyFactory.Tests.EditMode
     /// The Captain cannot be left standing still or flip-flopping: a goal it cannot reach is
     /// no plan, a door that opens gets it moving without the target changing, a target it
     /// makes no progress towards is given up and avoided, it closes in on a player busy at
-    /// the only goal, and a confidence hovering round 0.5 does not stop and start it.
+    /// the only goal, a confidence hovering round 0.5 does not stop and start it, with nothing
+    /// to watch it guards the likeliest goal, and a back-off step it cannot finish is dropped.
     /// These replay the situations found in the review (scripted, with a simple body that
     /// walks the brain's routes and faces where it walks).
     /// </summary>
@@ -339,6 +340,111 @@ namespace ToyFactory.Tests.EditMode
 
             // Each Intercept -> Observe flip was a dead stop in the middle of a route.
             Assert.LessOrEqual(flips, 1, "Commits once instead of flipping at the 0.5 edge.");
+        }
+
+        // Three goals of one kind: a player standing still is equally likely to want each, so
+        // the Captain is never confident (1/3 each).
+        static WorldBlackboard ThreeTasks() => World(
+            new ObjectiveTarget(1, new Vector2Int(10, 50), ObjectiveTargetKind.Task),
+            new ObjectiveTarget(2, new Vector2Int(90, 50), ObjectiveTargetKind.Task),
+            new ObjectiveTarget(3, new Vector2Int(50, 55), ObjectiveTargetKind.Task));
+
+        [Test]
+        public void APlayerHidingAwayFromEveryGoalIsWaitedForAtTheLikeliestGoal()
+        {
+            // Chapter 4 in Storage: the player fled the fight and stands still, out of contact,
+            // in a room with no goals. It used to stand where it lost them, showing "?", for good.
+            GridGraph grid = Room(100, 60);
+            WorldBlackboard world = ThreeTasks();
+            CaptainBrain brain = Captain(grid, world);
+            var body = new Body(grid, new Vector2Int(50, 45));
+            Vector3 player = grid.CellToWorld(new Vector2Int(50, 5));   // 20 m away: no contact
+
+            float t = 0f;
+            for (; t < 2.5f; t += Dt)
+            {
+                PlacePlayer(world, grid, player, Vector3.zero);
+                body.Tick(brain, world, t);
+            }
+            Assert.AreEqual("Observe", brain.StateName, "Watches first.");
+            Assert.Less(brain.Confidence, CaptainBrain.ConfidenceThreshold);
+
+            for (float end = t + 15f; t < end && brain.StateName != "Ambush"; t += Dt)
+            {
+                PlacePlayer(world, grid, player, Vector3.zero);
+                body.Tick(brain, world, t);
+            }
+            Assert.AreEqual("Ambush", brain.StateName, "Then guards a goal instead of watching nothing.");
+            Assert.AreEqual(InterceptKind.Guard, brain.Plan.Kind);
+            Assert.AreEqual(brain.Prediction.Cell, brain.TargetCell, "The likeliest goal itself.");
+            Assert.Less(Vector3.Distance(body.Position, grid.CellToWorld(brain.TargetCell)), 1f);
+
+            // It holds the goal while nothing changes.
+            for (float end = t + 3f; t < end; t += Dt)
+            {
+                PlacePlayer(world, grid, player, Vector3.zero);
+                body.Tick(brain, world, t);
+                Assert.AreEqual("Ambush", brain.StateName, $"t = {t}");
+            }
+        }
+
+        [Test]
+        public void WhileThePlayerIsInContactAnUnsureCaptainOnlyWatches()
+        {
+            // 12 m away in the open: in contact (line of sight within 14 m) but not close enough
+            // to fight. There is something to watch, so no guarding.
+            GridGraph grid = Room(100, 60);
+            WorldBlackboard world = ThreeTasks();
+            CaptainBrain brain = Captain(grid, world);
+            var body = new Body(grid, new Vector2Int(50, 30));
+            Vector3 player = grid.CellToWorld(new Vector2Int(26, 30));
+
+            for (float t = 0f; t < 8f; t += Dt)
+            {
+                PlacePlayer(world, grid, player, Vector3.zero);
+                body.Tick(brain, world, t);
+                Assert.AreEqual("Observe", brain.StateName, $"t = {t}");
+            }
+            Assert.IsFalse(brain.Plan.HasPlan);
+        }
+
+        [Test]
+        public void ABackOffStepItCannotFinishIsDroppedAndNotRetried()
+        {
+            // Observe backs off from a player within 8 m it cannot see (behind it). Pinned on a
+            // body lying in the aisle, it used to run on the spot for good.
+            GridGraph grid = Room(100, 60);
+            WorldBlackboard world = ThreeTasks();
+            CaptainBrain brain = Captain(grid, world);
+            var body = new Body(grid, new Vector2Int(50, 30)) { Forward = Vector3.left, Pinned = true };
+            Vector3 player = grid.CellToWorld(new Vector2Int(62, 30));   // 6 m east, behind it
+
+            Vector3? stepEnd = null;
+            float droppedAt = -1f;
+            float t = 0f;
+            for (; t < 4f && droppedAt < 0f; t += Dt)
+            {
+                PlacePlayer(world, grid, player, Vector3.zero);
+                AgentIntent intent = body.Tick(brain, world, t);
+                if (intent.Path != null && intent.Path.Count > 0)
+                    stepEnd = intent.Path[intent.Path.Count - 1];
+                else if (intent.Path != null && stepEnd.HasValue)
+                    droppedAt = t;
+            }
+            Assert.IsTrue(stepEnd.HasValue, "It backs off.");
+            Assert.Greater(droppedAt, CaptainBrain.StuckTime - 0.1f, "Not before it has had 2 s to move.");
+            Assert.Less(droppedAt, CaptainBrain.StuckTime + 0.5f, "But soon after.");
+            Assert.AreEqual("Observe", brain.StateName);
+            Assert.IsTrue(brain.IsCellAvoided(grid.WorldToCell(stepEnd.Value)));
+
+            // Standing, it faces the player, and does not try the same step again.
+            for (float end = t + 3f; t < end; t += Dt)
+            {
+                PlacePlayer(world, grid, player, Vector3.zero);
+                AgentIntent intent = body.Tick(brain, world, t);
+                Assert.AreEqual(player, intent.LookTarget);
+                Assert.IsTrue(intent.Path == null || intent.Path.Count == 0, $"No new step at t = {t}");
+            }
         }
     }
 }
