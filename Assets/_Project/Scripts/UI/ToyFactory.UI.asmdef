@@ -4,6 +4,7 @@
     "references": [
         "ToyFactory.Interfaces",
         "ToyFactory.Journey",
+        "Unity.InputSystem",
         "Unity.TextMeshPro",
         "UnityEngine.UI"
     ],
