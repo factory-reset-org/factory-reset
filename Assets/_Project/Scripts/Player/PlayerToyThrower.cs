@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using ToyFactory.Interaction;
 using ToyFactory.Interfaces;
+using ToyFactory.Runtime.Effects;
 
 namespace ToyFactory.Player
 {
@@ -24,8 +25,8 @@ namespace ToyFactory.Player
         [Tooltip("Seconds to wind up one more toy while carrying fewer than the most.")]
         [SerializeField, Min(0.5f)] float rewindSeconds = 15f;
 
-        [SerializeField, Min(0f)] float throwSpeed = 8f;
-        [SerializeField, Min(0f)] float throwLift = 2.5f;
+        [SerializeField, Min(0f)] float throwSpeed = 9f;
+        [SerializeField, Min(0f)] float throwLift = 3.2f;
 
         [Tooltip("How far in front of the aim the toy appears, clear of the player's body.")]
         [SerializeField, Min(0.1f)] float spawnDistance = 0.7f;
@@ -40,6 +41,9 @@ namespace ToyFactory.Player
 
         /// <summary>Raised when a toy is thrown or wound up.</summary>
         public event Action OnToysChanged;
+
+        /// <summary>Raised when the player tries to throw with none left, for the "No wind-up toys left" message.</summary>
+        public event Action OnNoToysLeft;
 
         static float Now => GameClock.Current != null ? GameClock.Current.GameTime : Time.time;
 
@@ -79,8 +83,14 @@ namespace ToyFactory.Player
 
         public void Throw()
         {
-            if (ToysCarried <= 0 || toyPrefab == null)
+            if (toyPrefab == null)
                 return;
+            if (ToysCarried <= 0)
+            {
+                GameSfx.Play(Sfx.Empty);
+                OnNoToysLeft?.Invoke();
+                return;
+            }
 
             // The rewind clock starts when the first toy leaves a full hand.
             if (ToysCarried == maxToys)

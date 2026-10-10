@@ -31,6 +31,9 @@ namespace ToyFactory.Player
         // second and a bolt lives for a third of a second at the longest range.
         const int BoltPoolSize = 12;
 
+        // After a dry click the trigger waits this long, as in the prototype.
+        const float EmptyClickSeconds = 0.3f;
+
         // A wall this much past the barrel tip still leaves too short a streak to be worth drawing.
         const float BarrelClearance = 0.15f;
         const int ImpactPoolSize = 8;
@@ -137,7 +140,15 @@ namespace ToyFactory.Player
             if (!_battery.TrySpendShot())
             {
                 if (_battery.IsEmpty)
+                {
+                    // A dry click, then a pause so a held trigger does not rattle.
+                    if (!_battery.IsReloading)
+                    {
+                        GameSfx.Play(Sfx.Empty);
+                        _nextShotTime = Now + EmptyClickSeconds;
+                    }
                     _battery.StartReload();
+                }
                 return false;
             }
 
@@ -165,6 +176,7 @@ namespace ToyFactory.Player
                 hit.collider.GetComponentInParent<IDamageable>()?.TakeHit();
             }
 
+            GameSfx.Play(Sfx.Shot);
             Color colour = overcharged ? overchargeColour : tracerColour;
             Vector3 from = viewModel != null ? viewModel.Muzzle.position : origin + aim.forward * 0.5f;
             ShowShot(origin, direction, from, end, normal, hitSomething, colour);
