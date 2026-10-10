@@ -49,8 +49,16 @@ namespace ToyFactory.Runtime.Movement
         /// <summary>True while <see cref="Hold"/> keeps the agent standing where it is.</summary>
         public bool IsHolding => _holding;
 
-        /// <summary>Horizontal speed this frame in metres per second, for animation.</summary>
+        /// <summary>Horizontal speed it was told to move at this frame, in metres per second.</summary>
         public float CurrentSpeed { get; private set; }
+
+        /// <summary>
+        /// Horizontal speed it really moved at this frame, in metres per second, for animation:
+        /// pressed against something it cannot pass, it is 0 while <see cref="CurrentSpeed"/> is
+        /// not, so the agent stands instead of running on the spot. Never above
+        /// <see cref="CurrentSpeed"/>: a push or a teleport is not walking.
+        /// </summary>
+        public float GroundSpeed { get; private set; }
 
         /// <summary>
         /// The direction it last moved in, on the ground plane (unit length, or zero before it
@@ -103,6 +111,9 @@ namespace ToyFactory.Runtime.Movement
             if (FlatSqrDistance(transform.position, next) < FlatSqrDistance(first, next))
                 _targetIndex++;
         }
+
+        static float FlatSpeed(Vector3 from, Vector3 to) =>
+            Time.deltaTime > 0f ? Mathf.Sqrt(FlatSqrDistance(from, to)) / Time.deltaTime : 0f;
 
         static float FlatSqrDistance(Vector3 a, Vector3 b)
         {
@@ -200,8 +211,10 @@ namespace ToyFactory.Runtime.Movement
 
             Vector3 velocity = horizontalVelocity;
             velocity.y = _verticalVelocity;
+            Vector3 before = transform.position;
             _controller.Move(velocity * Time.deltaTime);
             CurrentSpeed = horizontalVelocity.magnitude;
+            GroundSpeed = Mathf.Min(CurrentSpeed, FlatSpeed(before, transform.position));
 
             SkipReachedWaypoints();
         }

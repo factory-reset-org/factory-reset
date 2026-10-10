@@ -14,8 +14,8 @@ namespace ToyFactory.Tests
 {
     /// <summary>
     /// The AI frame budget spreads heavy brain decisions over frames without ever holding a
-    /// brain back more than two frames; bodies ease up to speed; and a route changed mid-walk
-    /// is joined with a curve instead of a pivot.
+    /// brain back more than two frames; bodies ease up to speed, and show the speed they really
+    /// move at; and a route changed mid-walk is joined with a curve instead of a pivot.
     /// </summary>
     public sealed class AgentSchedulingTests
     {
@@ -152,6 +152,35 @@ namespace ToyFactory.Tests
             Assert.Less(follower.CurrentSpeed, 2f, "Not at full speed straight away.");
             yield return Seconds(0.6f);
             Assert.AreEqual(4.6f, follower.CurrentSpeed, 0.05f, "Up to speed in about 0.4 s.");
+            Assert.AreEqual(follower.CurrentSpeed, follower.GroundSpeed, 0.1f, "In the open it moves as fast as it is told to.");
+        }
+
+        [UnityTest]
+        public IEnumerator ABodyPressedAgainstSomethingStandsInsteadOfRunningOnTheSpot()
+        {
+            // The Captain against a Saboteur's body in a Storage aisle: still told to walk, but
+            // going nowhere, so its animation speed must be 0, not the run.
+            Floor();
+            GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            _created.Add(wall);
+            wall.transform.position = new Vector3(0f, 1f, 2f);
+            wall.transform.localScale = new Vector3(4f, 2f, 0.5f);
+            var root = new GameObject("Walker");
+            _created.Add(root);
+            root.transform.position = new Vector3(0f, 0.1f, 0f);
+            CharacterController body = root.AddComponent<CharacterController>();
+            body.center = new Vector3(0f, 0.9f, 0f);
+            body.height = 1.8f;
+            body.radius = 0.4f;
+            AgentPathFollower follower = root.AddComponent<AgentPathFollower>();
+            yield return null;
+
+            follower.SetPath(new List<Vector3> { new Vector3(0f, 0f, 10f) }, 4.6f);
+            yield return Seconds(1f);
+
+            Assert.Less(root.transform.position.z, 1.5f, "Held by the wall.");
+            Assert.Greater(follower.CurrentSpeed, 4f, "Still told to walk.");
+            Assert.Less(follower.GroundSpeed, 0.2f, "But it is not moving, so it shows standing.");
         }
 
         [UnityTest]
