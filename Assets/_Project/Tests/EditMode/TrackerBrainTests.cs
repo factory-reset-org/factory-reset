@@ -134,6 +134,103 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual("Patrol", brain.Tick(At(Start, 2.7f)).DebugState, "The quiet lure is not investigated.");
         }
 
+        [Test]
+        public void ARepeatingSourceBeatsALouderOneOffShot()
+        {
+            TrackerBrain brain = Brain();
+            var toy = new Vector2Int(14, 16);
+            brain.Tick(At(Start, 0f));
+            Assert.AreEqual("Investigate", brain.Tick(At(Start, 0.1f, Noise(new Vector2Int(20, 4), 90f, -1, 0.1f))).DebugState);
+            brain.Tick(At(Start, 0.2f, Noise(toy, 40f, 9, 0.2f)));
+
+            // The shot still scores higher (90 * e^-0.21 = 73 against 40), but the toy is the lure.
+            AgentIntent intent = brain.Tick(At(Start, 0.8f, Noise(toy, 40f, 9, 0.8f)));
+
+            Assert.AreEqual("Distracted", intent.DebugState);
+            Assert.AreEqual(_grid.CellToWorld(toy), intent.LookTarget);
+        }
+
+        [Test]
+        public void AToyPullsTheTrackerOffAChaseUntilItGoesQuiet()
+        {
+            TrackerBrain brain = Brain();
+            brain.Tick(At(Start, 0f));
+            PlacePlayer(new Vector2Int(25, 10));   // 7.5 m ahead
+            Assert.AreEqual("Chase", brain.Tick(At(Start, 0.1f)).DebugState);
+
+            var toy = new Vector2Int(10, 16);
+            brain.Tick(At(Start, 0.2f, Noise(toy, 50f, 9, 0.2f)));
+            AgentIntent intent = brain.Tick(At(Start, 0.8f, Noise(toy, 50f, 9, 0.8f)));
+
+            Assert.AreEqual("Distracted", intent.DebugState, "The ticking toy beats the chase.");
+            Assert.AreEqual("Calm", brain.TopStateName);
+            Assert.AreEqual(_grid.CellToWorld(toy), intent.LookTarget);
+            Assert.AreEqual("Distracted", brain.Tick(At(Start, 1.4f, Noise(toy, 50f, 9, 1.4f))).DebugState,
+                "The player 7.5 m away goes unseen while the toy ticks.");
+
+            brain.Tick(At(Start, 3.0f));   // 1.6 s of silence
+            Assert.AreEqual("Chase", brain.Tick(At(Start, 3.1f)).DebugState, "The player in view is seen again.");
+        }
+
+        [Test]
+        public void ADistractedTrackerStopsShortOfTheToyFacingItAndFollowsOnlyOnceItWalksOff()
+        {
+            TrackerBrain brain = Brain();
+            brain.Tick(At(Start, 0f));
+            brain.Tick(At(Start, 0.2f, Noise(new Vector2Int(16, 10), 50f, 9, 0.2f)));
+            AgentIntent intent = brain.Tick(At(Start, 0.8f, Noise(new Vector2Int(16, 10), 50f, 9, 0.8f)));
+            Assert.AreEqual("Distracted", intent.DebugState);
+            Assert.AreEqual(new Vector2Int(16, 10), EndCell(intent), "It walks straight towards the toy.");
+
+            // 1 m from the toy: it stops and watches it.
+            var near = new Vector2Int(14, 10);
+            intent = brain.Tick(At(near, 1.1f));
+            Assert.IsNotNull(intent.Path);
+            Assert.AreEqual(0, intent.Path.Count, "Stops.");
+            Assert.AreEqual(_grid.CellToWorld(new Vector2Int(16, 10)), intent.LookTarget);
+
+            // The toy walks on to 1.5 m: still watching, no new route.
+            intent = brain.Tick(At(near, 1.4f, Noise(new Vector2Int(17, 10), 50f, 9, 1.4f)));
+            Assert.IsNull(intent.Path);
+            Assert.AreEqual(_grid.CellToWorld(new Vector2Int(17, 10)), intent.LookTarget);
+
+            // At 2.5 m it follows again.
+            intent = brain.Tick(At(near, 2.0f, Noise(new Vector2Int(19, 10), 50f, 9, 2.0f)));
+            Assert.AreEqual("Distracted", intent.DebugState);
+            Assert.AreEqual(new Vector2Int(19, 10), EndCell(intent));
+        }
+
+        [Test]
+        public void ADistractedTrackerNoticesThePlayerOnlyWithinTwoMetres()
+        {
+            TrackerBrain brain = Brain();
+            var toy = new Vector2Int(10, 16);
+            brain.Tick(At(Start, 0f));
+            brain.Tick(At(Start, 0.2f, Noise(toy, 50f, 9, 0.2f)));
+            Assert.AreEqual("Distracted", brain.Tick(At(Start, 0.8f, Noise(toy, 50f, 9, 0.8f))).DebugState);
+
+            PlacePlayer(new Vector2Int(15, 10));   // 2.5 m ahead, in view
+            Assert.AreEqual("Distracted", brain.Tick(At(Start, 1.0f)).DebugState,
+                "Inside the 3 m a hunt would keep, but outside the 2 m that ends a distraction: no flip.");
+
+            PlacePlayer(new Vector2Int(13, 10));   // 1.5 m
+            Assert.AreEqual("Chase", brain.Tick(At(Start, 1.2f)).DebugState);
+        }
+
+        [Test]
+        public void APlayerWithinThreeMetresIsChasedEvenWithAToyTicking()
+        {
+            TrackerBrain brain = Brain();
+            brain.Tick(At(Start, 0f));
+            PlacePlayer(new Vector2Int(14, 10));   // 2 m ahead
+            Assert.AreEqual("Chase", brain.Tick(At(Start, 0.1f)).DebugState);
+
+            var toy = new Vector2Int(10, 16);
+            brain.Tick(At(Start, 0.2f, Noise(toy, 50f, 9, 0.2f)));
+            Assert.AreEqual("Chase", brain.Tick(At(Start, 0.8f, Noise(toy, 50f, 9, 0.8f))).DebugState);
+            Assert.AreEqual("Hunting", brain.TopStateName);
+        }
+
         // ---- Vision ---------------------------------------------------------------------
 
         [Test]
@@ -310,6 +407,25 @@ namespace ToyFactory.Tests.EditMode
 
             brain.Tick(At(Start, 13f));
             Assert.AreEqual("Hunting", brain.TopStateName);
+        }
+
+        [Test]
+        public void ARewindFromTheHuntWithAToyTickingGoesStraightToTheToy()
+        {
+            TrackerBrain brain = Brain();
+            brain.Tick(At(Start, 0f));
+            PlacePlayer(new Vector2Int(25, 10));
+            brain.Tick(At(Start, 0f));
+            for (float t = 1f; t <= 10f; t += 1f)
+                brain.Tick(At(Start, t));
+            Assert.AreEqual("Rewind", brain.StateName);
+
+            var toy = new Vector2Int(10, 16);
+            brain.Tick(At(Start, 12.4f, Noise(toy, 50f, 9, 12.4f)));
+            AgentIntent intent = brain.Tick(At(Start, 13f, Noise(toy, 50f, 9, 13f)));
+
+            Assert.AreEqual("Distracted", intent.DebugState, "No tick of Search between the rewind and the toy.");
+            Assert.AreEqual("Calm", brain.TopStateName);
         }
 
         // ---- Stuns ----------------------------------------------------------------------

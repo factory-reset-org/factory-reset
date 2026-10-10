@@ -36,6 +36,23 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void TheBestRepeatingSourceIgnoresALouderOneOffNoise()
+        {
+            var memory = new NoiseMemory();
+            memory.Remember(9, new Vector3(0f, 0f, 5f), 40f, 0.2f);    // toy ticking every 0.6 s
+            memory.Remember(9, new Vector3(0f, 0f, 5f), 40f, 0.8f);
+            memory.Remember(1, new Vector3(5f, 0f, 0f), 90f, 0.9f);    // blaster shot
+
+            Assert.IsTrue(memory.TryGetBest(1f, Vector3.zero, out NoiseTarget best));
+            Assert.AreEqual(1, best.SourceId, "The shot is the best noise overall.");
+            Assert.IsTrue(memory.TryGetBestRepeating(1f, Vector3.zero, out NoiseTarget lure));
+            Assert.AreEqual(9, lure.SourceId);
+            Assert.IsTrue(lure.IsRepeating);
+
+            Assert.IsFalse(memory.TryGetBestRepeating(2.4f, Vector3.zero, out _), "Silent for 1.6 s: no longer a lure.");
+        }
+
+        [Test]
         public void ASingleNoiseIsNotRepeating()
         {
             var memory = new NoiseMemory();

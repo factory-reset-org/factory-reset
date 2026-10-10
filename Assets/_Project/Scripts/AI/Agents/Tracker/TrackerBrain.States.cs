@@ -124,14 +124,16 @@ namespace ToyFactory.AI.Agents.Tracker
         }
 
         /// <summary>
-        /// Circles a repeating source (a thrown toy, the hack terminal) at 1.5 m, stepping to the
-        /// next of 8 points every 1.2 s, until it has been silent for 1.5 s.
+        /// Follows a repeating source (a thrown toy walks) and watches it, as in the prototype:
+        /// walks towards it, replanning every 0.5 s, stops 1.3 m away facing it, and sets off
+        /// again only once it is 2 m away, so it neither turns its back on the toy nor stops and
+        /// starts at one distance. Lasts until the source has been silent for 1.5 s.
         /// </summary>
         sealed class DistractedState : TrackerState
         {
             int _sourceId;
-            int _step;
-            float _nextStepAt;
+            bool _following;
+            float _nextRepathAt;
 
             public DistractedState() : base("Distracted", AlertLevel.Suspicious) { }
 
@@ -139,10 +141,10 @@ namespace ToyFactory.AI.Agents.Tracker
             {
                 base.Enter(b);
                 b._distractionOver = false;
-                b._noises.TryGetBest(b.Now, b._ctx.Position, out NoiseTarget best);
+                b._noises.TryGetBestRepeating(b.Now, b._ctx.Position, out NoiseTarget best);
                 _sourceId = best.SourceId;
-                _step = 0;
-                _nextStepAt = b.Now;
+                _following = true;
+                _nextRepathAt = b.Now;
             }
 
             public override void Tick(TrackerBrain b)
@@ -154,12 +156,27 @@ namespace ToyFactory.AI.Agents.Tracker
                     return;
 
                 b._outLook = source;
-                if (b.Now < _nextStepAt)
+                float distance = FlatDistance(b._ctx.Position, source);
+                if (_following && distance <= WatchDistance)
+                {
+                    _following = false;
+                    b.StopMoving();   // stands still, and the body turns to the look target
                     return;
-                float angle = _step * 45f * Mathf.Deg2Rad;
-                b.MoveTo(source + new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle)) * CircleRadius);
-                _step = (_step + 1) % 8;
-                _nextStepAt = b.Now + CircleStepInterval;
+                }
+                if (!_following && distance > FollowAgainDistance)
+                {
+                    _following = true;
+                    _nextRepathAt = b.Now;
+                }
+                if (!_following || b.Now < _nextRepathAt)
+                    return;
+
+                _nextRepathAt = b.Now + DistractedRepathInterval;
+                // The toy is on a cell it has already reached (it stops short of a toy on a prop
+                // or against a wall): stay put rather than send a fresh one-cell route.
+                if (b._routeCells != null && b._grid.WorldToCell(source) == b._routeGoal && b.Arrived())
+                    return;
+                b.MoveTo(source);
             }
 
             public override void Exit(TrackerBrain b)

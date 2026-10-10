@@ -117,7 +117,18 @@ namespace ToyFactory.AI.Agents.Tracker
         /// remembered, not yet handled noises. Equal scores prefer the one closer to
         /// <paramref name="listener"/>.
         /// </summary>
-        public bool TryGetBest(float now, Vector3 listener, out NoiseTarget best)
+        public bool TryGetBest(float now, Vector3 listener, out NoiseTarget best) =>
+            TryGetBest(now, listener, repeatingOnly: false, out best);
+
+        /// <summary>
+        /// Like <see cref="TryGetBest(float, Vector3, out NoiseTarget)"/>, but only among sources
+        /// that are still repeating (a ticking toy, a beeping terminal), so a louder one-off
+        /// noise such as a blaster shot never hides a lure.
+        /// </summary>
+        public bool TryGetBestRepeating(float now, Vector3 listener, out NoiseTarget best) =>
+            TryGetBest(now, listener, repeatingOnly: true, out best);
+
+        bool TryGetBest(float now, Vector3 listener, bool repeatingOnly, out NoiseTarget best)
         {
             best = default;
             int bestSlot = -1;
@@ -125,6 +136,8 @@ namespace ToyFactory.AI.Agents.Tracker
             for (int i = 0; i < _entries.Length; i++)
             {
                 if (!IsAlive(i, now) || _entries[i].Handled)
+                    continue;
+                if (repeatingOnly && !IsRepeating(i, now))
                     continue;
                 float score = Score(_entries[i].Level, now - _entries[i].Time);
                 float distance = FlatDistanceSq(listener, _entries[i].Position);

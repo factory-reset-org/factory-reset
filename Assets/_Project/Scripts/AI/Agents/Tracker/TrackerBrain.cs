@@ -26,6 +26,11 @@ namespace ToyFactory.AI.Agents.Tracker
     /// <para><b>Senses.</b> Vision is pure C#: S2's <see cref="VisionQuery"/> cone with line of
     /// sight traced on the grid (<see cref="GridLineCheck"/>). Hearing reads the propagated
     /// noise the runtime puts in <see cref="SensorSnapshot"/> into a <see cref="NoiseMemory"/>.</para>
+    /// <para><b>Lures.</b> A repeating source (a thrown wind-up toy, the beeping terminal) wins
+    /// over everything but a player within <see cref="LureIgnoreRange"/>: while one ticks, the
+    /// Tracker does not see a player farther away, and a hunt drops back to Calm, where it is
+    /// Distracted by the lure. This is the prototype's toy lock, and the player's way to shake
+    /// off a chase.</para>
     /// <para><b>Closed doors.</b> The toy cannot open doors. When only a closed door stands
     /// between it and its goal it walks to the near side of the door (a second GBFS that treats
     /// closed doors as open shows which door, and the part of that route before it is walkable).
@@ -53,12 +58,19 @@ namespace ToyFactory.AI.Agents.Tracker
         public const float LoseSightDelay = 0.7f;
         public const float SearchDuration = 8f;
         public const float InvestigateLookTime = 2.4f;
-        public const float CircleStepInterval = 1.2f;
+        public const float DistractedRepathInterval = 0.5f;   // following a walking toy
         public const float DoorWaitTime = 2.5f;     // staring at the door the player escaped through
 
         // Distances, metres.
         public const float ArrivalRadius = 0.5f;
         public const float CircleRadius = 1.5f;
+        public const float WatchDistance = 1.3f;          // Distracted stops this far from the lure, facing it
+        public const float FollowAgainDistance = 2f;      // and follows again once the lure is this far away
+        // While a lure ticks, a player farther than this goes unseen. Two ranges, so a player
+        // standing near the limit does not flip the Tracker between the lure and the chase:
+        // a hunt lets go beyond 3 m, a distracted Tracker notices the player only within 2 m.
+        public const float LureIgnoreRange = 3f;
+        public const float LureNoticeRange = 2f;
         public const int NearestCellRadius = 6;     // cells searched for a walkable stand-in
 
         readonly GridGraph _grid;
@@ -83,6 +95,7 @@ namespace ToyFactory.AI.Agents.Tracker
 
         // Perception.
         bool _seesPlayer;
+        bool _lured;              // a repeating source (toy, terminal) is ticking
         bool _hasLastKnown;
         Vector3 _lastKnown;
         Vector3 _lastKnownVelocity;
@@ -139,7 +152,7 @@ namespace ToyFactory.AI.Agents.Tracker
             // Calm children: a repeating lure beats a one-off noise.
             var calmRules = new List<Transition<TrackerBrain>>();
             Rule(calmRules, "Calm", null, distracted, 30, "a repeating source (toy, terminal) is the best noise",
-                b => b.BestNoiseIsRepeating() && !(b.CalmChild is DistractedState));
+                b => b._lured && !(b.CalmChild is DistractedState));
             Rule(calmRules, "Calm", distracted, patrol, 25, "the lure has been silent for 1.5 s", b => b._distractionOver);
             Rule(calmRules, "Calm", patrol, investigate, 20, "a one-off noise is remembered", b => b.HasNoiseToFollow());
             Rule(calmRules, "Calm", investigate, patrol, 15, "arrived and looked around for 2.4 s", b => b._investigationDone);
@@ -174,8 +187,12 @@ namespace ToyFactory.AI.Agents.Tracker
             Rule(top, "Top", _stunned, _calm, 89, "otherwise", b => !b._stunPending);
             Rule(top, "Top", _calm, _rewindFromCalm, 80, "wind-up energy reached 0", b => b._energy.IsRewinding);
             Rule(top, "Top", _hunting, _rewindFromHunting, 80, "wind-up energy reached 0", b => b._energy.IsRewinding);
+            Rule(top, "Top", _rewindFromHunting, _calm, 71, "energy full again, and a lure is ticking with the player not within 3 m",
+                b => !b._energy.IsRewinding && b._lured && !b._seesPlayer);
             Rule(top, "Top", _rewindFromHunting, _hunting, 70, "energy full again", b => !b._energy.IsRewinding);
             Rule(top, "Top", _rewindFromCalm, _calm, 70, "energy full again", b => !b._energy.IsRewinding);
+            Rule(top, "Top", _hunting, _calm, 60, "a lure is ticking and the player is not within 3 m",
+                b => b._lured && !b._seesPlayer);
             Rule(top, "Top", _calm, _hunting, 50, "sees the player", b => b._seesPlayer);
             Rule(top, "Top", _hunting, _calm, 40, "search timed out after 8 s, or the player is gone",
                 b => b._searchTimedOut || !b.PlayerAvailable());
@@ -346,8 +363,6 @@ namespace ToyFactory.AI.Agents.Tracker
 
         bool HasNoiseToFollow() => _noises.TryGetBest(Now, _ctx.Position, out NoiseTarget best) && !best.IsRepeating;
 
-        bool BestNoiseIsRepeating() => _noises.TryGetBest(Now, _ctx.Position, out NoiseTarget best) && best.IsRepeating;
-
         // ---- Perception -----------------------------------------------------------------
 
         void Perceive()
@@ -356,7 +371,12 @@ namespace ToyFactory.AI.Agents.Tracker
             if (senses.HasNoise)
                 _noises.Remember(senses.NoiseSourceId, senses.NoisePosition, senses.NoiseLevel, senses.NoiseTime);
 
-            _seesPlayer = CanSeePlayer();
+            // A lure blinds the Tracker to a player who is not right next to it.
+            _lured = _noises.TryGetBestRepeating(Now, _ctx.Position, out _);
+            bool hunting = _machine.Current == _hunting || _machine.Current == _rewindFromHunting;
+            float lureRange = hunting ? LureIgnoreRange : LureNoticeRange;
+            _seesPlayer = CanSeePlayer() &&
+                          !(_lured && FlatDistance(_ctx.Position, Player.Position) > lureRange);
             if (_seesPlayer)
             {
                 _lastKnown = Player.Position;
