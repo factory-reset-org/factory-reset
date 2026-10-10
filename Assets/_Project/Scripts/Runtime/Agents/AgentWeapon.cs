@@ -40,7 +40,7 @@ namespace ToyFactory.Runtime.Agents
         [Tooltip("Maximum shot distance in metres.")]
         [SerializeField, Min(1f)] float range = 20f;
 
-        [Tooltip("Height of the player's chest above their feet, the point aimed at.")]
+        [Tooltip("Height above the player's feet that shots aim at: the chest by default. The Captain aims at the upper chest (1.45 m) so its ray comes at the first-person camera instead of dropping below it.")]
         [SerializeField, Min(0f)] float chestHeight = 1.2f;
 
         [Tooltip("Seconds the tracer stays on screen after a shot.")]
@@ -64,6 +64,11 @@ namespace ToyFactory.Runtime.Agents
         // lets go once: stopping the facing every idle frame also cancelled the controller's
         // look target, so a standing agent did not turn to face where its brain asked.
         bool _ownsFacing;
+
+        // Each barrel's long axis in its own space, pointing out of the muzzle: worked out once
+        // from the rest pose (the longest side of the mesh; on a tie, the side nearest the
+        // agent's facing), so the shot can leave along the barrel however the arm is posed.
+        Vector3[] _barrelAxes = new Vector3[0];
 
         static float Now => GameClock.Current != null ? GameClock.Current.GameTime : Time.time;
 
@@ -113,6 +118,62 @@ namespace ToyFactory.Runtime.Agents
             _line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             _line.receiveShadows = false;
             _line.sharedMaterial = lineMaterial != null ? lineMaterial : new Material(Shader.Find("Sprites/Default"));
+
+            _barrelAxes = new Vector3[barrels.Length];
+            for (int i = 0; i < barrels.Length; i++)
+                _barrelAxes[i] = barrels[i] != null ? BarrelAxis(barrels[i], transform.forward) : Vector3.forward;
+        }
+
+        static Vector3 BarrelAxis(Renderer barrel, Vector3 facing)
+        {
+            Vector3 size = barrel.localBounds.size;
+            float longest = Mathf.Max(size.x, Mathf.Max(size.y, size.z));
+            Vector3 best = Vector3.forward;
+            float bestAlign = -1f;
+            foreach (Vector3 axis in new[] { Vector3.right, Vector3.up, Vector3.forward })
+            {
+                float length = Mathf.Abs(Vector3.Dot(size, axis));
+                if (length < longest * 0.95f)
+                    continue;
+                float align = Vector3.Dot(barrel.transform.TransformDirection(axis).normalized, facing);
+                if (Mathf.Abs(align) > bestAlign)
+                {
+                    bestAlign = Mathf.Abs(align);
+                    best = align >= 0f ? axis : -axis;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>Number of barrels; their order is the order shots alternate in.</summary>
+        public int BarrelCount => barrels.Length;
+
+        /// <summary>
+        /// The tip of barrel <paramref name="index"/> and the direction it points, in world space,
+        /// from the barrel's pose now. False if there is no such barrel.
+        /// </summary>
+        public bool TryGetBarrel(int index, out Vector3 tip, out Vector3 direction)
+        {
+            if (index < 0 || index >= barrels.Length || barrels[index] == null)
+            {
+                tip = default;
+                direction = default;
+                return false;
+            }
+            Renderer barrel = barrels[index];
+            Vector3 axis = _barrelAxes[index];
+            Bounds local = barrel.localBounds;
+            tip = barrel.transform.TransformPoint(local.center + Vector3.Scale(axis, local.extents));
+            direction = barrel.transform.TransformDirection(axis).normalized;
+            return true;
+        }
+
+        /// <summary>The point shots aim at: the live player's chest. False with no live player.</summary>
+        public bool TryGetTarget(out Vector3 target)
+        {
+            IPlayerState player = LivePlayer();
+            target = player != null ? player.Position + Vector3.up * chestHeight : default;
+            return player != null;
         }
 
         /// <summary>Starts an aim if the weapon is free. Ignored while aiming or showing a tracer.</summary>
@@ -222,19 +283,16 @@ namespace ToyFactory.Runtime.Agents
             Fired?.Invoke(LastBarrel);
         }
 
-        // The front of the current barrel, along the agent's facing; the agent's chest if it has none.
+        // The tip of the current barrel, along its own axis (so the shot leaves the barrel even
+        // while the arm is raised or kicking); the agent's chest if it has none.
         Vector3 Muzzle()
         {
             if (barrels.Length == 0)
                 return transform.position + Vector3.up * 1.2f + transform.forward * 0.5f;
-            Renderer barrel = barrels[_nextBarrel % barrels.Length];
-            if (barrel == null)
-                return transform.position + Vector3.up * 1.2f;
-            Bounds bounds = barrel.bounds;
-            return bounds.center + transform.forward * Vector3.Dot(bounds.extents, Abs(transform.forward));
+            return TryGetBarrel(_nextBarrel % barrels.Length, out Vector3 tip, out _)
+                ? tip
+                : transform.position + Vector3.up * 1.2f;
         }
-
-        static Vector3 Abs(Vector3 v) => new Vector3(Mathf.Abs(v.x), Mathf.Abs(v.y), Mathf.Abs(v.z));
 
         static IPlayerState LivePlayer()
         {
