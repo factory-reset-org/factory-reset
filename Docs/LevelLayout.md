@@ -69,7 +69,7 @@ Each room's obstacles are laid out cell for cell from the HTML prototype (`Facto
 | --- | --- | --- |
 | Assembly | Two stamping presses side by side between the two belts, on the west side | Replaced in the Assembly revamp by the Toy-O-Matic assembler on the same footprint (x 2.45-6.65, z 10.4-12.6), one 4.2 x 2.6 x 2.2 m collider: the same cover from the Tracker. See Assembly Floor below |
 | Painting | Five paint tanks; four carry a spinning bullseye on a pole; three patches of paint | Refitted in the Painting revamp (see Painting Room below). Tanks at (24.6, 17.5), (37.4, 17.5), (27.4, 11.5), (38.9, 5.5) and (23.1, 1.5): white body, coloured band, a lid that spins (`DressingSpinner`), a paint drip, and poles on the first four. The targets (S2's `SpinningTarget`) stand on the poles 3.55 m up and spin about the vertical. The tanks replace the four low cover blocks and are now the Guard Bot's cover. Puddles moved into the prototype's three patches |
-| Storage | A shelf maze: short runs of 1 to 4 cells on rows 1, 3, 5 and 7, with staggered gaps | Eight runs (2.86 to 5.72 m) on rows at z 37.5, 33.5, 29.5 and 25.5, each a shelving unit with toys. The run beside door 3 is left out (it would half block the door and Saboteur A's waypoint), and the rows sit 0.5 m south of the exact mapping so Saboteur D's patrol along the north wall stays walkable |
+| Storage | A shelf maze: short runs of 1 to 4 cells on rows 1, 3, 5 and 7, with staggered gaps | Eight runs (2.86 to 5.72 m) on rows at z 37.5, 33.5, 29.5 and 25.5, each a shelving unit with toys. The run beside door 3 is left out (it would half block the door and Saboteur A's waypoint), and the rows sit 0.5 m south of the exact mapping so Saboteur D's patrol along the north wall stays walkable. Restocked with toys in the Storage revamp (see Storage Area below) |
 | Control | Twelve server pillars round a central console; three cores float above pillars | Twelve 1.3 x 2.8 x 1.5 m pillars with glowing LED faces and purple caps; the console moved to the room centre (10.5, 31); the cores float 3.75 m up above servers 1, 2 and 9 |
 
 **Still S2's (not in this branch):** the prototype's second (westward) belt and four loose crates in Assembly; three crates, a floor trap and slippery paint in Painting. Our terminal stays at the room centre, because the prototype's spot is where S4's Guard spawns.
@@ -115,13 +115,31 @@ Built by `Tools > Factory Reset > Build Painting Room Dressing` (`Editor/World/P
 
 **Budget:** 89,160 triangles (the five detailed tanks are 28,484 of them), merged to 99 renderers. Measured view costs are in `OptimisationLog.md`.
 
+## Storage Area (final dressing)
+
+Built by `Tools > Factory Reset > Build Storage Area Dressing` (`Editor/World/StorageAreaDressing.cs`), with the same kit as the other rooms (signs in `T_Env_Signs_Storage`). It rebuilds `Level/Dressing/Storage`, raises door 3 and restocks the eight shelf runs. A second item, `Tools > Factory Reset > Restyle Relay Order Board`, restyles the relay board in `Interactables.unity`: the board is static set dressing, so its look is S1's, while S2's `RelayBoard` component, its collider and the three slots it tints are kept as they were. New solid props stand against the walls, clear of S2's relays, switch cage, batteries, overcharge and trap, Saboteur A's spawn and route ((37, 24) to (23, 28)), Saboteur D's ((25, 39) to (38, 39)) and the two Storage cutscene cameras. The room reads as a warehouse, unlike rooms 1 and 2: high strip windows, an orange wall band, steel roof beams with hanging aisle signs, a loading dock and yellow aisle lines.
+
+| Part | Where | What |
+| --- | --- | --- |
+| Relay order board | north wall, (36, 3.5, 40.75) | A dark rounded panel on an orange backplate: a "RELAY ORDER" header; the three slots (tinted at runtime with the relays' colours, first step on the left) in chrome sockets with arrows between them; numbered step badges 1, 2, 3 under them; "USE THE RELAYS IN THIS ORDER"; two small lamps on arms. Beside it, a glowing map, "WHERE ARE THE RELAYS?", with each relay as a dot in its colour and a star at the board. Collider unchanged (2.4 x 1 x 0.1 m) |
+| Relays | (40.2, 33.5), (21.8, 25.5), (27.8, 22.2) | A floor ring in each relay's colour (red, green, blue) inside a thin glowing ring, and a plaque on the wall behind ("RED RELAY", "GREEN RELAY", "BLUE RELAY"), so each square on the board leads to its relay. Paint and signs only, no colliders |
+| Doors 2 and 3 | south and west walls | Door 3 raised to 5 m (white lintel at 5-6 m); both openings framed on this side, door 2 with a mint "open" strip; door 3's alarm beacons moved onto the new header and lintel. **S2:** `Door_3`'s panel needs to be 5 m too, like doors 1, 2 and 4 |
+| Loading dock | east wall, z 22-27 | A closed roller shutter between hazard-striped jambs under a "DOCK 3" sign and two amber lamps, hazard paint on the floor, a toy forklift carrying a boxed pallet (one 2.6 x 1.8 x 1.2 m collider, x 37.9-40.5, z 21.8-23) and two shrink-wrapped pallets (1.4 m colliders) |
+| Shelves | the eight runs | Restocked: the 144 placeholder blocks are replaced by teddies, robots and ducks (low-poly versions of the room toys) and taped toy boxes in mixed palette colours, a row each side of the spine on the lower two boards and boxed overstock on the third. Each run's stock is merged on its own and lit by light probes, as the blocks were. Labels A1 to D2 on the west ends; yellow aisle lines along both sides of every run |
+| Walls | all four | An orange band at 1.35 m; four high strip windows on the north and east walls (4.65-5.25 m) with mullions and the daylight view; "03 STORAGE AREA" on the north wall; "PAINTING ROOM" and "CONTROL ROOM / SEALED" plaques beside the doors, their arrows pointing at them; posters ("LIFT WITH CARE", "FRAGILE", "COUNT EVERY TOY!") |
+| Packing table | south wall, x 22.6-25.4 | Boxes, tape, a scale with a glowing display and a teddy. 1 m collider |
+| Roll cage | south wall, x 34.05-35.35 | A wheeled cage of boxes. 1.7 m collider |
+| Ceiling | z 27.75 and 34.25 | Two steel beams across the room between the light panels' rows, carried on wall brackets, each with a double-sided aisle sign ("PLUSH TOYS", "ROBOTS & BLOCKS") hanging between the panels and no lower than 4.9 m, so the high cutscene camera still sees the board. No hanging lamps and nothing moving |
+
+**Budget:** 121,152 triangles in 124 renderers; the shelf stock is 93,412 of them in 88 renderers (eight runs, eleven materials each), the rest of the room 27,740 in 36. Measured view costs are in `OptimisationLog.md`.
+
 ## Room dressing
 
 Dressing from the prototype that makes each room read as its own part of the factory. None of it has a collider, so it never changes the NavMesh or the grid; the obstacles themselves are in the section above.
 
 | Room | Dressing | Notes |
 | --- | --- | --- |
-| Storage | Every shelf run is a shelving unit: a thin spine, blue posts at most 3 m apart, four white boards and 144 toys in all on the lower three boards | Toys stay inside the shelf's 1 m depth. They are lit by light probes, not lightmaps, to keep the lightmaps small |
+| Storage | Every shelf run is a shelving unit: a thin spine, blue posts at most 3 m apart and four white boards, stocked with toys and toy boxes on the lower three boards (since the Storage revamp; see Storage Area above) | The stock stays inside the shelf's 1 m depth. It is lit by light probes, not lightmaps, to keep the lightmaps small |
 | Painting | Eight paint splats on S2's three slippery zones (were round puddles until the Painting revamp) | Purely visual; S2's `SlipperyFloor` zones make them slippery |
 | Control | Nine server racks against the walls, each with 24 status lights that blink (`DressingBlinker`) | 0.25 m deep, inside the 0.55 m wall clearance, clear of the doors, console, battery and overcharge anchors |
 | Assembly (and one pair in Painting) | Eight wall gears in meshing pairs that turn (`DressingSpinner`); a small gear turns faster than its partner, at the tooth ratio | `GearMesh` builds the toothed discs |
@@ -141,10 +159,10 @@ Measured after the bake (editor build of the grid):
 
 | Check | Result |
 | --- | --- |
-| Walkable cells | 4,756 (Assembly 1,279, Painting 1,212, Storage 1,102, Control 1,159), down from 4,963 before the Assembly and Painting revamps and 5,318 before the prototype rooms |
+| Walkable cells | 4,673 (Assembly 1,279, Painting 1,216, Storage 1,019, Control 1,159), down from 4,756 before the Storage revamp, 4,963 before the Assembly and Painting revamps and 5,318 before the prototype rooms |
 | Walkable cells per doorway | 4 of 6 (2 m clear after the 0.55 m clearance on each side) |
-| Reachable from `player.start`, doors 3 and 4 closed | 3,800: Assembly, Painting, Storage; Control 0 |
-| Reachable with every door open | all 4,756 |
+| Reachable from `player.start`, doors 3 and 4 closed | 3,510: Assembly, Painting, Storage; Control 0 (counted with the two doorways blocked) |
+| Reachable with every door open | all 4,673 |
 | Every task anchor reachable from `player.start` on the NavMesh | all 34 |
 
 ## Area volumes
