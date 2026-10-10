@@ -45,7 +45,9 @@ Selection ranks all candidates by score using octile distance as a cheap estimat
 Two rules keep the behaviour stable:
 
 - **Hysteresis:** the Guard keeps its current cover unless that cover stopped being valid (exposed, blocked, or filtered out by the battery tier) or a new candidate scores more than 0.1 higher. Without this it would hop between two near-equal spots every second.
-- **Engagement range:** the Guard is alerted when a living player comes within 20 m and stays alerted until they are more than 30 m away, so it follows the player out of its room but does not cross the whole factory at the start of the game. Outside that range it patrols. These two distances are tuning values chosen for the greybox level.
+- **Engagement:** distance alone is not a reason to fight, because a player on the far side of a wall is not a threat (the first version used distance only, and the Guard shot a player standing still in the next room through the wall). The Guard is alerted **the moment a living player steps into its room**, whether or not it has a line to them: the room is its territory. A player just outside it (within 3 m, such as in a doorway) is fought only if they are within 20 m and the Guard **sees them** (the same physics line of sight as the cover check) or **heard them fire** (a noise from the player of level 40 or more in the last second). It stays alerted until the player leaves the room (plus the 3 m) or is more than 30 m away, and then goes back to patrol and gives up its cover. It does not follow the player out. The 20 m and 30 m are tuning values chosen for the greybox level.
+- **Home room:** the Guard holds the room its patrol is in (`IGuardHome`, built by the spawner from the level's `AreaVolume`). Its cover, and the cell it retreats to, must lie inside that room (with a metre of slack for doorway cells), so it never leaves to take cover in the doorway of the next room. A Guard with no home room (a test, or a patrol outside every volume) fights wherever the player is in range.
+- **Chapter:** the Guard is not held back by the chapter. The room is its own from the start, so a player who walks into the Painting Room in Chapter 1 is fought. (An earlier version stayed calm until Chapter 2; it was dropped so that stepping in always has a consequence.)
 
 ### Runtime contract
 
@@ -59,7 +61,7 @@ These rules come from the shared brain and body contract in `Docs/DesignDoc.md`.
 - **Shooting:** the Guard outputs `AgentAction.Shoot` with `LookTarget` set. The controller applies the 0.3 s telegraph, the hitscan and the damage through `PlayerState.Current.TakeDamage`.
 - **Player:** read the player from `setup.Blackboard.Player`. If `IsKnown` is false or `IsAlive` is false, patrol or hold position. Never throw.
 - **Replanning:** replan only when `OnGraphChanged` touches the current path or the reserved cover cell.
-- **Journey:** the home region is the Painting Room during Chapter 2. The Guard follows the player out of the room when alerted. The controller does not tick it during cutscenes or pause.
+- **Journey:** the home region is the Painting Room. The Guard stays in it when alerted. The controller does not tick it during cutscenes or pause.
 
 ### States
 
@@ -83,7 +85,7 @@ Higher priority wins when several conditions are true on the same tick. This is 
 | 100 | Any | Stunned | Stunned (seen on the first tick after the reboot) |
 | 95 | Any | Patrol | No player, player dead, or out of range |
 | 90 | Stunned | Relocate | Reboot: plan a fresh route |
-| 85 | Patrol | Relocate | A living player within alert range |
+| 85 | Patrol | Relocate | Engaged: a living player in its room, or just outside it and seen or heard in range |
 | 80 | TakeCover, Advance | InCover | Reaches the reserved cover cell (within 0.5 m) |
 | 70 | InCover | PeekAndShoot | Hold timer elapses (1.3 s, or 0.7 s when aggressive) and peeking is allowed; above 50% battery that also needs the player to have stopped firing for 1.5 s |
 | 65 | PeekAndShoot | InCover | Overcharge becomes active; no peeking until it ends |
@@ -199,6 +201,16 @@ All of these are in `GuardBrainTests` unless the status says otherwise.
 | Overcharge with only half cover nearby | Full cover only, so it has no cover and retreats | `Guard_OverchargeWithOnlyHalfCover_HasNoCover` | Built |
 | No player, or player dead | Patrols or holds position, never throws | `Guard_NoPlayer_PatrolsOrHolds`, `Guard_DeadPlayer_PatrolsOrHolds` | Built |
 | Player leaves or dies mid-fight | Returns to Patrol and releases its cover | `Guard_PlayerLost_ReturnsToPatrolAndReleasesCover` | Built |
+| Player in range but behind a wall | Stays on patrol: no line of sight, nothing heard | `Guard_PlayerInRangeBehindAWall_StaysOnPatrol` | Built |
+| Player in range and in plain sight | Engages | `Guard_PlayerInRangeInPlainSight_Engages` | Built |
+| Player fires behind a wall | Engages on the shot | `Guard_HearsThePlayerShootBehindAWall_Engages` | Built |
+| Another source's noise, a quiet player noise, an old shot | Does not alert it | `Guard_OtherNoises_DoNotAlertIt` | Built |
+| Player outside its room | Not fought | `Guard_PlayerOutsideItsRoom_IsNotFought` | Built |
+| Player steps into its room | Detected at once, even without a line of sight | `Guard_PlayerStepsIntoItsRoom_IsDetectedWithoutALineOfSight` | Built |
+| Player just outside its door (within 3 m) | Fought if seen or a shot is heard, not otherwise | `Guard_PlayerJustOutsideItsDoor_IsFought`, `Guard_PlayerJustOutsideItsDoor_NeedsASightOrASoundToBeDetected` | Built |
+| Player walks out of its room mid-fight | Returns to Patrol and releases its cover | `Guard_PlayerLeavesItsRoomMidFight_ReturnsToPatrolAndReleasesCover` | Built |
+| Chapter 1 | Not held back: the room is its own from the start | `Guard_IsNotHeldBackByTheChapter` | Built |
+| Cover candidates outside its room | Never taken, and it does not leave to find some | `Guard_TakesCoverOnlyInsideItsRoom`, `Guard_NoCoverInsideItsRoom_DoesNotLeaveToFindSome` | Built |
 | Player unreachable | Hold current cover, keep peeking | `Guard_PlayerUnreachable_HoldsCoverWithoutFreezing` | Planned |
 | Cutscene or pause mid-route | Brain is not ticked; game time (`ctx.Time`) resumes from the same value. This is the controller's behaviour, so it needs a Runtime test | `Guard_CutsceneFreezesGameTime` | Planned |
 
@@ -242,6 +254,9 @@ Status says whether a test exists in the repo today (**Built**) or is still to b
 | --- | --- | --- |
 | `Guard_Transitions_PickHighestPriorityValidOne`, `Guard_TransitionTable_IsDataAndPrintable` | Built | The FSM is data-driven, not if/else: the highest-priority valid rule wins, and the table can be printed |
 | `Guard_PlayerInRange_TakesCoverAndReservesIt`, `Guard_PlayerBeyondAlertRange_StaysOnPatrol` | Built | Engagement range and the cover reservation |
+| `Guard_PlayerInRangeBehindAWall_StaysOnPatrol`, `Guard_HearsThePlayerShootBehindAWall_Engages`, `Guard_OtherNoises_DoNotAlertIt` | Built | It fights what it sees or hears, not what is merely near |
+| `Guard_PlayerOutsideItsRoom_IsNotFought`, `Guard_PlayerJustOutsideItsDoor_IsFought`, `Guard_PlayerLeavesItsRoomMidFight_ReturnsToPatrolAndReleasesCover`, `Guard_TakesCoverOnlyInsideItsRoom`, `Guard_NoCoverInsideItsRoom_DoesNotLeaveToFindSome` | Built | It holds its room and stays in it |
+| `Guard_PlayerStepsIntoItsRoom_IsDetectedWithoutALineOfSight`, `Guard_PlayerJustOutsideItsDoor_NeedsASightOrASoundToBeDetected`, `Guard_IsNotHeldBackByTheChapter` | Built | Stepping into the room is detection; the chapter does not gate it |
 | `Guard_HoldTimerElapses_PeeksAndShoots`, `Guard_PeekTimerElapses_ReturnsToCover` | Built | The peek-and-fire cycle, with shooting as an intent |
 | `Guard_BatteryBelow25_ReducesIdealDistanceAndAdvances`, `Guard_PlayerReloading_Advances`, `Guard_BatteryTiers_SetTheIdealDistance`, `Guard_OverchargeActive_UsesTwelveMetresAndDoesNotPeek` | Built | The battery-adaptive creative hook actually works |
 
