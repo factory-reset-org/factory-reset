@@ -1,10 +1,12 @@
 using UnityEngine;
+using ToyFactory.Runtime.Effects;
 
 namespace ToyFactory.Interaction
 {
     /// <summary>
     /// The jammed conveyor lever. The belts start off; the first pull starts them and
-    /// completes the task, and every later pull switches them off or on again.
+    /// completes the task, and every later pull switches them off or on again. The first pull
+    /// is a CLANK; every pull is a click.
     /// </summary>
     public sealed class ConveyorLever : TaskProp, IInteractable
     {
@@ -22,14 +24,22 @@ namespace ToyFactory.Interaction
 
         public override string Id => taskId;
 
+        /// <summary>True while the belts are running.</summary>
         public bool IsOn { get; private set; }
 
         void Start() => ApplyToBelts();
 
         public void Interact()
         {
+            bool first = !IsCompleted;
             IsOn = !IsOn;
             ApplyToBelts();
+            GameSfx.Play(Sfx.Switch);
+            if (first)
+            {
+                PropEffects.Word("clank", transform.position + Vector3.up * 2f);
+                PropEffects.Spark(transform.position + Vector3.up * 1f, new Color(1f, 0.79f, 0.2f));
+            }
             Complete();
         }
 

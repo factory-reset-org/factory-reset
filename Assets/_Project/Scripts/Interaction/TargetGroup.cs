@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using ToyFactory.Interfaces;
+using ToyFactory.Runtime.Effects;
 
 namespace ToyFactory.Interaction
 {
@@ -26,14 +27,17 @@ namespace ToyFactory.Interaction
 
         public override string Id => taskId;
 
+        /// <summary>True while the targets are the task of the chapter being played.</summary>
+        public bool IsLive => !IsCompleted && ChapterIsActive(chapter);
+
         /// <summary>Raised when the window runs out and the targets reset.</summary>
         public event Action OnTimedOut;
 
         void Awake()
         {
-            foreach (SpinningTarget target in targets)
-                if (target != null)
-                    target.Bind(this);
+            for (int i = 0; i < targets.Length; i++)
+                if (targets[i] != null)
+                    targets[i].Bind(this, i);
 
             // Update only watches the clock, so it runs only while the window is open.
             enabled = false;
@@ -56,6 +60,7 @@ namespace ToyFactory.Interaction
             {
                 enabled = false;
                 Complete();
+                PropEffects.Word("bullseye", transform.position + Vector3.up * 1.2f);
             }
             else
             {
@@ -75,6 +80,7 @@ namespace ToyFactory.Interaction
                 if (target != null)
                     target.ResetTarget();
             ReportProgress(0f);
+            GameSfx.Play(Sfx.Empty);
             OnTimedOut?.Invoke();
         }
     }

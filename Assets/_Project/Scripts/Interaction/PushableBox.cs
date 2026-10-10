@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using ToyFactory.Runtime.Effects;
 using ToyFactory.Runtime.World;
 
 namespace ToyFactory.Interaction
@@ -22,6 +23,7 @@ namespace ToyFactory.Interaction
         Collider _collider;
         Vector3 _pendingPush;
         int _blockerId;
+        float _lastSoundAt = -10f;
 
         /// <summary>True while the box is at rest.</summary>
         public bool IsSettled { get; private set; } = true;
@@ -85,6 +87,13 @@ namespace ToyFactory.Interaction
                 IsSettled = false;
                 GridManager.ClearBlocker(_blockerId);
                 OnBoxMoved?.Invoke(this);
+
+                // A scrape as it starts to slide, not one for every nudge.
+                if (Time.time - _lastSoundAt > 0.4f)
+                {
+                    _lastSoundAt = Time.time;
+                    GameSfx.Play(Sfx.Box, 0.8f);
+                }
             }
         }
 
