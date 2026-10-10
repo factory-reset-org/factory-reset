@@ -106,7 +106,7 @@ Higher priority wins when several conditions are true on the same tick.
 
 **Getting unstuck.** Heading for a target without moving 0.25 m in 2 s (pinned on a prop the grid does not know about, a jam of bodies, no route) gives the target up. Its cell and the eight cells round it are not chosen again for 10 s, through the planner's existing "reserved cell" check. The measure is movement, not distance to the target, because a route round a shelf row can lead away from the target for a while. Pursue, Converge and Observe's back-off step use the same check. This is the safety net, not the fix: solid props must also block the grid. Agents are not in the grid at all, so a knocked-down or scrapped body lying in an aisle is exactly the case this net catches. The body's animation speed is the speed it really moved at, so a pinned agent stands instead of running on the spot.
 
-**Guarding when there is nothing to watch.** Observe watches the player while the prediction settles. A player who fled out of sight and stands still, away from every goal, gives it nothing to watch and no movement to read. Seen in Chapter 4: the player ran into Storage, the Captain followed to where it lost them, the console sat at 0.45 against three tasks at 0.18, and it stood there showing "?" indefinitely. Now, unsure and out of contact for 3 s (`GuardDelay`), it plans a `Guard` at the most likely goal itself: walk there with A*, then ambush facing the player's predicted route. In Chapter 4 that is the console, the one place the player must come to. The 3 s count from the last contact, the last confident prediction, or waking, so a freshly woken Captain still watches first. A guard is not a confident commitment, so it does not lower the keep-threshold to 0.4. Contact or a confident prediction ends it. Tests: `CaptainRobustnessTests.APlayerHidingAwayFromEveryGoalIsWaitedForAtTheLikeliestGoal`, `WhileThePlayerIsInContactAnUnsureCaptainOnlyWatches`.
+**Guarding when there is nothing to watch.** Observe watches the player while the prediction settles. A player who fled out of sight and stands still, away from every goal, gives it nothing to watch and no movement to read. Seen in Chapter 4: the player ran into Storage, the Captain followed to where it lost them, the console sat at 0.45 against three tasks at 0.18, and it stood there showing "?" indefinitely. Now, unsure and out of contact for 3 s (`GuardDelay`), it plans a `Guard` at the most likely goal itself: walk there with A*, then ambush facing the player's predicted route: a place the player must come to. In Chapter 4 that is the core it rates highest while the cores stand (the console is sealed until they are down), then the console. The 3 s count from the last contact, the last confident prediction, or waking, so a freshly woken Captain still watches first. A guard is not a confident commitment, so it does not lower the keep-threshold to 0.4. Contact or a confident prediction ends it. Tests: `CaptainRobustnessTests.APlayerHidingAwayFromEveryGoalIsWaitedForAtTheLikeliestGoal`, `WhileThePlayerIsInContactAnUnsureCaptainOnlyWatches`.
 
 **Why a goal the Captain cannot reach is no plan.** "Defend `g*`" used to be returned even when the Captain had no path to `g*`, with an arrival time of infinity. It then sat in Intercept with no route, showing "!". This happened when the Chapter 3 cutscene was skipped: the Captain decided before the Control Room door had finished opening. A goal it cannot reach now gives no plan, so it watches. When the door opens, the grid change brings the next decision forward, and Intercept also re-asks for a route at every decision while it has none.
 
@@ -210,13 +210,14 @@ The prior `P(g)` is split between goal categories first, then shared equally ins
 | Category | Share | Members |
 | --- | --- | --- |
 | Chapter task targets | 0.60 | Every entry in `ObjectiveTargets` for the current chapter |
-| Unrestored switches | 0.25 | Switches not yet restored |
-| Console | 0.15 (0.50 in Chapter 4) | The Control Room console |
+| Unrestored switches | 0.25 once the chapter's tasks are done; 0.05 (sealed) before | Switches not yet restored |
+| Console | 0.50 in Chapter 4 once the cores are down; 0.05 (sealed) otherwise | The Control Room console |
 | Batteries | 0.20, only while ammo < 30% | Battery pickups on the level |
 
-- **Renormalise whenever the goal set changes.** Empty categories are dropped and the remaining shares are scaled so they sum to 1. For example, in Chapter 4 there are no unrestored switches, so the cores (0.60) and the console (0.50) are rescaled to 0.55 and 0.45.
-- **Why tasks get most of the mass:** the player spends most of each chapter on its tasks. A uniform prior would waste early confidence on switches that are still sealed.
-- **Why the console rises to 0.50 in Chapter 4:** holding E at the console ends the game, so once the cores are down it is the player's final destination.
+- **Renormalise whenever the goal set changes.** Empty categories are dropped and the remaining shares are scaled so they sum to 1. For example, in Chapter 4 there are no unrestored switches, so the three cores (0.60) and the sealed console (0.05) are rescaled to 0.31 each and 0.08.
+- **Why tasks get most of the mass:** the player spends most of each chapter on its tasks.
+- **Why sealed goals get only 0.05:** a switch is sealed until its chapter's tasks are done, and the console until the final chapter's cores are down, so the player cannot be heading there to use them. Not 0, because they may still walk up to one. This was measured, not assumed: with the console at 0.45 next to the cores (its old share), the Captain was sure of the console before the player had moved and was confidently wrong on 53% of straight walks to a core. With the sealed share it is never confidently wrong on them, and its accuracy rose from 30% to 71% (see Measured results).
+- **Why the console rises to 0.50 once the cores are down:** holding E at the console ends the game, so it is then the player's final destination.
 - **Why batteries only below 30% ammo:** with a full blaster the player has no reason to detour for a battery. Below 30% ammo, recharging becomes a real plan.
 - A goal with no reachable path (infinite field cost) is left out of the candidate set.
 - Goals appear and disappear as tasks complete. Their Dijkstra fields are built lazily the first time a goal enters the set, cached by goal id, and discarded when the goal leaves.
@@ -333,7 +334,7 @@ EditMode tests run without a scene, which also proves the brain is decoupled fro
 | `DijkstraFieldRepairTests` (8 tests) | A repaired field equals a fresh one on every cell after 480 random box placements, box moves, openings and door changes; a door opening connects the room behind it; a moved box repairs far fewer cells than a full search; fallbacks and no allocation |
 | `OneToOneCostTests` (8 tests) | The cost-only A* equals the field's cost on 50 random grids and under a penalty model; the bound; no allocation |
 | `GridAdjacencyTests` (5 tests) | The neighbour table matches the grid's own neighbours on random grids and stays correct, refreshing only the affected cells, through 30 changes |
-| `GoalPriorsTests` (9 tests) | The category priors follow the table, including the final-chapter 0.55 / 0.45 example and batteries only below 30% ammo |
+| `GoalPriorsTests` (10 tests) | The category priors follow the table: sealed switches and console while tasks remain, the switch opening after them, the final-chapter console only once the cores are down, and batteries only below 30% ammo |
 | `HugeDetoursDoNotUnderflowToNaN` | The underflow guard works |
 | `PlayerTrackTests` (9 tests) | The 5 s window, the short-history fallback and the ring buffer |
 | `RepeatedUpdatesAllocateZeroBytes` | A 2 Hz update allocates nothing once the fields exist |
@@ -400,6 +401,33 @@ Edge-case tests are listed in the table above.
 ## Measured results
 <!-- Numbers from AIPerformanceLog.md -->
 
+**Accuracy in the real level (2026-10-10, `CaptainAccuracyEvidenceTests`).** The level is a snapshot of the game's grid and goals taken in Play mode from Bootstrap (`Tests/EditMode/Data/CaptainLevelSnapshot.txt`), so the runs are deterministic and take about 5 s. Seeded scripted players walk at 4 m/s from random places to a goal: straight there, by a detour (35-70% longer), or with a feint (half way towards another goal, then turning). The prediction is fed as the brain feeds it, at 2 Hz with the cell 5 s ago, and compared with two simpler guesses: the goal nearest the player, and the highest prior. 60 trips per row; full tables in AIPerformanceLog.md.
+
+In game: real priors, and the player heading where the game lets them. In Chapter 4 that is a core; in Chapter 3 the snapshot has one open task, so even the prior alone gets that right, and only Chapter 4 tells the predictors apart:
+
+| Chapter 4, to a core | Captain | Nearest goal | Prior only | Captain, last quarter | Captain confidently right | Captain confidently wrong |
+| --- | --- | --- | --- | --- | --- | --- |
+| Straight | **71%** | 22% | 38% | 98% | 90% of trips | 0% |
+| Detour | **54%** | 31% | 37% | 87% | 82% | 47% |
+| Feint | **48%** | 25% | 28% | 98% | 83% (98% switch back, median 1.1 s after the turn) | 2% |
+
+Movement only (every goal equally likely beforehand, any goal the true one), the inference on its own beats the nearest goal in both chapters overall (Chapter 3 straight 66% against 47%, Chapter 4 straight 62% against 34%). It ties or loses slightly on Chapter 4 detours and feints (37% against 40%, 36% against 37%): the cores and the console all lie behind the same two Control Room doorways, so until the player is inside, any route there fits every goal. That is the case `PlanShared` covers by holding a chokepoint common to the likely goals.
+
+Intercepting against chasing (Chapter 3, the Captain waking at its spawn, the player heading for the open task from at least 20 m away and out of sight; 40 trips per row): contact (within 10 m with line of sight) before the player reaches the task.
+
+| Player | Predicts and intercepts | Chases |
+| --- | --- | --- |
+| Walking, straight | **85%** | 50% |
+| Walking, detour | 70% | **78%** |
+| Sprinting, straight | **50%** | 10% |
+| Sprinting, detour | **63%** | 38% |
+
+What this shows:
+- **Predicting pays most against a fast player:** a sprinting player (7 m/s) outruns a 4.6 m/s chaser, which reaches them before the task in 1 of 10 straight runs. The Captain, already heading for the task, reaches them in 5.
+- **The one loss is the case it should lose:** a walking player wandering off their route stays close enough for a chaser to catch, while the detour makes the route the Captain is cutting off less certain.
+- **The sealed-goal priors were a measured fix.** With the old console share (0.45 next to the cores), Chapter 4 accuracy on straight walks was 30% and the Captain was confidently wrong on 53% of them, sure of the sealed console before the player moved. The sealed share (0.05) raised it to 71% and 0%, and feints are now read back in 98% of trips instead of 77%.
+- **Limits:** these are scripted players on the level's grid, not people; detours are random rather than tactical; and the Chapter 3 number is easy because only one task was open when the snapshot was taken.
+
 **Prediction speed (EditMode scenario, not yet measured in game):** three task goals to the east, north and west of the player, on an open 40 × 40 grid. The player walks east at 3 m/s and is sampled at 2 Hz. Output of `WalkingStraightAtAGoalIsConfidentWithinThreeSeconds` (2026-10-01):
 
 | Time | P(east) | P(north) | P(west) | Captain state |
@@ -407,7 +435,7 @@ Edge-case tests are listed in the table above.
 | 0.5 s | 0.637 | 0.221 | 0.142 | Intercept threshold (0.5) reached |
 | 1.0 s | 0.855 | 0.102 | 0.043 | Above the 0.8 test target |
 
-The prediction is confident after 1.0 s, well inside the 3 s requirement. The north goal keeps more probability than the west goal because walking east costs less detour towards north than towards west. These values match the formula worked by hand to two decimal places. In-game accuracy runs replace them once the level exists.
+The prediction is confident after 1.0 s, well inside the 3 s requirement. The north goal keeps more probability than the west goal because walking east costs less detour towards north than towards west. These values match the formula worked by hand to two decimal places. The real-level runs above measure the same prediction in the level.
 
 **Cost in the full game (2026-10-09, `Test_FourAgentsStress`, editor):** 0.095 ms a frame on average, but 4.97 ms at p99 and 14.0 ms at worst, with 67 frames over 1 ms in 30 s. Each 2 Hz decision rebuilds two distance fields while the player moves (the player's, for goal inference, and the Captain's own, for the intercept), and one full-level field costs 4.3 ms in the editor. The cached goal fields are not the cause: they are not rebuilt while the goals stay put.
 
