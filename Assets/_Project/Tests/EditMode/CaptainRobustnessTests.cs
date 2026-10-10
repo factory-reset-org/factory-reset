@@ -376,7 +376,7 @@ namespace ToyFactory.Tests.EditMode
             }
             Assert.AreEqual("Ambush", brain.StateName, "Then guards a goal instead of watching nothing.");
             Assert.AreEqual(InterceptKind.Guard, brain.Plan.Kind);
-            Assert.AreEqual(brain.Prediction.Cell, brain.TargetCell, "The likeliest goal itself.");
+            Assert.AreEqual(new Vector2Int(50, 55), brain.TargetCell, "Three equally likely goals: the one nearest the player.");
             Assert.Less(Vector3.Distance(body.Position, grid.CellToWorld(brain.TargetCell)), 1f);
 
             // It holds the goal while nothing changes.
@@ -386,6 +386,84 @@ namespace ToyFactory.Tests.EditMode
                 body.Tick(brain, world, t);
                 Assert.AreEqual("Ambush", brain.StateName, $"t = {t}");
             }
+        }
+
+        [Test]
+        public void TiedGoalsAreGuardedAtTheOneNearestThePlayer()
+        {
+            // The three cores while the player hides: equally likely, so the tie used to go to
+            // the first goal in the list wherever the player was. Here the player hides in the
+            // east, nearest goal 2 (the second in the list).
+            GridGraph grid = Room(100, 60);
+            WorldBlackboard world = ThreeTasks();
+            CaptainBrain brain = Captain(grid, world);
+            var body = new Body(grid, new Vector2Int(10, 10));
+            Vector3 player = grid.CellToWorld(new Vector2Int(85, 5));   // over 14 m from the Captain's routes: never in contact
+
+            for (float t = 0f; t < 20f && brain.StateName != "Ambush"; t += Dt)
+            {
+                PlacePlayer(world, grid, player, Vector3.zero);
+                body.Tick(brain, world, t);
+            }
+            Assert.AreEqual("Ambush", brain.StateName);
+            Assert.AreEqual(InterceptKind.Guard, brain.Plan.Kind);
+            Assert.AreEqual(new Vector2Int(90, 50), brain.TargetCell, "The core nearest the player, not the first in the list.");
+            Assert.AreEqual(1, brain.Prediction.GoalId, "The published prediction is unchanged: still the first of the tied goals.");
+        }
+
+        // Ticks until the brain is ambushing at `cell` or the time runs out; returns the time reached.
+        static float GuardUntil(CaptainBrain brain, Body body, WorldBlackboard world, GridGraph grid, Vector3 player,
+            float t, float seconds, Vector2Int cell)
+        {
+            for (float end = t + seconds; t < end && !(brain.StateName == "Ambush" && brain.TargetCell == cell); t += Dt)
+            {
+                PlacePlayer(world, grid, player, Vector3.zero);
+                body.Tick(brain, world, t);
+            }
+            return t;
+        }
+
+        [Test]
+        public void AGuardFollowsAPlayerWhoTurnsUpElsewhereOutOfSight()
+        {
+            // Seen in Chapter 4: the Captain guarded the core nearest where the player first hid;
+            // the player then turned up far away (further than the 50 m the movement is read
+            // over, so the goals stay tied), next to another core, and it stayed put. A held
+            // guard now moves when another tied goal is nearer the player by 8 m or more.
+            GridGraph grid = Room(240, 60);
+            WorldBlackboard world = World(
+                new ObjectiveTarget(1, new Vector2Int(10, 50), ObjectiveTargetKind.Task),
+                new ObjectiveTarget(2, new Vector2Int(220, 50), ObjectiveTargetKind.Task),
+                new ObjectiveTarget(3, new Vector2Int(115, 55), ObjectiveTargetKind.Task));
+            CaptainBrain brain = Captain(grid, world);
+            var body = new Body(grid, new Vector2Int(150, 10));
+            float t = GuardUntil(brain, body, world, grid, grid.CellToWorld(new Vector2Int(215, 5)), 0f, 30f, new Vector2Int(220, 50));
+            Assert.AreEqual(new Vector2Int(220, 50), brain.TargetCell, "First the goal nearest the player.");
+
+            GuardUntil(brain, body, world, grid, grid.CellToWorld(new Vector2Int(15, 5)), t, 60f, new Vector2Int(10, 50));
+            Assert.AreEqual("Ambush", brain.StateName);
+            Assert.AreEqual(new Vector2Int(10, 50), brain.TargetCell, "Then the goal now nearest them.");
+        }
+
+        [Test]
+        public void AKnockDownDropsTheGuardSoItIsChosenAgain()
+        {
+            // The first decision after the reboot runs before the machine leaves the old state;
+            // it used to see the old guard as still held and keep it, whatever had changed.
+            GridGraph grid = Room(100, 60);
+            WorldBlackboard world = ThreeTasks();
+            CaptainBrain brain = Captain(grid, world);
+            var body = new Body(grid, new Vector2Int(10, 10));
+            Vector3 player = grid.CellToWorld(new Vector2Int(85, 5));
+            float t = GuardUntil(brain, body, world, grid, player, 0f, 20f, new Vector2Int(90, 50));
+            Assert.IsTrue(brain.HasTarget);
+
+            brain.OnStunned(1f);
+            Assert.IsFalse(brain.HasTarget, "Knocked down: no commitment left.");
+            Assert.IsFalse(brain.TryGetCommitment(out _, out _, out _));
+
+            GuardUntil(brain, body, world, grid, player, t + 1f, 20f, new Vector2Int(90, 50));
+            Assert.AreEqual("Ambush", brain.StateName, "After the reboot it chooses again.");
         }
 
         [Test]

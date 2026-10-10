@@ -58,6 +58,11 @@ namespace ToyFactory.AI.Agents.Captain
         // place they must come to in the end.
         public const float GuardDelay = 3f;
 
+        // Posteriors this close are a tie: the movement cannot tell those goals apart. A guard
+        // held on one of them moves to another only once that is nearer the player by 8 m.
+        public const float TieMargin = 0.001f;
+        public const float GuardSwitchDistance = 8f;
+
         // Progress: heading for a target but not moving 0.25 m in 2 s (pinned on a prop, a jam
         // of bodies, no route) gives the target up; its cell and neighbours are not chosen
         // again for 10 s.
@@ -354,6 +359,9 @@ namespace ToyFactory.AI.Agents.Captain
             _routeCells = null;
             _plan = InterceptPlan.None;
             _prediction = default;
+            // The commitment goes too: the first decision after the reboot runs before the
+            // machine leaves the old state, and it must not plan for the old goal as if held.
+            _targetGoalId = NoGoal;
             _waitDoorId = NoDoor;
             _openedDoorId = NoDoor;
             if (_machine.Current != _dormant)
@@ -593,6 +601,22 @@ namespace ToyFactory.AI.Agents.Captain
                 {
                     _plan = InterceptPlan.None;
                     return;
+                }
+                // Among goals the movement cannot tell apart (the three cores while the player
+                // hides): the one nearest them. A guard already held moves only when another is
+                // nearer by GuardSwitchDistance (the player went elsewhere out of sight), so a
+                // few steps do not send it back and forth.
+                int nearest = NearestOfTied(planIndex, player.Cell);
+                if (nearest != planIndex &&
+                    (committed < 0 || WalkMetres(planIndex, player.Cell) - WalkMetres(nearest, player.Cell) >= GuardSwitchDistance))
+                {
+                    planIndex = nearest;
+                    planGoal = _goals[planIndex];
+                    if (!_inference.TryGetGoalField(planGoal.Id, out field))
+                    {
+                        _plan = InterceptPlan.None;
+                        return;
+                    }
                 }
                 _plan = _planner.PlanGuard(field, player.Cell, _ctx.Cell, playerSpeed, InterceptSpeed, _isAvoided);
             }
@@ -929,6 +953,42 @@ namespace ToyFactory.AI.Agents.Captain
 
         /// <summary>True if the planner will not choose <paramref name="cell"/> right now (the Captain got stuck going there).</summary>
         public bool IsCellAvoided(Vector2Int cell) => IsAvoided(cell);
+
+        /// <summary>
+        /// Among the goals tied with the one at <paramref name="index"/> (posteriors within
+        /// <see cref="TieMargin"/>), the one nearest the player by walking distance: with
+        /// nothing else to go on, the goal they are likeliest to reach first. Without the
+        /// tie-break the first goal in the list won every tie.
+        /// </summary>
+        int NearestOfTied(int index, Vector2Int playerCell)
+        {
+            if (!_grid.TryFindNearestTraversable(playerCell, GoalInference.SnapRadius, out Vector2Int from))
+                return index;
+            float p = _inference.Posterior(index);
+            int best = index;
+            float bestCost = CostFrom(index, from);
+            for (int i = 0; i < _inference.GoalCount && i < _goals.Count; i++)
+            {
+                if (i == index || Mathf.Abs(_inference.Posterior(i) - p) > TieMargin)
+                    continue;
+                float cost = CostFrom(i, from);
+                if (cost < bestCost)
+                {
+                    bestCost = cost;
+                    best = i;
+                }
+            }
+            return best;
+        }
+
+        float CostFrom(int goalIndex, Vector2Int cell) =>
+            _inference.TryGetGoalField(_goals[goalIndex].Id, out DijkstraField field) ? field.Cost(cell) : float.PositiveInfinity;
+
+        // Walking distance in metres from the player's cell to a goal.
+        float WalkMetres(int goalIndex, Vector2Int playerCell) =>
+            _grid.TryFindNearestTraversable(playerCell, GoalInference.SnapRadius, out Vector2Int from)
+                ? CostFrom(goalIndex, from) * GridGraph.CellSize
+                : float.PositiveInfinity;
 
         int SecondMostLikelyIndex(int best)
         {
