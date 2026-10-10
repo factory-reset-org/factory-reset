@@ -91,6 +91,21 @@ namespace ToyFactory.Tests
         }
 
         [UnityTest]
+        public IEnumerator OnlyOneChapterCardShowsBecauseTheDirectorsIsSwitchedOff()
+        {
+            yield return StartPlaying();
+
+            ChapterCard directorCard = UnityEngine.Object.FindFirstObjectByType<ChapterCard>(FindObjectsInactive.Include);
+            if (directorCard != null)
+            {
+                Assert.IsFalse(directorCard.enabled, "The director's own card is switched off once the HUD draws one.");
+                Assert.IsFalse(directorCard.IsShowing);
+            }
+
+            Assert.IsTrue(HudPresenter.Current.Card.IsShowing);
+        }
+
+        [UnityTest]
         public IEnumerator CompletingATaskTicksItsRow()
         {
             yield return StartPlaying();

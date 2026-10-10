@@ -388,7 +388,7 @@ Both write into a caller-owned list and allocate nothing once it has capacity.
 | `Env` | S1 | Static geometry, lighting, NavMesh, grid, chapter manager | Empty scene (light and camera) |
 | `Interactables` | S2 | Doors, boxes, belts, switches, task props, pickups. All non-static | Empty scene (light and camera) |
 | `Agents` | S4 | Agent spawner and spawn points, debug overlays, cutscene director, Timelines, cutscene cameras | Spawner, seven spawn points, cutscene director and debug overlay in place; Timelines and cameras planned |
-| `UI` | S3 | HUD, subtitles, chapter card, results screen, leaderboard | HUD, chapter card and subtitles in place; results, scoring and leaderboard planned |
+| `UI` | S3 | HUD, subtitles, chapter card, scoring, results screen, leaderboard | HUD, chapter card, subtitles and the score manager in place; results screen and leaderboard planned |
 | `ModelShowcase` | S3 | Model turntable. Not in the build | In use |
 
 - Playing starts in `Bootstrap`, which loads the other scenes additively. `Env` is the active scene, so lighting is baked with only `Env` loaded and only `Env` holds static geometry.
@@ -667,12 +667,12 @@ The alarm colours belong to `LightingState`. A Timeline can frame or activate th
 | Damage vignette | Integrity falling | A flash for 0.5 s after a hit, and a steady glow below 30% integrity |
 | Crosshair | - | Four ticks round an empty centre |
 | Objective arrow with distance | The chapter manager's current beacon target and `Camera.main` | Shown only when the objective is off screen, on the screen edge, pointing at it (or the way to turn if it is behind) |
-| Chapter card: tag, title, subtitle, four-stop route | `ChapterEvents.OnChapterStarted` | 4.5 s, fades, never blocks; waits for a cutscene to end |
+| Chapter card: tag, title, subtitle, four-stop route | `ChapterEvents.OnChapterStarted` | 4.5 s, fades, never blocks; waits for a cutscene to end; switches off the director's own `ChapterCard`, as that card's design says, so only one shows |
 | Subtitle bar | `DialogueEvents` | Sorts above the letterbox; switches off the director's `PlaceholderSubtitles` the first time a line shows |
 
 - **Visibility.** The HUD shows while the game is playing or paused and no cutscene is running (`GameClock` state, `CutsceneEvents`). It is hidden on the title screen, in cutscenes and on the results screen. The subtitle bar is not part of that: it shows in cutscenes.
 - **Two canvases.** Panels and labels sit on the main canvas; the bars' fills, the arrow and the vignette sit on nested canvases, so a moving bar does not rebuild the text. The batch counts have not been measured yet.
-- **Not here yet.** The title and results screens, score, prompts and hold bar, hit flash, wind-up toy count and accuracy come with scoring and the Interfaces bridge from S2. The HUD reads no brain and computes no score.
+- **Not here yet.** The title and results screens, the score panel and combo text, prompts and hold bar, hit flash, wind-up toy count and accuracy come with scoring and the Interfaces bridge from S2. The HUD reads no brain and computes no score.
 - **Tests.** `HudTests` (EditMode) covers `HudMath` (bars, vignette, arrow placement), `HudModel` and the card's timing; `HudSceneTests` (PlayMode, real scenes from Bootstrap) covers the chapter text, ticking a task, the bars and vignette after a hit, hiding in a cutscene, the subtitles and a missing player. `ToyFactory.Tests.EditMode` and `ToyFactory.Tests.PlayMode` now reference `ToyFactory.UI` so they can test it.
 ### 6.4 The player's blaster, battery and effects (S2, implemented)
 
@@ -696,6 +696,27 @@ If the wall is closer than the barrel tip, the shot is only the sparks: a bolt f
 **The gun is drawn by its own camera.** It is on the `ViewModel` layer (user layer 16) and a second, overlay camera under the player's camera renders only that layer, after the first, which no longer draws it. So the gun is always on top and can never be inside a wall, however close the player stands. The player's camera also has a near plane of 0.1 m, because at 0.3 m the plane's corners poked through a wall the player stood against at an angle (the body keeps 0.4 m from walls) and showed the empty space behind it.
 
 **Built, not hand-edited.** `BlasterAssetBuilder` (menu *Factory Reset/Blaster/Build Blaster Assets*) writes the glow textures, the additive and gun materials, the three prefabs and the wiring on `Player.prefab`, including the overlay camera and the layer. It rewrites the same assets in place, so it can be run again; only whoever changes the look needs to. Everything it writes is committed.
+
+### 6.5 Scoring (S3, implemented)
+
+`ScoreRules` (`Scripts/UI/`, plain C#) is the single source of every point value; `ScoreManager` (one object, `Score`, in `UI.unity`) only listens and hands each event to it with the game time. No view computes points and nothing reads a brain.
+
+| Event | Points | Heard from |
+| --- | --- | --- |
+| Switch restored (3 per run) | 1000 | `ChapterEvents.OnSwitchRestored` |
+| Checklist task or power core | 300 | `ChapterEvents.OnTaskCompleted` (switches are not tasks, so no double count) |
+| Takedown: Tracker / Guard / Saboteur / Captain | 150 / 250 / 400 / 600, times the combo, times the repeat factor | `AgentEvents.OnDisabled` (knocked out) and `OnDestroyed` (scrapped) |
+| Battery pickup | 50 | **Not wired**: no event exists yet; `ScoreManager.BatteryPickedUp()` is the entry point |
+| All four Saboteurs destroyed | 1000, once, right after the fourth takedown | counted from the takedowns |
+| Win bonus | 2000 + `max(0, 3000 - 3 x seconds)` + `10 x HP` + `15 x accuracy%` (accuracy only from 10 shots) | `CutsceneSignals.FactoryShutdown`, then the game state reaching Results |
+| Grade | S from 14000, A 11000, B 8000, C 5000, otherwise D | - |
+
+- **Combo.** The first takedown is x1. A takedown within 6 s (inclusive) of the previous one raises the multiplier by one, to a cap of x4; a longer gap starts again at x1. The window runs from the previous takedown, not from the first of the chain.
+- **Repeat decay is linear.** The same agent's first takedown is worth 100%, its second 75%, its third 50%, every later one 25%. Counted per agent id, so only the agents that reboot (Tracker, Guard, Captain) can decay.
+- **Order and rounding.** Combo and repeat factor multiply, so their order does not matter; the product is rounded once, halves away from zero (a Tracker taken down a second time as the third of a chain: 150 x 0.75 x 3 = 337.5, scores 338).
+- **The run.** It starts when Chapter 1 starts (which clears any earlier score) and ends at Results. Run time is game time, which stops in cutscenes and while paused. A run that reaches Results after the factory shut down is won and gets the win bonus; any other is "Recalled", keeps the points earned and gets no bonus.
+- **Not available yet.** Blaster shots fired and hit are not in `Interfaces`, so the accuracy bonus is 0 until `ScoreManager.ReportShots` is fed. The player's HP for the integrity bonus is the health fraction times 100 (the Player prefab's default maximum), because only the fraction is exposed.
+- **Tests.** `ScoreRulesTests` (EditMode) covers every row of the table, the window and cap at their exact edges, the decay and its floor, the one-off bonuses, the win-bonus formulas and the grade thresholds. `ScoreManagerTests` (PlayMode) drives the manager with a fake game clock and agents, and checks in the real scenes that completing a task scores 300.
 
 ## 7. Decision log
 
@@ -769,6 +790,7 @@ If the wall is closer than the barrel tip, the shot is only the sparks: a bolt f
 | 2026-10-09 | `ObjectPool<T>` lives in `Runtime/Pooling`, not `Managers/` as the plan has it | `Managers/ObjectPool` | `Managers/` is the default assembly, which no test assembly can reference; in `Runtime` the pool is covered by PlayMode tests | S2 |
 | 2026-10-10 | Unsure and out of contact with the player for 3 s, the Captain guards the most likely goal (`InterceptKind.Guard`) instead of watching; Observe's back-off step gets the 2 s stuck check | Keep watching (it stood showing "?" for good after the player fled into Storage in Chapter 4); hunt the player's live position (perfect knowledge, no prediction); predict only the console in Chapter 4 (one goal makes the confidence always 1, so there is nothing to infer) | Watching only means something while there is something to see. The likeliest goal is where the player must come in the end, so waiting there uses the prediction instead of cheating. Agents are not in the grid, so a body lying in an aisle pinned the back-off step: the same stuck check as the other states lets it go | S4 |
 | 2026-10-10 | Animation speed is the speed the body really moved at (`AgentPathFollower.GroundSpeed`), capped at the commanded speed; the weapon releases the body's facing once instead of every idle frame | Commanded speed (a pinned agent ran on the spot); ease it per agent | `IAgentState.Speed` already promises ground speed. Capped, a push or a teleport never shows as walking. The weapon's every-frame release cancelled the controller's look target whenever it updated after the controller, so a Captain guarding the console stood facing the wall | S4 |
+| 2026-10-10 | Scoring is a pure `ScoreRules` class fed by a `ScoreManager` on game time; repeat takedowns decay linearly (100, 75, 50, then 25% of base), combo and decay multiply and are rounded once, and a run is won only if the factory-shutdown signal came before Results | Compounding decay; rounding each factor; deciding the win from the final cutscene's id or from the player's health at Results | The plan's "25% less per repeat, floor 25%" needs a floor only if the steps are linear, so linear is the reading that gives the floor a job. Multiplying then rounding once removes any order dependence. The shutdown signal is the one event only a won ending raises (a death goes straight to Results), so it separates the two without reading a cutscene id or a health value | S3 |
 
 ## 8. Greybox character model contract (S3)
 

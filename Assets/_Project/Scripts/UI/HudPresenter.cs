@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using ToyFactory.Interfaces;
 using ToyFactory.Journey.Chapters;
+using ToyFactory.Journey.Cutscenes;
 
 namespace ToyFactory.UI
 {
@@ -64,6 +65,7 @@ namespace ToyFactory.UI
         GameState _state = GameState.Playing;
         bool _cutsceneActive;
         int _pendingCard;
+        bool _directorCardOff;
         bool _visible = true;
         float _lastHealth = 1f;
         float _lastHitAt = float.NegativeInfinity;
@@ -112,6 +114,8 @@ namespace ToyFactory.UI
             _sprites = new HudSprites();
             Build();
         }
+
+        void Start() => SwitchOffDirectorCard();
 
         void OnEnable()
         {
@@ -163,8 +167,24 @@ namespace ToyFactory.UI
                 ShowCard(chapter);
         }
 
+        // The cutscene director draws its own chapter card until the UI does (the director's design says
+        // so, like its placeholder subtitles). Switch it off once, or two cards show at the same time.
+        void SwitchOffDirectorCard()
+        {
+            if (_directorCardOff)
+                return;
+
+            ChapterCard card = FindFirstObjectByType<ChapterCard>();
+            if (card == null)
+                return;
+
+            card.enabled = false;
+            _directorCardOff = true;
+        }
+
         void ShowCard(int chapter)
         {
+            SwitchOffDirectorCard();
             ChapterFlow flow = ChapterManager.Current != null ? ChapterManager.Current.Flow : null;
             ChapterDefinition definition = flow != null ? flow.GetDefinition(chapter) : null;
             if (definition != null)
