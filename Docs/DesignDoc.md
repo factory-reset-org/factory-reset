@@ -194,7 +194,9 @@ The walk and run speeds are the brains' own speeds (Tracker 1.9 / 4.6, Saboteur 
 
 **Wheels and key in code, not clips:** a wheel of radius r rolling distance d turns `d / r` radians (rolling without slipping), so `WheelSpinner` turns each wheel by `Speed · Δt / r` every frame. A clip could only match one speed and would visibly slip at every other. `WindUpKeySpinner` turns the key at 180°/s × energy, so it slows as the Tracker runs down, and at −720°/s while it rewinds. It reads the brain's energy through `IWindUpState` (AI.Core), copied by `AgentController.WindUp`. Wheel and key pivots are never keyed in clips, so the Animator never fights the code.
 
-**Not done yet:** the Guard's tread scroll and Unit 047's cutscene clips. The aim pose is in 2.9, the knock-down under "Hit effects, lights and the icons".
+**Not done yet:** the Guard's tread scroll (waiting on S3's model). Unit 047's cutscene motion is `Unit047Motion` (Cutscenes). The aim pose is in 2.9, the knock-down under "Hit effects, lights and the icons".
+
+**Evidence:** every motion technique with its numbers, the tests that check it and screenshots is in `Docs/AnimationLog.md`; its frame cost is in `OptimisationLog.md` (the S4 rows of 2026-10-10).
 
 ### 2.9 Taking hits and shooting (S4, implemented)
 
