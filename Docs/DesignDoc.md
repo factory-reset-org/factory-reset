@@ -119,7 +119,7 @@ A read-only struct built by `AgentController` every frame.
 - **How:** each agent asks before its brain ticks. Once this frame's brains have used the budget, the rest wait for the next frame while their bodies keep walking, and an agent never waits more than 2 frames. The first brain of a frame always ticks.
 - **Why decisions, not individual path requests:** brains ask for routes synchronously inside their tick and use the answer at once. A queue that hands a path back frames later would mean rewriting every brain, which belong to four owners.
 - **Why waiting is safe:** brains time everything with `AgentContext.Time`, so a decision a frame or two late is the same decision, and noises heard meanwhile are kept until the brain's next tick.
-- **Effect:** two agents that would each run a heavy search in the same frame now run them in consecutive frames. One decision heavier than the budget, the Guard's long route search, still takes its frame; splitting that would need its brain to search over several ticks.
+- **Effect:** two agents that would each run a heavy search in the same frame now run them in consecutive frames. One decision heavier than the budget, the Guard's long route search, still takes its frame; splitting that would need its brain to search over several ticks. Measured in the level against the same run with no budget: about a third fewer AI frames over 2 ms (19 and 24 against 33 and 32 in two pairs), with under 4% of decisions waiting a frame (AIPerformanceLog.md).
 
 **Tests:** `MockPathProviderTests` (8 EditMode tests), and two test scenes:
 - `Scenes/Test/Test_PathFollower`: step, ramp and drop.
