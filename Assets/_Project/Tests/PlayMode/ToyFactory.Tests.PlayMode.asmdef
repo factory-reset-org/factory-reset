@@ -8,6 +8,7 @@
         "ToyFactory.Runtime",
         "ToyFactory.Interfaces",
         "ToyFactory.Journey",
+        "ToyFactory.UI",
         "Unity.AI.Navigation",
         "Unity.Timeline",
         "Unity.Cinemachine"

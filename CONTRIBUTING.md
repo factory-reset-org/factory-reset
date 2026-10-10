@@ -60,7 +60,7 @@ Check your weekly count: `git shortlog -sn --since="1 week ago"`.
   | `ToyFactory.Runtime` | AI.Core, AI.Agents, Interfaces, AI Navigation |
   | `ToyFactory.Journey` | Interfaces, AI.Core, Timeline, Cinemachine (never AI.Agents, Runtime or UI) |
   | `ToyFactory.UI` | Interfaces, Journey (events only), TextMeshPro, uGUI (never AI.Agents or Runtime) |
-  | `ToyFactory.Tests.EditMode` | AI.Core, AI.Agents, Interfaces, Journey, test framework |
+  | `ToyFactory.Tests.EditMode` | AI.Core, AI.Agents, Interfaces, Journey, UI, test framework |
 
 - `ToyFactory.Journey` holds chapters (`Journey/Chapters/`, S1) and cutscenes (`Journey/Cutscenes/`, S4). It never references AI.Agents, Runtime or UI. The UI assembly reads Journey events only, and Runtime must not reference Journey or UI.
 - `Player/`, `Interaction/` and `Managers/` compile into Unity's default assembly. They can use every assembly above, but Runtime cannot see them, so Runtime talks to them only through `Interfaces/`.

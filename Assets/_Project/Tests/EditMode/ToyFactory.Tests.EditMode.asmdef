@@ -8,6 +8,7 @@
         "ToyFactory.AI.Agents",
         "ToyFactory.Interfaces",
         "ToyFactory.Journey",
+        "ToyFactory.UI",
         "Unity.Timeline"
     ],
     "includePlatforms": [
