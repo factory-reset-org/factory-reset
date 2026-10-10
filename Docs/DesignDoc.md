@@ -309,6 +309,8 @@ static void Register() => AgentDebugOverlay.Register(new TrackerOverlayLayer());
 
 **Debug-only accessors:** `AgentController.Brain` and `AgentController.Follower` exist for the overlay. Game code must not use `Brain`: the journey and UI still talk to agents only through events and the blackboard. `AgentPathFollower.RemainingWaypointCount` / `RemainingWaypoint(i)` expose the route left to walk; the Captain exposes its goals, `GoalProbability(i)`, `PredictedRoute`, `HasTarget` and `TargetCell`.
 
+**Demo: intercept against chase** (for recording the comparison the accuracy evidence measured). In Play mode, *Factory Reset → Demo → Intercept vs Chase* adds a second Captain body, "Captain (chaser)", two metres from the real one, driven by `ChaserBrain`: every 0.5 s the shortest route to the player's cell at the same 4.6 m/s, no prediction, no shooting. It is spawned through `AgentSpawner.Spawn`, so the overlay draws it, and the overlay is switched on. *Factory Reset → Demo → Top-Down View* adds a camera 37 m above the level and hides the ceilings while it is on (play only; nothing is saved), and the overlay places its labels for that camera (`AgentDebugOverlay.LabelCamera`). From Chapter 3, run from the Painting Room to the Storage task: the Captain's predicted route, its intercept cell with both arrival times, and the chaser's route behind the player are all on screen. Evidence: `Docs/Evidence/Agents/intercept_vs_chase_top.png`, `intercept_vs_chase_overlay.png`.
+
 ## 3. Search contracts
 <!-- ICostModel, PathResult, IPathfinder -->
 
