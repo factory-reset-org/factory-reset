@@ -187,15 +187,19 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.WindUpToy
   walkSeconds: 8
-  walkSpeed: 0.8
+  walkSpeed: 0.9
   tickInterval: 0.6
   tickLoudness: 70
-  lingerSeconds: 4
+  lingerSeconds: 2.5
+  wander: 2.5
+  hopHeight: 0.05
+  hopRate: 18
   obstacleMask:
     serializedVersion: 2
     m_Bits: 0
   lookAhead: 0.35
   turnCheckInterval: 0.2
+  model: {fileID: 6311451660001509668}
   key: {fileID: 4800260693321668108}
   keyDegreesPerSecond: 360
 --- !u!1 &4292072582663328582
