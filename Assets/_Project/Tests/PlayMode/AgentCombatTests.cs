@@ -43,6 +43,18 @@ namespace ToyFactory.Tests
             public void OnDestroyed() { }
         }
 
+        // A wind-up toy brain (the Tracker) that is rewinding while Rewinding is set.
+        sealed class WindUpBrain : IAgentBrain, IWindUpState
+        {
+            public bool Rewinding;
+            public float Energy01 => Rewinding ? 0f : 1f;
+            public bool IsRewinding => Rewinding;
+            public AgentIntent Tick(in AgentContext ctx) => default;
+            public void OnGraphChanged(IReadOnlyList<Vector2Int> changedCells) { }
+            public void OnStunned(float duration) { }
+            public void OnDestroyed() { }
+        }
+
         [TearDown]
         public void TearDown()
         {
@@ -58,7 +70,7 @@ namespace ToyFactory.Tests
 
         // An agent at the origin facing +Z, with a weapon if asked. Fields are set before Awake.
         AgentController Agent(int hitPoints = 3, float knockOut = 7f, bool scrap = false, bool armed = false,
-            IdleBrain brain = null)
+            IAgentBrain brain = null)
         {
             var go = new GameObject("Agent");
             _created.Add(go);
@@ -129,6 +141,34 @@ namespace ToyFactory.Tests
             yield return Seconds(0.3f);
             Assert.IsFalse(agent.IsDisabled, "Reassembled after the knock-out time.");
             Assert.AreEqual(3, agent.HitPointsLeft, "Back to full hit points.");
+        }
+
+        [Test]
+        public void HitsCountDoubleWhileAWindUpToyRewinds()
+        {
+            var brain = new WindUpBrain();
+            AgentController agent = Agent(hitPoints: 3, brain: brain);
+
+            agent.TakeHit();
+            Assert.AreEqual(2, agent.HitPointsLeft, "A wound-up toy loses one per hit.");
+
+            brain.Rewinding = true;
+            agent.TakeHit();
+            Assert.AreEqual(0, agent.HitPointsLeft, "Rewinding, the hit costs two.");
+            Assert.IsTrue(agent.IsDisabled, "Knocked out.");
+        }
+
+        [Test]
+        public void ADoubleHitNeverTakesHitPointsBelowZero()
+        {
+            var brain = new WindUpBrain { Rewinding = true };
+            AgentController agent = Agent(hitPoints: 3, brain: brain);
+
+            agent.TakeHit();
+            agent.TakeHit();
+
+            Assert.AreEqual(0, agent.HitPointsLeft);
+            Assert.IsTrue(agent.IsDisabled, "Three hit points go in two rewinding hits.");
         }
 
         [Test]

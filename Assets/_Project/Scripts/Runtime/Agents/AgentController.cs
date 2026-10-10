@@ -181,6 +181,9 @@ namespace ToyFactory.Runtime.Agents
         /// </summary>
         public IWindUpState WindUp { get; private set; }
 
+        /// <summary>Hit points one hit costs while the agent rewinds: hits count double (the Tracker's counterplay window).</summary>
+        public const int RewindHitCost = 2;
+
         /// <inheritdoc/>
         public Vector3 HearingPosition => transform.position;
 
@@ -204,7 +207,9 @@ namespace ToyFactory.Runtime.Agents
         /// <summary>
         /// One hit from the player's blaster (S2's <see cref="IDamageable"/>). Each hit costs a hit
         /// point; at 0 the agent goes down: scrapped for good if it is a Saboteur, otherwise knocked
-        /// out for <c>knockOutSeconds</c>, after which it reboots with full hit points. Hits on an
+        /// out for <c>knockOutSeconds</c>, after which it reboots with full hit points. A wind-up
+        /// toy that has stopped to rewind (<see cref="IWindUpState.IsRewinding"/>, the Tracker) is
+        /// defenceless, so each hit then costs <see cref="RewindHitCost"/>. Hits on an
         /// agent that is already down, frozen in a cutscene or scrapped are ignored.
         /// </summary>
         public void TakeHit()
@@ -212,7 +217,8 @@ namespace ToyFactory.Runtime.Agents
             if (IsDead || IsDisabled || IsFrozen || HitPointsLeft <= 0)
                 return;
 
-            HitPointsLeft--;
+            int cost = WindUp != null && WindUp.IsRewinding ? RewindHitCost : 1;
+            HitPointsLeft = Mathf.Max(0, HitPointsLeft - cost);
             Hit?.Invoke();
             _health?.OnHealthChanged(HitPointsLeft, hitPoints);
             if (HitPointsLeft > 0)
