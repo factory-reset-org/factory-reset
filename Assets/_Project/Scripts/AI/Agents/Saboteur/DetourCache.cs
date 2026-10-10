@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Unity.Profiling;
 using UnityEngine;
 using ToyFactory.AI.Core.Blackboard;
@@ -73,6 +74,11 @@ namespace ToyFactory.AI.Agents.Saboteur
 
         static readonly ProfilerMarker Marker = new ProfilerMarker("AI.Saboteur.Detour");
 
+        // One cache per blackboard. The table holds its keys weakly, so a cache lives exactly as long as
+        // the level's blackboard and nothing is kept across levels or tests.
+        static readonly ConditionalWeakTable<WorldBlackboard, DetourCache> Shared =
+            new ConditionalWeakTable<WorldBlackboard, DetourCache>();
+
         sealed class DoorEntry
         {
             public int Id;
@@ -99,6 +105,19 @@ namespace ToyFactory.AI.Agents.Saboteur
         {
             _grid = grid ?? throw new ArgumentNullException(nameof(grid));
             _pathfinder = pathfinder ?? throw new ArgumentNullException(nameof(pathfinder));
+        }
+
+        /// <summary>
+        /// The one cache for a level's squad: every Saboteur built over the same blackboard gets the
+        /// same instance, so four Saboteurs cost the searches of one, without the spawner passing a
+        /// cache around. The grid and pathfinder of the first call are used.
+        /// </summary>
+        public static DetourCache For(WorldBlackboard blackboard, GridGraph grid, IPathfinder pathfinder)
+        {
+            if (blackboard == null)
+                throw new ArgumentNullException(nameof(blackboard));
+
+            return Shared.GetValue(blackboard, _ => new DetourCache(grid, pathfinder));
         }
 
         /// <summary>The open doors from the latest refresh. Empty while <see cref="HasObjective"/> is false.</summary>

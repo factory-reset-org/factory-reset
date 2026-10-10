@@ -200,15 +200,23 @@ namespace ToyFactory.Runtime.Agents
                             new PhysicsCoverVisibility(setup.Grid), setup.Identity.Id, setup.PatrolPoints);
                     return new MockPathProvider(setup.PatrolPoints);
                 case AgentType.Saboteur:
-                    // The four Saboteurs share one squad through the blackboard's claims; the
-                    // squad slot is the letter. They attack a player in sight within 8 m, using
-                    // the same physics sight check as the Guard. Without a grid, or a spawn point
-                    // with no squad slot (A-D), it falls back to the mock.
+                    // The four Saboteurs share one squad through the blackboard's claims and one
+                    // detour cache; the squad slot is the letter. They attack a player in sight
+                    // within 8 m (the Guard's physics sight check) and close doors that lengthen the
+                    // player's route; the controller carries the door out and answers through
+                    // IActionFeedback. Without a grid, or a spawn point with no squad slot (A-D), it
+                    // falls back to the mock.
                     if (setup.HasGrid && setup.Identity.IsInSquad && setup.Identity.SquadIndex <= (int)SaboteurLetter.D)
+                    {
+                        DetourCache detours = DetourCache.For(setup.Blackboard, setup.Grid, setup.Pathfinder);
+                        var candidates = new CompositeCandidateSource(
+                            new AttackPlayerSource(new CoverVisibilitySight(new PhysicsCoverVisibility(setup.Grid))),
+                            new CloseDoorSource(detours));
                         return new SaboteurBrain(
                             new SaboteurIdentity(setup.Identity.Id, (SaboteurLetter)setup.Identity.SquadIndex),
                             setup.Grid, setup.Pathfinder, setup.Blackboard.Claims, setup.PatrolPoints, null, 0,
-                            new AttackPlayerSource(new CoverVisibilitySight(new PhysicsCoverVisibility(setup.Grid))));
+                            candidates, detours);
+                    }
                     return new MockPathProvider(setup.PatrolPoints);
                 default:
                     return new MockPathProvider(setup.PatrolPoints);

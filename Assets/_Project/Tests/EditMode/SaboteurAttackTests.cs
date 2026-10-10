@@ -94,7 +94,8 @@ namespace ToyFactory.Tests.EditMode
 
             Assert.AreEqual(1, list.Count);
             Assert.AreEqual(Attack, list[0].Key);
-            Assert.AreEqual(0.75f, list[0].BaseScore, 1e-4f, "1 - d / 8 at 2 m.");
+            // Two considerations at full health: raw 1 - 2/8 = 0.75, compensated 0.75 + 0.25 x 0.5 x 0.75.
+            Assert.AreEqual(0.84375f, list[0].BaseScore, 1e-4f);
         }
 
         [Test]
@@ -281,12 +282,12 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void ThirdAttackerIsSaturatedAndPrefersToIdleWhenItsScoreIsLow()
         {
-            // 6.4 m: score 0.2, above Idle (0.1). Saturated by two attackers: 0.2 x 0.45 = 0.09, below it.
+            // 7.04 m: raw 0.12, compensated 0.1728, above Idle (0.1). Saturated by two attackers: x 0.45 = 0.078, below it.
             SaboteurBrain a = Brain(SaboteurLetter.A);
             SaboteurBrain b = Brain(SaboteurLetter.B);
             SaboteurBrain c = Brain(SaboteurLetter.C);
             WorldBlackboard near = WorldWith(PlayerAt(2f));
-            WorldBlackboard edge = WorldWith(PlayerAt(6.4f));
+            WorldBlackboard edge = WorldWith(PlayerAt(7.04f));
 
             // A and B attack from 2 m.
             a.Tick(Ctx(near, 0f));
@@ -295,7 +296,7 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual(Attack, a.CurrentAction);
             Assert.AreEqual(Attack, b.CurrentAction);
 
-            // C, 6.4 m away, sees two attackers and idles.
+            // C, 7.04 m away, sees two attackers and idles.
             c.Tick(Ctx(edge, 0f));
             c.Tick(Ctx(edge, 2 * SquadCoordinator.StaggerStep));
             Assert.AreEqual(SaboteurActionKind.Idle, c.CurrentAction.Kind);

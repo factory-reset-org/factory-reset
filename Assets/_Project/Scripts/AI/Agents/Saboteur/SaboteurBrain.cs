@@ -25,7 +25,7 @@ namespace ToyFactory.AI.Agents.Saboteur
     /// and can be tested on a plain <see cref="GridGraph"/>. Movement routes come from the
     /// shared <see cref="IPathfinder"/> (S2's A*); the brain never searches by itself.
     /// </remarks>
-    public sealed class SaboteurBrain : IAgentBrain, IDropsItems
+    public sealed class SaboteurBrain : IAgentBrain, IDropsItems, IActionFeedback, IHealthAware
     {
         /// <summary>Ground distance, in metres, from a door within which the Saboteur can close it.</summary>
         public const float DoorReachMetres = 1.5f;
@@ -93,6 +93,7 @@ namespace ToyFactory.AI.Agents.Saboteur
         // CloseDoor: the plan for the selected door. Travel sends one route, then the Saboteur stops
         // within reach of the door and asks for the close until the door shuts or the time is up.
         bool _doorActive;
+        bool _doorResolved;
         ActionKey _doorKey;
         bool _doorRouteSent;
         bool _doorEmitted;
@@ -104,6 +105,11 @@ namespace ToyFactory.AI.Agents.Saboteur
         // may next ask for a shot.
         bool _attacking;
         float _nextShotTime;
+
+        // The game time of the latest tick, for answers that arrive between ticks, and the Saboteur's
+        // own health as the controller last reported it.
+        float _lastTime;
+        float _healthFraction = 1f;
 
         bool _destroyed;
 
@@ -193,6 +199,7 @@ namespace ToyFactory.AI.Agents.Saboteur
 
             _lastCell = ctx.Cell;
             _hasLastCell = true;
+            _lastTime = ctx.Time;
 
             if (!_scheduleStarted)
             {
@@ -303,6 +310,37 @@ namespace ToyFactory.AI.Agents.Saboteur
 
             if (_identity.CarriesKeycard)
                 _keycardDrop = new ItemDrop(ItemDropKind.Keycard, _keycardItemId, FindKeycardCell());
+        }
+
+        /// <summary>This Saboteur's own health as last reported, 0 to 1.</summary>
+        public float HealthFraction => _healthFraction;
+
+        /// <inheritdoc />
+        public void OnHealthChanged(int hitPointsLeft, int maxHitPoints)
+        {
+            _healthFraction = maxHitPoints > 0 ? Mathf.Clamp01(hitPointsLeft / (float)maxHitPoints) : 1f;
+            (_source as IHealthAware)?.OnHealthChanged(hitPointsLeft, maxHitPoints);
+        }
+
+        /// <summary>
+        /// The runtime's answer to a door request, exactly once per request: success when the door was
+        /// closed, failure when it could not be reached or registered, or this Saboteur was knocked out
+        /// first. Either answer starts the door's cooldown, so the Saboteur neither re-closes a door it
+        /// just shut nor stands at one it cannot close; the plan ends on the next tick.
+        /// </summary>
+        public void OnActionResolved(AgentAction action, int targetId, bool success)
+        {
+            if (_destroyed || action != AgentAction.CloseDoor)
+                return;
+
+            var key = new ActionKey(SaboteurActionKind.CloseDoor, targetId);
+            if (success)
+                _selector.NotifySuccess(key, _lastTime);
+            else
+                _selector.NotifyFailure(key, _lastTime);
+
+            if (_doorActive && _doorKey.Equals(key))
+                _doorResolved = true;
         }
 
         /// <inheritdoc />
@@ -425,6 +463,7 @@ namespace ToyFactory.AI.Agents.Saboteur
         void ResetDoorPlan()
         {
             _doorActive = false;
+            _doorResolved = false;
             _doorRouteSent = false;
             _doorEmitted = false;
             _doorInReach = false;
@@ -438,6 +477,14 @@ namespace ToyFactory.AI.Agents.Saboteur
         {
             intent = default;
             ActionKey key = _selector.Current;
+
+            // The runtime has already answered this request (the cooldown is set); end the plan.
+            if (_doorResolved)
+            {
+                EndDoorPlan(key, ctx.Time, false, false);
+                return false;
+            }
+
             if (!_detours.TryGetCells(key.TargetId, out IReadOnlyList<Vector2Int> cells) || cells.Count == 0)
             {
                 EndDoorPlan(key, ctx.Time, false, false);

@@ -99,9 +99,9 @@ The brain carries it out in two phases, only when it was given the shared `Detou
 
 - **Travel.** One A* route to the nearest door cell is sent (`Path`), and sent again if a changed cell lies on it. A route that cannot be found, or ends out of reach, ends the plan as a failure.
 - **Execute.** Within 1.5 m of the door the body stops once and each tick the intent is `AgentAction.CloseDoor` with `ActionTargetId` = the door id (`Door.doorId` = `DoorwayMarker.DoorId` = grid `DoorId`).
-- **End.** The runtime reports no result, so success is read from the grid: the door's cells are closed. A door this Saboteur had asked for starts the door cooldown (10 s). A door still open 3 s after the Saboteur reached it is a failure; it starts the same cooldown through `ActionSelector.NotifyFailure`, so the Saboteur does not stand at a door the runtime cannot close. Either way the claim is released and the Saboteur patrols again.
+- **End.** The controller answers every door request exactly once through `IActionFeedback.OnActionResolved(action, targetId, success)`: success when it closed the door, failure when the door is not registered, the Saboteur stayed out of reach for 2 s, a newer request replaced it, or the Saboteur was knocked out first. Either answer starts the door cooldown (10 s) at once and ends the plan on the next tick, with the claim released. The grid still ends the plan if the door is seen closed, and a door still open 3 s after the Saboteur reached it is given up as a failure, so a brain without a controller (tests) still cannot stand at a door for ever. A door shut by someone else just stops being a candidate and earns no cooldown.
 
-Not wired into the level yet: the controller does not execute `CloseDoor`, so the spawner will pass `CloseDoorSource` only once S4's executor exists. `CompositeCandidateSource` combines it with `AttackPlayerSource`.
+Wired into the level through `AgentSpawner.CreateBrain` (see Spawn hookup): the controller carries `CloseDoor` out and answers through `IActionFeedback`. `CompositeCandidateSource` combines it with `AttackPlayerSource`.
 
 ### Permanent destruction
 
@@ -219,7 +219,7 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | `TargetClaims` reachable through `WorldBlackboard` | S2 | Done: `WorldBlackboard.Claims`, passed to the brain by the spawner. |
 | Player state (position, cell, ammo, overcharge, alive, aiming), door/trap/battery state | S2 | Not on the blackboard. Fake snapshots in tests. |
 | Pathfinder, grid and instance identity (letter, claim id, keycard carrier) given at spawn; an id on `IAgentState` | S4 (with S1 `GridManager`) | Done: `BrainSetup` and `AgentIdentity` (`IAgentState.Identity`); see Spawn hookup. |
-| Action execution and success/failure feedback | S4 controller, S2 targets | `AgentController` applies paths only. |
+| Action execution and success/failure feedback | S4 controller, S2 targets | Done (S4, #217): `AgentController` carries out door, trap and battery actions through `SabotageTargets` and answers through `IActionFeedback`; the brain uses it for door cooldowns. It also tells the brain its health through `IHealthAware`. |
 | `ISabotageable` on traps and batteries | S2 | `Door` only. |
 | `ObjectiveTargets`; `PredictedGoal` with confidence | S1; S4 | Not published. Fixed test objective. |
 | Game time in `AgentContext` | S4 / S2 | `Time.time` today. |
@@ -234,7 +234,7 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | Brain skeleton: identity, 4 Hz selection, Idle/Patrol, stun, graph changes, destruction | Implemented | `SaboteurIdentity`, `SaboteurBrain`; `SaboteurBrainTests` |
 | Decision trace for the debug panel: each candidate's raw and base score, each consideration's input and score, ranking, and why a candidate lost | Implemented; filled by the brain and `ActionSelector`, no allocation per decision | `UtilityDecisionTrace`, `SaboteurBrain.LastDecision`; `UtilityDecisionTraceTests` |
 | AttackPlayer | Implemented, tested and wired into the level through `AgentSpawner.CreateBrain` (see Spawn hookup) | `AttackPlayerSource`, `IPlayerSight`, `CoverVisibilitySight`, `SaboteurBrain`; `SaboteurAttackTests` |
-| CloseDoor | Implemented in the brain and tested (travel, execute, cooldown); not wired into the level until the controller executes `CloseDoor` | `CloseDoorSource`, `CompositeCandidateSource`, `SaboteurBrain`; `SaboteurDetourTests` |
+| CloseDoor | Implemented, tested and wired into the level; uses `IActionFeedback`. Never offered in the level as built, because every door is a lockout (see Limits) | `CloseDoorSource`, `CompositeCandidateSource`, `DetourCache.For`, `SaboteurBrain`; `SaboteurDetourTests`, `SaboteurFeedbackTests`, `SaboteurDoorSceneTests` |
 | ArmTrap, StealBattery, Flee | Not started | Need the blackboard facts in the handoff table |
 | Squad layer: claim on commit, "not claimed" veto, displacement check, release, attack saturation, tick stagger | Implemented in the brain: claims on commit, the veto and saturation applied to every candidate, stagger by letter, release on stun and destruction. The candidates come from an `ICandidateSource`; `AttackPlayerSource` is the first | `SquadCoordinator`, `ICandidateSource`, `SaboteurBrain`; `SquadClaimTests`, `SaboteurSquadTests` |
 | Keycard drop through `IDropsItems` | Implemented; the battery drop waits for StealBattery | `IDropsItems`, `SaboteurBrain.GetDrops`; `SaboteurDropTests` |
@@ -276,14 +276,14 @@ Stun calls `EndPlan` and destruction calls `OnDestroyed`, so a stunned or destro
 
 ### AttackPlayer
 
-`AttackPlayerSource` offers AttackPlayer when the player is known and alive, the ground-plane distance is under 8 m (height is ignored) and the player has a line of sight to the Saboteur. The score is `1 - d / 8`, one consideration through `UtilityAction`, so it is 0.75 at 2 m and 0.1 at 7.2 m, where it meets Idle. The squad layer then multiplies it by 0.45 when two other live instances are attacking. A Saboteur that would score 0.2 on its own (6.4 m away) therefore idles once two others attack, and attacks when it is the first.
+`AttackPlayerSource` offers AttackPlayer when the player is known and alive, the ground-plane distance is under 8 m (height is ignored) and the player has a line of sight to the Saboteur. Two considerations through `UtilityAction`: `1 - d / 8` for the distance and the Saboteur's own health fraction (`IHealthAware`, full health until the controller says otherwise). At full health a player 2 m away gives raw 0.75, compensated 0.84; at half health raw 0.375, compensated 0.49. The score meets Idle (0.1) at about 7.2 m at full health, and a damaged Saboteur stops attacking from nearer. A Saboteur with no health left offers no attack. The squad layer then multiplies the score by 0.45 when two other live instances are attacking: a Saboteur 7.04 m away (raw 0.12, compensated 0.17) idles once two others attack, and attacks when it is the first.
 
 - **Line of sight.** The brain asks `IPlayerSight.CanSeeCell(cell)`. `CoverVisibilitySight` answers it from the Guard's `ICoverVisibility` (a ray from the player's eye to a point 1 m above the Saboteur's cell, characters skipped), so the runtime's one physics sight check, S2's `PhysicsCoverVisibility`, serves both agents and the brain stays free of physics.
 - **Intent.** While AttackPlayer is selected and the player is in range, `Tick` stops the body once (an empty path), sets `LookTarget` to the player and requests `AgentAction.Shoot` at most every 1.5 s (`AttackIntervalSeconds`, a starting value to be tuned in play). The weapon ignores a request while a shot is in progress and turns the body to face the player while it aims. It is checked every tick, so a dead player or one who steps out of range ends the shooting at once rather than at the next 4 Hz decision. When the attack ends, the next tick routes the patrol afresh.
 - **Not in the score yet.** The design prefers a Saboteur with more health, but `AgentContext` carries no own-health fact; it joins as a second consideration when it exists (it is also Flee's input). There is no attack-ready cooldown beyond the 1.5 s pacing, because the runtime reports no shot result.
 - **Damage.** The Saboteur prefab has no `AgentWeapon` (S4's claw swipe plays on `Shoot`), so today an attack plays the swipe but deals no damage. Who delivers the claw's damage is an open question for S4.
 
-**Limits.** In the level the candidates are Idle and AttackPlayer, so no door, trap or battery claim is ever made yet: CloseDoor exists but is not wired until the controller executes it. The claim behaviour is exercised in `SaboteurSquadTests` and `SaboteurDetourTests`. A claim is released when the plan changes, on stun, on destruction and when the claim is lost, but action end and invalidation (door closed first, battery collected, trap armed) need the runtime's completion feedback, which does not exist yet.
+**Limits.** In the level the candidates are Idle, AttackPlayer and CloseDoor; ArmTrap and StealBattery wait on S2's trap and battery facts on the blackboard, and Flee is not built. **Every door in the level is the only link between its two rooms** (probed on 10 October: closing door 1 or door 2 leaves the player no route, for every player and objective position tested), so a closure is always a lockout and CloseDoor is never offered in the level as built. It needs a second route around at least one door (a loop in the level, S1's area). `SaboteurDoorSceneTests` proves the chain end to end by cutting a gap through the wall next to door 1. The claim behaviour is exercised in `SaboteurSquadTests`, `SaboteurDetourTests` and `SaboteurFeedbackTests`.
 
 ### Spawn hookup
 
@@ -294,7 +294,10 @@ if (setup.HasGrid && setup.Identity.IsInSquad && setup.Identity.SquadIndex <= (i
     return new SaboteurBrain(
         new SaboteurIdentity(setup.Identity.Id, (SaboteurLetter)setup.Identity.SquadIndex),
         setup.Grid, setup.Pathfinder, setup.Blackboard.Claims, setup.PatrolPoints, null, 0,
-        new AttackPlayerSource(new CoverVisibilitySight(new PhysicsCoverVisibility(setup.Grid))));
+        new CompositeCandidateSource(
+            new AttackPlayerSource(new CoverVisibilitySight(new PhysicsCoverVisibility(setup.Grid))),
+            new CloseDoorSource(detours)),
+        detours);   // detours = DetourCache.For(setup.Blackboard, setup.Grid, setup.Pathfinder)
 return new MockPathProvider(setup.PatrolPoints);
 ```
 
@@ -302,7 +305,7 @@ return new MockPathProvider(setup.PatrolPoints);
 - All four brains get the blackboard's one `TargetClaims`, so `SquadCoordinator.For(claims)` makes them one squad. Each level load builds a new blackboard, so a new squad.
 - The grid and pathfinder are the level grid and the one `AStarSearch` the spawner shares with every brain.
 - Without a grid, or for a Saboteur spawn point with no squad slot or a slot past D, the case keeps the mock. A mis-set spawn point never becomes a second Saboteur A, and it does not stop the other agents spawning, as an exception from `SaboteurIdentity` inside `SpawnAll` would. The spawner already logs an error when two Saboteur spawn points share a slot.
-- Each Saboteur gets its own `AttackPlayerSource` over its own `PhysicsCoverVisibility`, the Guard's physics sight check, so the brains share no scratch buffers. `CloseDoorSource` and the shared `DetourCache` are not passed yet: the controller does not execute `CloseDoor`, and a Saboteur would walk to a door and give up. They are added here when it does.
+- Each Saboteur gets its own `AttackPlayerSource` over its own `PhysicsCoverVisibility` (the Guard's physics sight check) and its own `CloseDoorSource`, so the brains share no scratch buffers. All four share one `DetourCache`, found with `DetourCache.For(blackboard, grid, pathfinder)` (a weak table keyed by the level's blackboard, like `SquadCoordinator.For`), so the squad costs the searches of one Saboteur.
 - The keycard item id stays at its default (0). S2's `KeycardDrop` places the keycard from `AgentEvents.OnDestroyed`, and nothing in the runtime calls `IDropsItems.GetDrops` yet.
 
 Checked on 9 October 2026 in batch-mode Play, in `Test_AgentSpawner` (6 s) and in `Agents.unity` loaded from Bootstrap with the intro skipped (8 s): all four Saboteurs ran `SaboteurBrain` as A-D, reported the Patrol state and logged no console errors.

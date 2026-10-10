@@ -102,7 +102,7 @@ namespace ToyFactory.AI.Agents.Saboteur
     /// Combines several candidate sources into one, in order, so a brain can offer AttackPlayer
     /// and CloseDoor together.
     /// </summary>
-    public sealed class CompositeCandidateSource : ICandidateSource
+    public sealed class CompositeCandidateSource : ICandidateSource, IHealthAware
     {
         readonly ICandidateSource[] _sources;
 
@@ -125,6 +125,16 @@ namespace ToyFactory.AI.Agents.Saboteur
         {
             for (int i = 0; i < _sources.Length; i++)
                 _sources[i].AddCandidates(ctx, identity, candidates);
+        }
+
+        /// <inheritdoc />
+        public void OnHealthChanged(int hitPointsLeft, int maxHitPoints)
+        {
+            for (int i = 0; i < _sources.Length; i++)
+            {
+                if (_sources[i] is IHealthAware aware)
+                    aware.OnHealthChanged(hitPointsLeft, maxHitPoints);
+            }
         }
     }
 }
