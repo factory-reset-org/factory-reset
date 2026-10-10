@@ -336,7 +336,7 @@ Both write into a caller-owned list and allocate nothing once it has capacity.
 | `Env` | S1 | Static geometry, lighting, NavMesh, grid, chapter manager | Empty scene (light and camera) |
 | `Interactables` | S2 | Doors, boxes, belts, switches, task props, pickups. All non-static | Empty scene (light and camera) |
 | `Agents` | S4 | Agent spawner and spawn points, debug overlays, cutscene director, Timelines, cutscene cameras | Spawner, seven spawn points, cutscene director and debug overlay in place; Timelines and cameras planned |
-| `UI` | S3 | HUD, subtitles, chapter card, results screen, leaderboard | Planned |
+| `UI` | S3 | HUD, subtitles, chapter card, results screen, leaderboard | HUD, chapter card and subtitles in place; results, scoring and leaderboard planned |
 | `ModelShowcase` | S3 | Model turntable. Not in the build | In use |
 
 - Playing starts in `Bootstrap`, which loads the other scenes additively. `Env` is the active scene, so lighting is baked with only `Env` loaded and only `Env` holds static geometry.
@@ -571,6 +571,26 @@ The beacons change by swapping shared materials, which keeps the SRP Batcher. On
 
 The alarm colours belong to `LightingState`. A Timeline can frame or activate these objects, but a light that both a Timeline and `LightingState` animate would fight, so leave the alarm colour to the signals.
 
+### 6.4 HUD (S3, implemented)
+
+`UI.unity` holds one object, `HUD`, with `HudPresenter`. The presenter builds its uGUI objects in code (like the cutscene letterbox), so the scene stays a single component and there is no YAML to merge. Text uses Unity's built-in font: TextMeshPro would need its essential resources imported into the project, and nothing here needs them.
+
+| On screen | Reads | Notes |
+| --- | --- | --- |
+| Objectives panel: "CHAPTER n OF 4", title, one row per task with a tick, a "Restore switch n" row | `ChapterEvents` (`OnChapterStarted`, `OnTaskCompleted`) and the chapter manager's definitions | A HUD that wakes after the journey began catches up from the chapter flow |
+| Switch lamps and "n of 3" | `ChapterEvents.OnSwitchUnsealed` / `OnSwitchRestored`, and each chapter's phase | Sealed, ready (sun), restored (mint) |
+| Integrity, charge and overcharge bars | `PlayerState.Current` | Overcharge shows only while active; a missing player empties the bars |
+| Damage vignette | Integrity falling | A flash for 0.5 s after a hit, and a steady glow below 30% integrity |
+| Crosshair | - | Four ticks round an empty centre |
+| Objective arrow with distance | The chapter manager's current beacon target and `Camera.main` | Shown only when the objective is off screen, on the screen edge, pointing at it (or the way to turn if it is behind) |
+| Chapter card: tag, title, subtitle, four-stop route | `ChapterEvents.OnChapterStarted` | 4.5 s, fades, never blocks; waits for a cutscene to end |
+| Subtitle bar | `DialogueEvents` | Sorts above the letterbox; switches off the director's `PlaceholderSubtitles` the first time a line shows |
+
+- **Visibility.** The HUD shows while the game is playing or paused and no cutscene is running (`GameClock` state, `CutsceneEvents`). It is hidden on the title screen, in cutscenes and on the results screen. The subtitle bar is not part of that: it shows in cutscenes.
+- **Two canvases.** Panels and labels sit on the main canvas; the bars' fills, the arrow and the vignette sit on nested canvases, so a moving bar does not rebuild the text. The batch counts have not been measured yet.
+- **Not here yet.** The title and results screens, score, prompts and hold bar, hit flash, wind-up toy count and accuracy come with scoring and the Interfaces bridge from S2. The HUD reads no brain and computes no score.
+- **Tests.** `HudTests` (EditMode) covers `HudMath` (bars, vignette, arrow placement), `HudModel` and the card's timing; `HudSceneTests` (PlayMode, real scenes from Bootstrap) covers the chapter text, ticking a task, the bars and vignette after a hit, hiding in a cutscene, the subtitles and a missing player. `ToyFactory.Tests.EditMode` and `ToyFactory.Tests.PlayMode` now reference `ToyFactory.UI` so they can test it.
+
 ## 7. Decision log
 
 | Date | Decision | Alternatives considered | Because | Owner |
@@ -623,6 +643,7 @@ The alarm colours belong to `LightingState`. A Timeline can frame or activate th
 | 2026-10-09 | Bodies stop short of the player (`PlayerStandOff`) and the Tracker pounces with a keyframed whole-body hop added after the Animator; no knockback | Walking the brain's route onto the player; a knockback on the player (needs an `IPlayerState` change and S2's controller); a new bite clip on an override layer | The ramming came from the body following a route that ends inside the player, so the body is the place to stop it, for every agent at once. Curves added on top of the clips need no new layer that could fight the locomotion tree, and a whole-body hop reads as an attack where a head-only snap did not. Knockback was dropped: it changes the player's controls, which are S2's | S4 |
 | 2026-10-09 | Debug chapter jump (F6-F8) drives the real chapter flow forward and skips each cutscene, then moves the player | A start-at-chapter hook in `ChapterManager`; setting the flow's state directly | Going through `CompleteTask` and the cutscene runner means every listener sees the same events as in play, so the jumped-to world is the real one (doors open, Captain awake). It needed no change to S1's chapter code | S4 |
 | 2026-10-09 | Shooters turn to the target while aiming and fire only within 25 degrees of it, else drop the shot; each shot kicks the firing arm, torso and head | Firing from wherever the body faces; snapping the body round at the shot | The Captain was seen shooting out of the side of its cannon while walking across the player. Turning during the 0.3 s telegraph is visible and fair (the player sees it line up), and dropping a shot it cannot line up keeps every tracer leaving the barrel. The static aim pose did not read as firing; a kick per shot does | S4 |
+| 2026-10-09 | The HUD builds its uGUI objects in code under one `HudPresenter` in `UI.unity`, draws text with Unity's built-in font, and its pure parts (`HudMath`, `HudModel`) are tested from the EditMode and PlayMode test assemblies, which now reference `ToyFactory.UI` | Author the canvas by hand in the scene; use TextMeshPro; test only in Play | The cutscene letterbox already builds itself this way, so the scene is one component and cannot conflict on merge. TextMeshPro needs its essential resources imported into the project (fonts, settings, shaders), which a plain HUD does not justify. The bar fractions, the vignette and the arrow placement are plain arithmetic, so they are tested without a scene; the test assemblies need the UI reference for that, a shared-file change recorded here | S3 |
 
 ## 8. Greybox character model contract (S3)
 
