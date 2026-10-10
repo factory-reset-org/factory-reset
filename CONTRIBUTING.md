@@ -76,7 +76,7 @@ Check your weekly count: `git shortlog -sn --since="1 week ago"`.
 | `Env` | S1 (only scene with static geometry; bake lighting with Env alone loaded) |
 | `Interactables` | S2 (everything non-static, lit by Light Probes) |
 | `Agents` | S4 |
-| `UI` | S3 (HUD, subtitles, chapter card, results; added to Build Settings and loaded by S2) |
+| `UI` | S3 (HUD, subtitles, chapter card, title, results; added to Build Settings and loaded by S2) |
 | `ModelShowcase` | S3 (model turntable and wireframe line-up; never in build) |
 
 Only the owner edits a scene, including its metadata. Everyone else works in a personal test scene and hands over prefabs. Test scenes live under `Scenes/Test/` and stay out of the build.
@@ -85,6 +85,7 @@ Only the owner edits a scene, including its metadata. Everyone else works in a p
 
 - Blender sources go in `Blender/` (outside `Assets/`, so Unity never tries to import `.blend` files).
 - Export FBX to `Assets/_Project/Models/<Model>/`, overwriting the existing file so its `.meta` GUID is kept: Forward Y, Up Z, Apply Transform off, Apply Scalings "FBX Units Scale", Leaf Bones off, Object Types Empty and Mesh only, Bake Animation off. Keep **Bake Axis Conversion** enabled in the Unity model importer. This is the validated pipeline: models authored facing Blender +Y import facing Unity +Z, and every node in the rigid-part hierarchy keeps rotation 0 and scale 1.
+- Character and keycard materials (`Materials/Characters/M_Char_*`) are set by the menu item Factory Reset > Materials > Build Character Materials, which also rewrites the character prefab variants. Change a colour in `CharacterMaterialBuilder` and run it again; do not edit those materials or the prefab material slots by hand.
 - Textures power-of-two, BC7, through a shared texture import preset rather than one-off settings. The prop atlas is 1024 x 1024. Follow [Docs/ArtBible.md](Docs/ArtBible.md); S1 owns palette changes.
 - Only S1 commits lighting and NavMesh bake output, and only after major changes (LFS quota).
 

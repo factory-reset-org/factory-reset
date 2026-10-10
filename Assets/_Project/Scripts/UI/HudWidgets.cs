@@ -102,6 +102,59 @@ namespace ToyFactory.UI
             return canvas;
         }
 
+        /// <summary>A clickable button: a flat panel with a centred label, darkened on hover and press.</summary>
+        public static Button MakeButton(string name, Transform parent, string text, Color fill, Color textColour, int size)
+        {
+            Image image = Panel(name, parent, fill);
+            image.raycastTarget = true;
+
+            Button button = image.gameObject.AddComponent<Button>();
+            button.targetGraphic = image;
+            ColorBlock colours = button.colors;
+            colours.normalColor = Color.white;
+            colours.highlightedColor = new Color(0.86f, 0.86f, 0.86f, 1f);
+            colours.selectedColor = new Color(0.86f, 0.86f, 0.86f, 1f);
+            colours.pressedColor = new Color(0.68f, 0.68f, 0.68f, 1f);
+            colours.disabledColor = new Color(0.5f, 0.5f, 0.5f, 0.6f);
+            colours.fadeDuration = 0.08f;
+            button.colors = colours;
+
+            Label("Label", image.transform, text, size, textColour, TextAnchor.MiddleCenter);
+            return button;
+        }
+
+        /// <summary>A single-line text field with a placeholder.</summary>
+        public static InputField MakeInput(string name, Transform parent, string placeholder, int size, int characterLimit)
+        {
+            Image background = Panel(name, parent, PlumLight);
+            background.raycastTarget = true;
+            InputField field = background.gameObject.AddComponent<InputField>();
+            field.targetGraphic = background;
+
+            Text text = Label("Text", background.transform, string.Empty, size, Ink, TextAnchor.MiddleLeft, FontStyle.Normal);
+            text.rectTransform.offsetMin = new Vector2(16f, 4f);
+            text.rectTransform.offsetMax = new Vector2(-16f, -4f);
+            text.horizontalOverflow = HorizontalWrapMode.Overflow;
+            text.supportRichText = false;
+
+            Text hint = Label("Placeholder", background.transform, placeholder, size, InkDim, TextAnchor.MiddleLeft, FontStyle.Italic);
+            hint.rectTransform.offsetMin = new Vector2(16f, 4f);
+            hint.rectTransform.offsetMax = new Vector2(-16f, -4f);
+
+            field.textComponent = text;
+            field.placeholder = hint;
+            field.lineType = InputField.LineType.SingleLine;
+            field.characterLimit = characterLimit;
+            return field;
+        }
+
+        /// <summary>Makes the button's canvas able to take clicks.</summary>
+        public static void AllowClicks(Canvas canvas)
+        {
+            if (canvas.GetComponent<GraphicRaycaster>() == null)
+                canvas.gameObject.AddComponent<GraphicRaycaster>();
+        }
+
         /// <summary>Sets a bar's fill, a child image anchored to the left of its track.</summary>
         public static void SetFill(Image fill, float fraction)
         {
