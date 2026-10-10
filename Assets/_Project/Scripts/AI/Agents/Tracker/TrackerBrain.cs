@@ -47,11 +47,10 @@ namespace ToyFactory.AI.Agents.Tracker
         public const float ChaseSpeed = 4.6f;
         public const float SearchSpeed = 3.3f;
 
-        // Vision.
-        public const float VisionRange = 12f;
-        public const float VisionHalfAngle = 60f;
-        public const float ProximityRange = 2.5f;   // heard/felt all round at close range
-        public const float SightEndInset = 0.8f;    // see the GridSight remark
+        // Vision, as the prototype's Tracker: 16 m, a 144 degree cone, all round within 2.6 m.
+        public const float VisionRange = 16f;
+        public const float VisionHalfAngle = 72f;
+        public const float ProximityRange = 2.6f;   // heard/felt all round at close range
 
         // Timers, seconds of game time.
         public const float ChaseRepathInterval = 0.5f;
@@ -369,7 +368,8 @@ namespace ToyFactory.AI.Agents.Tracker
         {
             SensorSnapshot senses = _ctx.Senses;
             if (senses.HasNoise)
-                _noises.Remember(senses.NoiseSourceId, senses.NoisePosition, senses.NoiseLevel, senses.NoiseTime);
+                _noises.Remember(senses.NoiseSourceId, senses.NoisePosition, senses.NoiseLevel, senses.NoiseTime,
+                    senses.NoiseIsLure);
 
             // A lure blinds the Tracker to a player who is not right next to it.
             _lured = _noises.TryGetBestRepeating(Now, _ctx.Position, out _);
@@ -405,21 +405,13 @@ namespace ToyFactory.AI.Agents.Tracker
         }
 
         /// <remarks>
-        /// Line of sight traced on the grid. Cells within the 0.55 m agent clearance of a wall
-        /// are unwalkable even though nothing solid is there, so a player standing against a
-        /// wall would always be "behind" it. The line therefore stops 0.8 m short of the target,
-        /// past that clearance band; a real wall between them still blocks it.
+        /// Line of sight traced on the grid's sight layer (<see cref="GridLineCheck.HasLineOfSight"/>):
+        /// only obstacles at least 1.3 m tall and closed doors block it, as in the prototype, so
+        /// the Tracker sees over crates and belts. It used to trace walkable cells, where every
+        /// prop and the 0.55 m agent clearance round it blocked sight, so it missed a player in
+        /// plain view behind low clutter or past the corner of a press.
         /// </remarks>
-        bool GridSight(Vector3 from, Vector3 to)
-        {
-            Vector3 delta = to - from;
-            delta.y = 0f;
-            float distance = delta.magnitude;
-            if (distance <= SightEndInset)
-                return true;
-            Vector3 end = from + delta * ((distance - SightEndInset) / distance);
-            return GridLineCheck.IsWalkable(_grid, from, end);
-        }
+        bool GridSight(Vector3 from, Vector3 to) => GridLineCheck.HasLineOfSight(_grid, from, to);
 
         // ---- Movement -------------------------------------------------------------------
 
