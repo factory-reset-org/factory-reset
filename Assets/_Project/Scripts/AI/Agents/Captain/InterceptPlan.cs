@@ -5,7 +5,7 @@ namespace ToyFactory.AI.Agents.Captain
     /// <summary>What kind of cell the intercept planner chose.</summary>
     public enum InterceptKind
     {
-        /// <summary>No plan: the player cannot reach the goal, or the Captain is nowhere near the grid.</summary>
+        /// <summary>No plan: the player cannot reach the goal, the Captain cannot reach it either, or the Captain is nowhere near the grid.</summary>
         None,
 
         /// <summary>A chokepoint on the player's route the Captain reaches with the margin to spare.</summary>
@@ -14,8 +14,11 @@ namespace ToyFactory.AI.Agents.Captain
         /// <summary>No chokepoint qualified, so the first route cell that does.</summary>
         RouteCell,
 
-        /// <summary>No route cell qualified (the player is too close): go to the goal and defend it.</summary>
-        DefendGoal
+        /// <summary>No route cell qualified (the player is too close): go to the goal and defend it. Only when the Captain can reach the goal.</summary>
+        DefendGoal,
+
+        /// <summary>Not confident and out of contact with the player: wait at the likeliest goal, the place they must come to in the end.</summary>
+        Guard
     }
 
     /// <summary>

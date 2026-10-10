@@ -61,6 +61,7 @@ namespace ToyFactory.Journey.Cutscenes
         DialogueRunner _dialogue;
         VoiceBlips _blips;
         CutsceneCameraRig _camera;
+        CutsceneCuePlayer _cues;
         readonly List<string> _missingBindings = new List<string>();
         CutsceneDefinition _playing;
         bool _usingTimeline;
@@ -85,6 +86,13 @@ namespace ToyFactory.Journey.Cutscenes
         /// <summary>The cutscene dialogue, for tests and the debug overlay.</summary>
         public DialogueRunner Dialogue => _dialogue;
 
+        /// <summary>
+        /// Raised once per shot as its dialogue marker is reached, with the cutscene id and the
+        /// shot index (0 = the first). Cutscene-only actors use it to time their beats, such as
+        /// Unit 047's eyes switching on. Not raised for shots cut by a skip.
+        /// </summary>
+        public event System.Action<string, int> ShotStarted;
+
         /// <summary>The gameplay camera hand-over, for tests.</summary>
         public CutsceneCameraRig CameraRig => _camera;
 
@@ -105,6 +113,7 @@ namespace ToyFactory.Journey.Cutscenes
             _runner = new CutsceneRunner(cutscenes, this, () => GameClock.Current);
             _dialogue = new DialogueRunner(ConditionHolds);
             _camera = new CutsceneCameraRig(transform, cameraBlend);
+            _cues = GetComponent<CutsceneCuePlayer>();
             if (blipSource != null)
             {
                 _blips = new VoiceBlips(blipSource);
@@ -305,6 +314,14 @@ namespace ToyFactory.Journey.Cutscenes
                 return;
             }
 
+            // Show only: an alarm or a comic word. Nothing depends on it.
+            if (notification is CutsceneCueMarker cue)
+            {
+                if (_cues != null)
+                    _cues.Play(cue);
+                return;
+            }
+
             if (notification is ShotEndMarker)
             {
                 _shotOpen = false;
@@ -320,6 +337,7 @@ namespace ToyFactory.Journey.Cutscenes
             if (notification is DialogueMarker line && _playing?.Dialogue != null && line.Shot < _playing.Dialogue.ShotCount
                 && _shotsStarted.Add(line.Shot))
             {
+                ShotStarted?.Invoke(_playing.Id, line.Shot);
                 _dialogue.Enqueue(_playing.Dialogue.LinesOf(line.Shot));
                 if (line.WaitForLines && _dialogue.IsBusy)
                 {

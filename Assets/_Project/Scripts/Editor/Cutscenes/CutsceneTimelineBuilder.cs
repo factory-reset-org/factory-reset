@@ -21,7 +21,9 @@ namespace ToyFactory.Editor.Cutscenes
     /// clips on the Timeline's Cinemachine track, so the camera blends from one pose to the
     /// other while the shot's lines are said. On the marker track each shot gets a
     /// <see cref="DialogueMarker"/> that does not wait (the camera keeps moving), its Critical
-    /// signals, and a <see cref="ShotEndMarker"/> just before the next shot. A shot lasts as
+    /// signals, its cues (<see cref="CutsceneCuePlan"/>: alarms and comic words, each placed as
+    /// the line it belongs to starts), and a <see cref="ShotEndMarker"/> just before the next
+    /// shot. The director gets a <see cref="CutsceneCuePlayer"/> with the word sprites. A shot lasts as
     /// long as its lines take when nobody clicks. The Cinemachine track is bound to the
     /// gameplay camera's brain when the cutscene starts, so it is left unbound here.
     /// </remarks>
@@ -53,6 +55,7 @@ namespace ToyFactory.Editor.Cutscenes
 
             PlayableDirector playable = director.GetComponent<PlayableDirector>();
             ClearExposedReferences(playable);
+            EnsureCuePlayer(director);
             Transform actor = BuildActor(director.transform);
             Transform cameras = Recreate(director.transform, CamerasName);
 
@@ -124,6 +127,9 @@ namespace ToyFactory.Editor.Cutscenes
                 timeline.markerTrack.CreateMarker<DialogueMarker>(start).Configure(shot.Index, false);
                 foreach (string signal in shot.Signals)
                     timeline.markerTrack.CreateMarker<CriticalSignalMarker>(start).Configure(signal);
+                foreach (CutsceneCue cue in CutsceneCuePlan.For(id, shot.Index))
+                    timeline.markerTrack.CreateMarker<CutsceneCueMarker>(start + LineStart(script.LinesOf(shot.Index), cue.AtLine))
+                        .Configure(cue);
                 timeline.markerTrack.CreateMarker<ShotEndMarker>(end - EndLead);
 
                 start = end;
@@ -133,6 +139,48 @@ namespace ToyFactory.Editor.Cutscenes
             timeline.fixedDuration = start;
             EditorUtility.SetDirty(timeline);
             return timeline;
+        }
+
+        // Seconds into the shot at which line `index` starts: each earlier line types and holds.
+        static double LineStart(DialogueLine[] lines, int index)
+        {
+            double seconds = 0;
+            for (int i = 0; i < index && i < lines.Length; i++)
+                seconds += DialogueRunner.LineSeconds(lines[i].text != null ? lines[i].text.Length : 0);
+            return seconds;
+        }
+
+        const string WordFolder = "Assets/_Project/Textures/FX";
+
+        // The cue player on the director, with the comic word sprites (imported as sprites).
+        static void EnsureCuePlayer(CutsceneDirector director)
+        {
+            CutsceneCuePlayer player = director.GetComponent<CutsceneCuePlayer>();
+            if (player == null)
+                player = director.gameObject.AddComponent<CutsceneCuePlayer>();
+            string[] files = { "Comic_Alert.png", "Comic_AttenHut.png", "Comic_Defective.png", "Comic_Shutdown.png" };
+            var settings = new SerializedObject(player);
+            SerializedProperty words = settings.FindProperty("words");
+            words.arraySize = files.Length;
+            for (int i = 0; i < files.Length; i++)
+                words.GetArrayElementAtIndex(i).objectReferenceValue = WordSprite($"{WordFolder}/{files[i]}");
+            settings.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        static Sprite WordSprite(string path)
+        {
+            if (AssetImporter.GetAtPath(path) is TextureImporter importer && importer.textureType != TextureImporterType.Sprite)
+            {
+                importer.textureType = TextureImporterType.Sprite;
+                importer.spriteImportMode = SpriteImportMode.Single;
+                importer.alphaIsTransparency = true;
+                importer.mipmapEnabled = false;
+                importer.SaveAndReimport();
+            }
+            Sprite sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            if (sprite == null)
+                Debug.LogError($"No comic word sprite at {path}.");
+            return sprite;
         }
 
         static TimelineClip AddShot(CinemachineTrack track, PlayableDirector playable, CinemachineCamera camera,

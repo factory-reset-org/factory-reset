@@ -15,10 +15,11 @@ GameObject:
   - component: {fileID: 2553827492962338154}
   - component: {fileID: 1473701194945597901}
   - component: {fileID: 7976939757859409435}
-  - component: {fileID: 3617409041690556931}
   - component: {fileID: 329708286759965978}
   - component: {fileID: 5051987119079790304}
   - component: {fileID: 3090317589410989259}
+  - component: {fileID: 533241883171074607}
+  - component: {fileID: 7267757864147697595}
   m_Layer: 11
   m_Name: Agent_TrackerToy
   m_TagString: Untagged
@@ -154,23 +155,6 @@ MonoBehaviour:
   localAxis: {x: 0, y: 0, z: 1}
   woundSpeed: 180
   rewindSpeed: -720
---- !u!114 &3617409041690556931
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5330340715930117570}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e722a24db0bd39140b3c205bf825c152, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentFallApart
-  model: {fileID: 5840345058328913643}
-  reassembleSeconds: 1
-  burstSpeed: 2.5
-  scrapLingerSeconds: 2
-  scrapShrinkSeconds: 1
 --- !u!114 &329708286759965978
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -216,13 +200,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentBite
   root: {fileID: 2698674813350249490}
+  interval: 1.3
+  duration: 0.6
   body: {fileID: 8093518536634720327}
   head: {fileID: 3457907246626508527}
   earLeft: {fileID: 4320890861032664795}
   earRight: {fileID: 7997557415610406099}
   tail: {fileID: 4594606866831065849}
-  interval: 1.3
-  duration: 0.6
   forward:
     serializedVersion: 2
     m_Curve:
@@ -517,6 +501,49 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+--- !u!114 &533241883171074607
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5330340715930117570}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5839d5c4ed5f2cb4ea167bc66d363f60, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentKnockdown
+  model: {fileID: 5840345058328913643}
+  sparkMaterial: {fileID: 2100000, guid: 239af0130747e434099e034c0659c39b, type: 2}
+  knockOutWord: {fileID: 21300000, guid: a019917e8af69944fa8b4fe7d3887b49, type: 3}
+  scrapWord: {fileID: 21300000, guid: 0172a0140e32580459a38ad796afe4fc, type: 3}
+  tipAngle: 78
+  tipSeconds: 0.4
+  standSeconds: 0.5
+  scrapLingerSeconds: 1.2
+  scrapSinkSeconds: 0.7
+  wordWidth: 1.1
+  wordSeconds: 1
+--- !u!114 &7267757864147697595
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5330340715930117570}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a82b91abb02c3fd40a42409acf9f4866, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentLights
+  lights:
+  - {fileID: 6370580863138214147}
+  lightMaterial: {fileID: 2100000, guid: dd46163783547f24896c87f25e415eea, type: 2}
+  colour: {r: 0.3, g: 0.85, b: 0.4, a: 1}
+  intensity: 2.5
+  outSeconds: 0.35
+  onSeconds: 0.6
+  darkUntilCaptainWakes: 0
 --- !u!1001 &82796357970020494
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -620,6 +647,11 @@ Transform:
 --- !u!4 &5840345058328913643 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 5776768371921579621, guid: 97af3d092f863f343957168d3da13892, type: 3}
+  m_PrefabInstance: {fileID: 82796357970020494}
+  m_PrefabAsset: {fileID: 0}
+--- !u!23 &6370580863138214147 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 6435361651674773901, guid: 97af3d092f863f343957168d3da13892, type: 3}
   m_PrefabInstance: {fileID: 82796357970020494}
   m_PrefabAsset: {fileID: 0}
 --- !u!1 &6505100358721174609 stripped

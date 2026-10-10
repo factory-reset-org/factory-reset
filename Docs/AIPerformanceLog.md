@@ -121,7 +121,80 @@ Level grid with the prototype rooms (`Env.unity`, 83 x 83 cells of 0.5 m, 4,963 
 
 **What it shows:**
 - **On average the AI is cheap:** 0.18 ms a frame for all seven agents, about 1% of a 16.7 ms frame.
-- **But it spikes past the 2 ms budget on about 1% of frames** (p99 5.2 ms). The test logs a warning for this rather than failing, until the fix lands; the hard check comes back with it. Two brains cause it:
+- **But it spikes past the 2 ms budget on about 1% of frames** (p99 5.2 ms). The test logged a warning for this rather than failing; see the re-run after the Captain fix below. Two brains cause it:
   - **Captain:** 67 frames over 1 ms in 30 s, about two a second, which is its 2 Hz decision. Every spike is `DijkstraField.Compute`. With the player still, the cached goal fields are never rebuilt (5 computations, then none); the spikes come from the two fields each decision rebuilds while the player moves, the player's field (goal inference) and the Captain's own (intercept). One full-level field costs 4.33 ms median (6.95 ms worst, 4,878 cells expanded) in the editor; a bounded one 2.0 ms. Two in one decision exceed the budget. This is fixed and re-measured in `OptimisationLog.md`.
   - **Guard:** 83 frames over 1 ms. A* accounts for 19 of them (worst 5.8 ms); the rest is other work in the Guard's tick, probably cover scoring. Reported to S2.
 - **Limits:** editor timings with Mono; a player build is faster. The worst frame (44.6 ms) includes editor work outside the AI.
+
+### After the Captain fix (2026-10-09)
+
+Three changes, each written up in `OptimisationLog.md`:
+1. a shared neighbour table (`GridAdjacency`) that every field reads;
+2. a cost-only A* (`OneToOneCost`) for the two single-pair questions that used to build a whole field;
+3. goal fields repaired in place after a grid change (`DijkstraField.Refresh`), one per frame.
+
+Before and after were run back to back in one editor session: `develop` first, then this branch. That session ran the editor slower than the first run above (about 129 FPS, not 196), so compare the rows with each other, not with the table above.
+
+| Captain (S4), `Test_FourAgentsStress` | Avg ms / frame | p99 | Worst | Frames over 1 ms |
+| --- | --- | --- | --- | --- |
+| Before (`develop`, 3,843 frames) | 0.174 | 7.167 | 15.069 | 67 |
+| After (this branch, 3,875 frames) | 0.014 | 0.139 | 1.136 | 1 |
+
+`AI.DijkstraField.Compute` worst per frame: 14.98 ms before, 0.09 ms after. The new `AI.OneToOneCost.Compute` worst is 0.48 ms.
+
+**Pushed box (`Test_PushedBoxStress`).** This is a new evidence test in the same fixture: the same Chapter 4 run for 20 s, with a box-sized blocker moved one cell every 0.5 s through `GridManager.SetBlocker`, the call `PushableBox` makes. That is 40 moves and 41 grid changes, and every move makes all four of the Captain's goal fields stale.
+
+| Captain (S4), `Test_PushedBoxStress` | Avg ms / frame | p99 | Worst | Frames over 1 ms |
+| --- | --- | --- | --- | --- |
+| Before (`develop`, 2,476 frames) | 0.575 | 32.014 | 39.077 | 45 |
+| After (this branch, 2,670 frames) | 0.016 | 0.201 | 0.920 | 0 |
+
+After the change, all of the field work is repairs: 157 frames held one (40 moves × 4 goal fields, give or take a decision), with a worst of 0.51 ms. Before it, each move recomputed every goal field, plus the player's field and the Captain's own, all in one decision.
+
+**What it shows now:**
+- **The Captain** is at p99 0.14 ms in normal play and 0.20 ms with a box being pushed. Both tests now check its p99 against 1 ms, half the AI budget, and fail above it.
+- **The Guard** is what remains over the 2 ms AI budget: p99 4.93 ms, worst 23.6 ms, 78 frames over 1 ms. `AStarSearch` accounts for 41 of those frames (worst 19.2 ms). The total budget stays a warning until S2's fix; the test cannot fix another agent's brain. `AStarSearch` could read `GridAdjacency` the way `DijkstraField` now does, which took the field from 4.8 to 0.7 ms; this has been offered to S2.
+- **Limits:** editor timings. One Captain frame of 1.14 ms in the stress run is not a field: the field marker never went above 0.09 ms in the whole run. It is probably the Captain's own A* route (`MoveTo`) or editor noise.
+
+### After the Guard fix (2026-10-09)
+
+The Guard was the brain left over the AI budget above. Four changes, in the order they were made:
+1. **Sight memory** (`CachedCoverVisibility`): each cell's line of sight is tested once and remembered until the player changes cell, the grid changes, or the Guard's own cover is flanked. One cover decision used to ask about the same cell up to ten times (its own protection, its neighbours' peek checks, every A* step), and each ask is a physics raycast.
+2. **Best-first cover search** (`CoverEvaluator.FindBest`): every possible cell first gets an upper bound, its score if it turned out to be full, peekable cover. Cells are sight-tested in that order and the search stops once the worst cell kept scores at least the next bound. It returns the same top three as scoring every candidate (tested against the exhaustive ranking at three ranges). The cells next to obstacles, the only ones that can be cover, are worked out once per grid version instead of on every decision.
+3. **Bounded, cost-only path costing**: ranking needs the cost of a route, not the route, and only up to `MaxPathCost` (60), past which the travel term of the score is zero. `OneToOneCost` is used with that cost bound and a new effort limit of 400 cells (`GuardBrain.CostSearchCells`). A cover that cannot be costed within the limit counts as far. Whether it can be reached at all is read from `GridRegions`, the grid's connected areas, rebuilt only when the grid changes.
+4. **`AStarSearch` reads `GridAdjacency`**, the shared neighbour table, as offered above. Same paths.
+
+Changes 1, 2 and 4 do not change which cover is chosen. Change 3 does in one case: a cover that needs more than 400 cells of search to cost is scored as far even if its true cost was under 60.
+
+**How it was found.** The first two attempts were guesses and the second gained almost nothing. `Tests/PlayMode/GuardTickEvidenceTests` (category Evidence, explicit) was then written: the same scenario as `Test_FourAgentsStress`, with every slow Guard frame broken down by `ProfilerMarker`s inside `GuardBrain` (`AI.Guard.FindBest`, `AI.Guard.PathCost`, `AI.Guard.MoveTo`, ...), the sight checks made, and the Guard's state. It showed that with the sight memory in place the slow frames ran no sight checks at all: 46% of their time was the loop over about 3,700 cells looking for obstacles, and 45% was path costing that spread over most of the level, because out of the player's sight every step is cheap and the cost bound alone never stopped it.
+
+| Guard (S2), `Test_FourAgentsStress` | Avg ms / frame | p99 | Worst | Frames over 1 ms | AI total p99 | Budget warning |
+| --- | --- | --- | --- | --- | --- | --- |
+| Before (the 2026-10-09 run above) | not recorded | 4.93 | 23.6 | 78 | over 2 | yes |
+| Changes 1, 2, 4 (3,822 frames) | 0.093 | 2.434 | 12.915 | 82 | 2.523 | yes |
+| Plus the cost bound, no effort limit (3,357 frames) | 0.089 | 2.412 | 10.623 | 82 | 2.535 | yes |
+| All four (3,051 frames) | 0.068 | 1.690 | 7.931 | 52 | **1.755** | no |
+
+The last three rows are from one editor session; the first is the earlier session logged above, so compare it only roughly. A second run of the final build stalled the editor for 39 s in one frame (1,424 frames measured instead of about 3,000) and is not used.
+
+| `Test_GuardTickBreakdown`, slow frames only | Before the obstacle-cell list and the effort limit | After |
+| --- | --- | --- |
+| Guard frames over 1 ms | 88 | 50 |
+| `AI.Guard.FindBest`, average in a slow frame | 1.329 ms | 0.600 ms |
+| `AI.Guard.PathCost`, worst | 6.325 ms | 2.559 ms |
+| `AI.Guard.PathCost`, average in a slow frame | 1.299 ms | 1.254 ms |
+| Sight checks in the slow frames | 2,621 | 0 |
+
+**What it shows now:**
+- **The AI total is under its 2 ms budget** at p99 (1.76 ms) in the one clean run of the final build, and the warning is not logged. One clean run is thin evidence; it should be re-run before the warning is turned into a hard check.
+- **The Guard is at p99 1.69 ms**, from 4.93 ms. It is still the largest share of the AI budget.
+- **What is left:** path costing is still about 1.25 ms in a typical slow frame (three or four capped searches in one tick), and the few worst frames (5 of 50) are now the tactical route search itself, `MoveTo`, at 2.6 to 9.2 ms when the Guard is 18 to 27 m from the player. Neither is addressed here. The next step would be to spread one decision over several frames, which is the path request scheduler that is still not built.
+- **Limits:** editor timings with Mono, one session.
+
+
+### Path request scheduler (2026-10-09, not yet measured)
+
+`BrainTickScheduler` now gives brain decisions a per-frame budget of 2 ms: once a frame's brains have used it, the remaining agents tick in the next frame, at most 2 frames late (see the DesignDoc's path follower section). It cannot split one decision, so the Guard's single 2.6 to 9.2 ms route searches still take their frame; what it removes is two heavy decisions landing in the same frame, which is what pushes the AI total over its budget.
+
+- **Tested:** `AgentSchedulingTests`. Three brains costing 3 ms each no longer all tick in the same frame, none waits more than 2 frames, and light brains never wait.
+- **Not yet measured in the level:** the `Test_FourAgentsStress` run for this table needs the Unity window focused (an unfocused run gives meaningless timings, as seen before). To fill it in, run the stress test with the editor focused and compare the AI total p99 and the frames over 2 ms with the "All four" row above.

@@ -111,9 +111,29 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual(knockOut, settings.FindProperty("knockOutSeconds").floatValue);
             Assert.AreEqual(scrap, settings.FindProperty("scrapWhenDown").boolValue);
 
-            var fallApart = body.GetComponent("AgentFallApart");
-            Assert.IsNotNull(fallApart, "Falls apart when downed.");
-            Assert.IsNotNull(new SerializedObject(fallApart).FindProperty("model").objectReferenceValue);
+            Assert.IsNull(body.GetComponent("AgentFallApart"), "The old fall-apart is gone.");
+            var knockdown = body.GetComponent("AgentKnockdown");
+            Assert.IsNotNull(knockdown, "Tips over with a small explosion when downed.");
+            var knockdownSettings = new SerializedObject(knockdown);
+            foreach (string field in new[] { "model", "sparkMaterial", "knockOutWord", "scrapWord" })
+                Assert.IsNotNull(knockdownSettings.FindProperty(field).objectReferenceValue, field);
+            Component kneel = body.GetComponent("AgentKneel");
+            Assert.AreEqual(model == "CaptainBot", kneel != null, "Only the Captain kneels instead of tipping over.");
+            if (kneel != null)
+            {
+                var kneelSettings = new SerializedObject(kneel);
+                foreach (string field in new[] { "root", "frontHip", "frontKnee", "frontAnkle", "backHip", "backKnee",
+                             "backAnkle", "torso", "head", "frontArm", "backArm" })
+                    Assert.IsNotNull(kneelSettings.FindProperty(field).objectReferenceValue, field);
+            }
+            var lights = body.GetComponent("AgentLights");
+            Assert.IsNotNull(lights, "Its lights go out when downed.");
+            var lightSettings = new SerializedObject(lights);
+            Assert.IsNotNull(lightSettings.FindProperty("lightMaterial").objectReferenceValue);
+            SerializedProperty parts = lightSettings.FindProperty("lights");
+            Assert.Greater(parts.arraySize, 0);
+            for (int i = 0; i < parts.arraySize; i++)
+                Assert.IsNotNull(parts.GetArrayElementAtIndex(i).objectReferenceValue, "Light part " + i);
             var icon = body.GetComponent("AlertIcon");
             Assert.IsNotNull(icon, "Shows \"?\" / \"!\".");
             Assert.Greater(new SerializedObject(icon).FindProperty("height").floatValue,

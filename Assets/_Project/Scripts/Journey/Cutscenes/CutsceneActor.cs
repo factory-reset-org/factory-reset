@@ -23,6 +23,9 @@ namespace ToyFactory.Journey.Cutscenes
         /// <summary>True while the model is on screen.</summary>
         public bool IsShowing => model != null && model.activeSelf;
 
+        /// <summary>The Unit 047 model, for <see cref="Unit047Motion"/>.</summary>
+        public GameObject Model => model;
+
         void Awake()
         {
             if (model == null)

@@ -19,7 +19,7 @@ namespace ToyFactory.Runtime.Agents
                 case "TakeCover": case "InCover": case "PeekAndShoot":         // Guard
                 case "Relocate": case "Advance": case "Retreat":
                 case "AttackPlayer": case "Flee":                              // Saboteur
-                case "Engage": case "Intercept": case "Ambush":                // Captain
+                case "Engage": case "Pursue": case "Intercept": case "Ambush": // Captain
                     return AlertLevel.Alert;
 
                 // Something is off.

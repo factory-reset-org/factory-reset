@@ -26,6 +26,9 @@ namespace ToyFactory.Runtime.Animation
         [SerializeField] Transform earRight;
         [SerializeField] Transform tail;
 
+        [Tooltip("Damage one pounce deals to the player. 0 = cosmetic: the Tracker's design has no contact damage (S1's call).")]
+        [SerializeField, Min(0f)] float damage;
+
         [Header("Curves over normalised time")]
         [Tooltip("Root forward offset (m): back in the wind-up, forward in the strike.")]
         [SerializeField] AnimationCurve forward = Keys((0f, 0f), (0.35f, -0.1f), (0.55f, 0.35f), (0.7f, 0.35f), (1f, 0f));
@@ -41,6 +44,9 @@ namespace ToyFactory.Runtime.Animation
         [SerializeField] AnimationCurve earsBack = Keys((0f, 0f), (0.3f, -45f), (0.7f, -45f), (1f, 0f));
         [Tooltip("Tail up (degrees) in the wind-up, flicking down on landing.")]
         [SerializeField] AnimationCurve tailUp = Keys((0f, 0f), (0.35f, -40f), (0.6f, 15f), (1f, 0f));
+
+        /// <inheritdoc/>
+        public override float Damage => damage;
 
         /// <inheritdoc/>
         protected override void RootOffset(float t, out Vector3 position, out Quaternion rotation)

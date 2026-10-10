@@ -38,6 +38,53 @@ namespace ToyFactory.Editor.Animation
             };
 
         const string ShotLineMaterialPath = BodyFolder + "/AgentShotLine.mat";
+        const string LightMaterialPath = BodyFolder + "/AgentLight.mat";
+        const string SparkMaterialPath = BodyFolder + "/AgentSpark.mat";
+        const string FxTextureFolder = "Assets/_Project/Textures/FX";
+
+        // A part that glows: either one of the model's own meshes (the Tracker's antenna ball),
+        // or a lens added inside a visor or goggle. S3's visors and goggles are frames, and the
+        // glow belongs inside them, not on the frame, so the lens is a thin primitive placed
+        // just in front of the visor plate or inside the goggle tube, under the same pivot.
+        sealed class LightPart
+        {
+            public string Path;          // an existing part, or the lens's parent pivot
+            public string LensName;      // null for an existing part
+            public PrimitiveType Shape;
+            public Vector3 Position;
+            public Vector3 Euler;
+            public Vector3 Scale;
+
+            public static LightPart Existing(string path) => new LightPart { Path = path };
+
+            public static LightPart Lens(string parent, string name, PrimitiveType shape, Vector3 position, Vector3 euler, Vector3 scale) =>
+                new LightPart { Path = parent, LensName = name, Shape = shape, Position = position, Euler = euler, Scale = scale };
+        }
+
+        // What glows on each agent, and its colour from the prototype: the Tracker's green
+        // antenna ball, the Guard's cyan visor, the Saboteur's green goggles and the Captain's
+        // red visor. Lens sizes come from the visor and goggle meshes: the Guard's visor plate
+        // is 0.44 x 0.11 x 0.035 m, the Captain's 0.64 x 0.17 x 0.03 m, each goggle rim 0.24 m
+        // across and closed at the front (front face 0.41 m forward), so its lens sits on that face.
+        static readonly Dictionary<string, (LightPart[] parts, Color colour)> Lights =
+            new Dictionary<string, (LightPart[], Color)>
+            {
+                { "TrackerToy", (new[] { LightPart.Existing("TrackerToy_Root/Body_Pivot/Head_Pivot/Antenna_Bulb") },
+                    new Color(0.30f, 0.85f, 0.40f)) },
+                { "GuardBot", (new[] { LightPart.Lens("GuardBot_Root/Torso_Pivot/Head_Pivot", "Visor_Lens", PrimitiveType.Cube,
+                    new Vector3(0f, 0.435f, 0.272f), Vector3.zero, new Vector3(0.36f, 0.07f, 0.006f)) },
+                    new Color(0.38f, 0.85f, 1f)) },
+                { "SaboteurBot", (new[]
+                    {
+                        LightPart.Lens("SaboteurBot_Root/Body_Pivot", "Goggle_Lens_L", PrimitiveType.Cylinder,
+                            new Vector3(-0.19f, 1.035f, 0.413f), new Vector3(90f, 0f, 0f), new Vector3(0.16f, 0.004f, 0.16f)),
+                        LightPart.Lens("SaboteurBot_Root/Body_Pivot", "Goggle_Lens_R", PrimitiveType.Cylinder,
+                            new Vector3(0.19f, 1.035f, 0.413f), new Vector3(90f, 0f, 0f), new Vector3(0.16f, 0.004f, 0.16f)),
+                    }, new Color(0.49f, 1f, 0.42f)) },
+                { "CaptainBot", (new[] { LightPart.Lens("CaptainBot_Root/Torso_Pivot/Head_Pivot", "Visor_Lens", PrimitiveType.Cube,
+                    new Vector3(0f, 0.455f, 0.337f), Vector3.zero, new Vector3(0.54f, 0.11f, 0.006f)) },
+                    new Color(1f, 0.16f, 0.24f)) },
+            };
 
         // Taking hits: hit points, knock-out seconds (the plan's reassemble times) and whether
         // the agent is scrapped instead (the Saboteurs are destroyed for good).
@@ -67,6 +114,32 @@ namespace ToyFactory.Editor.Animation
                 Build(spec, report);
             AssetDatabase.SaveAssets();
             Debug.Log("Agent animations built.\n" + report);
+        }
+
+        /// <summary>
+        /// Adds or refreshes only the hit effects (knock-down, lights) on the four existing
+        /// bodies, without rebuilding their clips and controllers.
+        /// </summary>
+        [MenuItem("Factory Reset/Animation/Update Agent Hit Effects")]
+        public static void UpdateHitEffects()
+        {
+            foreach (string name in Bodies.Keys)
+            {
+                string path = $"{BodyFolder}/Agent_{name}.prefab";
+                GameObject root = PrefabUtility.LoadPrefabContents(path);
+                try
+                {
+                    Transform model = root.transform.Find(name);
+                    AddHitEffects(root, model, name);
+                    PrefabUtility.SaveAsPrefabAsset(root, path);
+                }
+                finally
+                {
+                    PrefabUtility.UnloadPrefabContents(root);
+                }
+            }
+            AssetDatabase.SaveAssets();
+            Debug.Log("Agent hit effects updated on " + Bodies.Count + " bodies.");
         }
 
         /// <summary>Builds one agent's clips, controller and body prefab. False if its model is missing a pivot.</summary>
@@ -314,8 +387,9 @@ namespace ToyFactory.Editor.Animation
 
                 SetReference(GetOrAdd<AgentAnimatorBridge>(root), "animator", animator);
 
-                // Falls apart when knocked out or scrapped, and shows "?"/"!" above its head.
-                SetReference(GetOrAdd<AgentFallApart>(root), "model", model);
+                // Tips over (with a small explosion) when downed, its lights go out and come
+                // back, and it shows "?"/"!" above its head.
+                AddHitEffects(root, model, spec.Model);
                 var icon = new SerializedObject(GetOrAdd<AlertIcon>(root));
                 icon.FindProperty("height").floatValue = height + 0.4f;
                 icon.ApplyModifiedPropertiesWithoutUndo();
@@ -355,6 +429,150 @@ namespace ToyFactory.Editor.Animation
                 else
                     Object.DestroyImmediate(root);
             }
+        }
+
+        // Knock-down and lights. Replaces the old fall-apart component if a body still has it.
+        static void AddHitEffects(GameObject root, Transform model, string modelName)
+        {
+            // The fall-apart component's script was deleted; its leftover entry is a missing script.
+            GameObjectUtility.RemoveMonoBehavioursWithMissingScript(root);
+
+            var knockdown = new SerializedObject(GetOrAdd<AgentKnockdown>(root));
+            knockdown.FindProperty("model").objectReferenceValue = model;
+            knockdown.FindProperty("sparkMaterial").objectReferenceValue = SparkMaterial();
+            knockdown.FindProperty("knockOutWord").objectReferenceValue = ComicSprite("Comic_KnockOut.png");
+            knockdown.FindProperty("scrapWord").objectReferenceValue = ComicSprite("Comic_Scrapped.png");
+            knockdown.FindProperty("dormantUntilCaptainWakes").boolValue = modelName == "CaptainBot";
+            knockdown.ApplyModifiedPropertiesWithoutUndo();
+
+            // The Captain kneels instead of tipping over, and steps back up.
+            if (modelName == "CaptainBot")
+                AddKneel(root, model);
+
+            if (!Lights.TryGetValue(modelName, out (LightPart[] parts, Color colour) light))
+                return;
+            var lights = new SerializedObject(GetOrAdd<AgentLights>(root));
+            SerializedProperty renderers = lights.FindProperty("lights");
+            renderers.arraySize = light.parts.Length;
+            for (int i = 0; i < light.parts.Length; i++)
+            {
+                Renderer part = LightRenderer(model, light.parts[i]);
+                if (part == null)
+                    Debug.LogError($"{modelName}: no light part at {light.parts[i].Path}.");
+                renderers.GetArrayElementAtIndex(i).objectReferenceValue = part;
+            }
+            lights.FindProperty("lightMaterial").objectReferenceValue = LightMaterial();
+            lights.FindProperty("colour").colorValue = light.colour;
+            lights.FindProperty("darkUntilCaptainWakes").boolValue = modelName == "CaptainBot";
+            lights.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        static void AddKneel(GameObject root, Transform model)
+        {
+            const string rig = "CaptainBot_Root";
+            const string legL = rig + "/Leg_L_Pivot", legR = rig + "/Leg_R_Pivot";
+            const string kneeL = legL + "/Knee_L_Pivot", kneeR = legR + "/Knee_R_Pivot";
+            const string torso = rig + "/Torso_Pivot";
+            (string field, string path)[] pivots =
+            {
+                ("root", rig),
+                ("frontHip", legL), ("frontKnee", kneeL), ("frontAnkle", kneeL + "/Ankle_L_Pivot"),
+                ("backHip", legR), ("backKnee", kneeR), ("backAnkle", kneeR + "/Ankle_R_Pivot"),
+                ("torso", torso), ("head", torso + "/Head_Pivot"),
+                ("frontArm", torso + "/CannonArm_L_Pivot"), ("backArm", torso + "/CannonArm_R_Pivot"),
+            };
+
+            var kneel = new SerializedObject(GetOrAdd<AgentKneel>(root));
+            foreach ((string field, string path) in pivots)
+            {
+                Transform pivot = model.Find(path);
+                if (pivot == null)
+                    Debug.LogError($"CaptainBot: no pivot at {path} for the kneel.");
+                kneel.FindProperty(field).objectReferenceValue = pivot;
+            }
+            kneel.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // The renderer of an existing part, or of a lens, added under its pivot the first time
+        // (an added object on the body prefab; S3's model prefab is not touched) and placed again
+        // on every run, so a changed size takes effect. Lenses have no collider.
+        static Renderer LightRenderer(Transform model, LightPart part)
+        {
+            Transform parent = model.Find(part.Path);
+            if (parent == null)
+                return null;
+            if (part.LensName == null)
+                return parent.GetComponent<Renderer>();
+
+            Transform lens = parent.Find(part.LensName);
+            if (lens == null)
+            {
+                GameObject made = GameObject.CreatePrimitive(part.Shape);
+                made.name = part.LensName;
+                Object.DestroyImmediate(made.GetComponent<Collider>());
+                lens = made.transform;
+                lens.SetParent(parent, false);
+            }
+            lens.localPosition = part.Position;
+            lens.localEulerAngles = part.Euler;
+            lens.localScale = part.Scale;
+            var renderer = lens.GetComponent<Renderer>();
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.sharedMaterial = LightMaterial();
+            return renderer;
+        }
+
+        // Lit and emissive; AgentLights copies it once per agent and sets the colour.
+        static Material LightMaterial()
+        {
+            var material = AssetDatabase.LoadAssetAtPath<Material>(LightMaterialPath);
+            if (material != null)
+                return material;
+            material = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "AgentLight" };
+            material.EnableKeyword("_EMISSION");
+            material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+            material.SetColor("_BaseColor", Color.white);
+            material.SetColor("_EmissionColor", Color.white);
+            material.SetFloat("_Smoothness", 0.7f);
+            AssetDatabase.CreateAsset(material, LightMaterialPath);
+            return material;
+        }
+
+        // Unlit particles, additive, with a soft round dot, coloured per particle.
+        static Material SparkMaterial()
+        {
+            var material = AssetDatabase.LoadAssetAtPath<Material>(SparkMaterialPath);
+            if (material != null)
+                return material;
+            material = new Material(Shader.Find("Universal Render Pipeline/Particles/Unlit")) { name = "AgentSpark" };
+            material.SetFloat("_Surface", 1f);   // transparent
+            material.SetFloat("_Blend", 2f);     // additive
+            material.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            material.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.One);
+            material.SetFloat("_ZWrite", 0f);
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.SetOverrideTag("RenderType", "Transparent");
+            material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            var dot = AssetDatabase.LoadAssetAtPath<Texture2D>(FxTextureFolder + "/Spark.png");
+            material.SetTexture("_BaseMap", dot);
+            AssetDatabase.CreateAsset(material, SparkMaterialPath);
+            return material;
+        }
+
+        // The comic words are imported as sprites, without mipmaps, keeping their transparency.
+        static Sprite ComicSprite(string file)
+        {
+            string path = FxTextureFolder + "/" + file;
+            var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer != null && importer.textureType != TextureImporterType.Sprite)
+            {
+                importer.textureType = TextureImporterType.Sprite;
+                importer.spriteImportMode = SpriteImportMode.Single;
+                importer.mipmapEnabled = false;
+                importer.alphaIsTransparency = true;
+                importer.SaveAndReimport();
+            }
+            return AssetDatabase.LoadAssetAtPath<Sprite>(path);
         }
 
         // Not "??": in the editor a missing component comes back as Unity's fake null.

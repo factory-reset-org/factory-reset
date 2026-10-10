@@ -462,5 +462,95 @@ namespace ToyFactory.Tests.EditMode
             StringAssert.Contains("80 | TakeCover -> InCover", table);
             StringAssert.Contains("20 | Relocate -> Retreat", table);
         }
+
+        // ---- Read-only state for the debug overlay ------------------------------------
+
+        [Test]
+        public void Guard_Engaged_ReportsTheCoverItScoredAndItsRoute()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            TickAt(brain, GuardStart, 0f);
+
+            var scored = new List<ScoredCover>();
+            brain.GetScoredCover(scored);
+
+            Assert.IsTrue(brain.IsEngaged);
+            Assert.AreEqual(_grid.CellToWorld(PlayerCell), brain.PlayerPosition);
+            Assert.AreEqual("High", brain.BatteryTierName);
+            Assert.That(scored.Count, Is.InRange(1, GuardBrain.TopCandidates + 1));
+            Assert.IsTrue(scored.Exists(c => c.Cell == brain.CoverCell), "The chosen cover is one of the scored ones.");
+            foreach (ScoredCover cover in scored)
+            {
+                Assert.That(cover.Score, Is.InRange(0f, 1f));
+                Assert.That(cover.PathCost, Is.InRange(0f, GuardBrain.MaxPathCost));
+            }
+            Assert.Greater(brain.RouteCells.Count, 1);
+            Assert.AreEqual(brain.CoverCell, brain.RouteCells[brain.RouteCells.Count - 1]);
+        }
+
+        [Test]
+        public void Guard_ScoredCover_IsAppendedAndNeverGrowsBetweenEvaluations()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            TickAt(brain, GuardStart, 0f);
+            var scored = new List<ScoredCover>();
+            brain.GetScoredCover(scored);
+            int first = scored.Count;
+
+            // A second evaluation a second later replaces the list instead of adding to it.
+            TickAt(brain, GuardStart, GuardBrain.CoverInterval + 0.1f);
+            brain.GetScoredCover(scored);
+
+            Assert.That(scored.Count - first, Is.InRange(1, GuardBrain.TopCandidates + 1));
+        }
+
+        [Test]
+        public void Guard_NotEngaged_ReportsNoCoverAndNoRoute()
+        {
+            GuardBrain brain = Guard();
+            TickAt(brain, GuardStart, 0f);
+
+            var scored = new List<ScoredCover>();
+            brain.GetScoredCover(scored);
+
+            Assert.IsFalse(brain.IsEngaged);
+            Assert.AreEqual(0, scored.Count);
+            Assert.AreEqual(0, brain.RouteCells.Count);
+        }
+
+        [Test]
+        public void Guard_PlayerLeaves_ClearsTheScoredCover()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            TickAt(brain, GuardStart, 0f);
+
+            SetPlayer(alive: false);
+            TickAt(brain, GuardStart, 0.5f);
+
+            var scored = new List<ScoredCover>();
+            brain.GetScoredCover(scored);
+            Assert.AreEqual(0, scored.Count);
+        }
+
+        [Test]
+        public void Guard_BatteryTierName_FollowsThePlayersBattery()
+        {
+            GuardBrain brain = Guard();
+
+            SetPlayer(ammo: 0.4f);
+            TickAt(brain, GuardStart, 0f);
+            Assert.AreEqual("Mid", brain.BatteryTierName);
+
+            SetPlayer(ammo: 0.1f);
+            TickAt(brain, GuardStart, 0.1f);
+            Assert.AreEqual("Low", brain.BatteryTierName);
+
+            SetPlayer(overcharge: 5f);
+            TickAt(brain, GuardStart, 0.2f);
+            Assert.AreEqual("Overcharge", brain.BatteryTierName);
+        }
     }
 }

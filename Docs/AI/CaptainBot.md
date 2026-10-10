@@ -40,14 +40,16 @@ The Captain is a finite-state machine built on the shared FSM framework: each st
 | State | What the Captain does |
 | --- | --- |
 | **Dormant** | Start state. Stands powered down in the Control Room and ignores the player. The brain skips goal inference and returns an empty intent. Leaves only when the Chapter 3 wake signal arrives. |
-| **Observe** | Prediction is too uncertain to commit. Watches the player and backs off 4 m whenever they come within 8 m, so it never simply chases while the prediction settles. |
-| **Intercept** | Confident about `g*`. Picks the first chokepoint on the player's predicted route it can reach at least 1 s before them, and walks there with A*. If no cell qualifies, it heads to `g*` itself to defend it. |
-| **Ambush** | At the intercept cell. Stands still, facing the route cell the player will arrive from. Holds its ground while the cell is still ahead of the player on their predicted route. |
-| **Engage** | Player is in view within 10 m (a 70° half-angle cone, or anywhere within 2.5 m, with line of sight traced on the grid). Faces the player and asks for a shot every 1.2 s; the body's weapon aims for 0.3 s (the telegraph, the same for every agent) before each hitscan shot. |
+| **Observe** | Prediction is too uncertain to commit. Faces and watches the player and backs off 4 m whenever they come within 8 m, so it never simply chases while the prediction settles. A back-off step that makes no progress for 2 s is dropped and not tried again for 10 s. With nothing to watch (no contact and no confident prediction for 3 s) it guards `g*` (see Guarding when there is nothing to watch). |
+| **Intercept** | Confident about `g*`, or guarding it. Picks the first chokepoint on the player's predicted route it can reach at least 1 s before them, and walks there with A*. If no cell qualifies, it heads to `g*` itself to defend it, but only if it can reach `g*`. If it has no route yet (a door was still shut), it asks again at every decision. If it does not move for 2 s, it gives the cell up (see Getting unstuck). |
+| **Ambush** | At the intercept cell. Stands still, facing the player's predicted route 3 m before the cell (the body turns to the brain's look target while standing, so it can see them coming). Not the next route cell: the body stops up to 0.6 m off its cell, and coming from the player's side it can stand past that cell and would face the wrong way. Holds its ground while the cell is still ahead of the player on their predicted route. |
+| **Converge** | The player is busy at a goal they reached (a task, the console hold) and nothing else is predicted. Closes in on them at intercept speed until they are in view, then fights. Gives up for 10 s if it gets stuck on the way. |
+| **Engage** | Starts when the player is in view within 10 m (a 70° half-angle cone, or anywhere within 2.5 m, with line of sight traced on the grid). Faces the player and asks for a shot every 1.2 s while in contact; the body's weapon aims for 0.3 s (the telegraph, the same for every agent) before each hitscan shot. Once started, contact (line of sight within 14 m, in any direction) keeps it going, and it lasts at least 2 s. Out of contact it faces where it last saw the player and holds fire. |
+| **Pursue** | Lost contact for 0.7 s mid-fight. Walks at intercept speed to where it last saw the player, then stands there for 1 s looking the way they were heading. Contact again returns it to Engage; otherwise it predicts again (Reassess), after that look or 5 s at most. |
 | **Reassess** | Something invalidated the plan. Discards the current intercept cell, re-runs goal inference immediately, then hands over to Observe or Intercept. Lasts one decision tick. |
 | **Stunned** | Knocked out. The controller owns the 6 s reboot and does not tick the brain meanwhile; the brain drops its plan and prediction at once. On the first tick after the reboot it passes straight through to Reassess. |
 
-**Alert icon:** the brain sets `AgentIntent.Alert`: "!" once it has committed to the player (Intercept, Ambush, Engage), "?" while it watches and re-predicts (Observe, Reassess, with a player present), nothing while Dormant or down.
+**Alert icon:** the brain sets `AgentIntent.Alert`: "!" once it has committed to the player (Intercept, Ambush, Converge, Engage, Pursue), "?" while it watches and re-predicts (Observe, Reassess, with a player present), nothing while Dormant or down.
 
 **Waking up:** the Chapter 3 cutscene fires the `CaptainWake` Critical signal. The runtime's `CaptainWakeWriter` turns it into `WorldBlackboard.CaptainAwake`, and the brain reads the flag. The signal fires even when the player skips the cutscene. As a second safety net the Captain also wakes once Chapter 3 has started (`ChapterIndex ≥ 3`), so it can never stay asleep for the chapters it guards. Test scenes have no cutscene, so a spawn point can start it awake.
 
@@ -62,13 +64,19 @@ Higher priority wins when several conditions are true on the same tick.
 | Dormant | Observe | Wake signal received | 110 |
 | Any except Dormant | Stunned | Hit points reach 0 | 100 |
 | Stunned | Reassess | Stun timer ends | 90 |
-| Observe, Intercept, Ambush | Engage | Player visible within 10 m | 80 |
-| Engage | Reassess | Player no longer visible | 70 |
-| Intercept, Ambush | Reassess | `g*` changes, confidence drops below 0.5 (so there is no plan), the player reaches `g*`, the intercept cell becomes blocked, or (Ambush) the player has passed the cell | 60 |
+| Observe, Intercept, Ambush, Converge | Engage | Player visible within 10 m | 80 |
+| Pursue | Engage | Contact again (line of sight within 14 m) | 80 |
+| Engage | Reassess | Player dead or missing | 75 |
+| Engage | Pursue | No contact for 0.7 s, after at least 2 s engaged | 70 |
+| Pursue | Reassess | Looked round the last-seen spot for 1 s, 5 s passed, no route there, stuck for 2 s, or the player is gone | 65 |
+| Intercept, Ambush | Reassess | `g*` changes by a clear margin, confidence drops below 0.4 (so there is no plan), the player reaches `g*`, the intercept cell becomes blocked, (Intercept) stuck for 2 s, or (Ambush) the player has passed the cell | 60 |
+| Converge | Reassess | The player left the goal, or the way to them is blocked | 60 |
 | Intercept | Ambush | Captain reaches the intercept cell | 50 |
-| Reassess | Intercept | Confidence ≥ 0.5 | 40 |
-| Reassess | Observe | Confidence < 0.5 | 30 |
-| Observe | Intercept | Confidence ≥ 0.5 | 20 |
+| Reassess | Converge | The player is busy at a goal | 45 |
+| Reassess | Intercept | A plan exists: confidence ≥ 0.5, or guarding `g*` after 3 s unsure and out of contact | 40 |
+| Reassess | Observe | No plan: confidence < 0.5 with the player in contact (or within the 3 s) | 30 |
+| Observe | Converge | The player is busy at a goal | 25 |
+| Observe | Intercept | A plan exists: confidence ≥ 0.5, or guarding `g*` after 3 s unsure and out of contact | 20 |
 
 ```text
   Dormant ── wake signal (Chapter 3 cutscene, also applied on skip)
@@ -80,11 +88,40 @@ Higher priority wins when several conditions are true on the same tick.
      │                            ▼  │                    │ confidence dropped
      └──────────────────────── Reassess ◀─────────────────┘
                                   ▲
-         player lost from view    │        stun ends
-  Engage ─────────────────────────┴──────────────────── Stunned
+      searched, or 5 s passed     │        stun ends
+  Pursue ─────────────────────────┴──────────────────── Stunned
+   ▲  │ contact again
+   │  ▼
+  Engage ── no contact for 0.7 s (after at least 2 s) ──▶ Pursue
      ▲
      └── any of Observe / Intercept / Ambush: player visible within 10 m
 ```
+
+**Why the fight has hysteresis.** At first Engage started at 10 m in view and ended after 0.7 s out of view at the same 10 m. A player walking in and out of 10 m switched it on and off: Engage, then Observe backing off to 8 m, then Engage again, which looked irrational. Now starting and keeping a fight use different thresholds, as a thermostat does:
+- It starts at 10 m in view and keeps going out to 14 m with line of sight, so a 4 m band separates the two.
+- It lasts at least 2 s once started.
+- When contact is lost, it goes where it last saw the player instead of backing off.
+
+**Why committing has hysteresis too.** The same edge problem existed for the plan: it was made at confidence ≥ 0.5 and dropped below 0.5. A player weaving between two goals kept the confidence near 0.5. In a scripted run that caused three switches between Intercept and Observe in 13 s, each one a dead stop mid-route, including a turn back towards the other goal. Now a plan is made at 0.5 but kept down to 0.4. While committed, the Captain keeps planning for its goal unless another goal leads it by 0.15. The prediction it publishes for the Saboteurs is still the true most likely goal. The same run now commits once.
+
+**Getting unstuck.** Heading for a target without moving 0.25 m in 2 s (pinned on a prop the grid does not know about, a jam of bodies, no route) gives the target up. Its cell and the eight cells round it are not chosen again for 10 s, through the planner's existing "reserved cell" check. The measure is movement, not distance to the target, because a route round a shelf row can lead away from the target for a while. Pursue, Converge and Observe's back-off step use the same check. This is the safety net, not the fix: solid props must also block the grid. Agents are not in the grid at all, so a knocked-down or scrapped body lying in an aisle is exactly the case this net catches. The body's animation speed is the speed it really moved at, so a pinned agent stands instead of running on the spot.
+
+**Guarding when there is nothing to watch.** Observe watches the player while the prediction settles. A player who fled out of sight and stands still, away from every goal, gives it nothing to watch and no movement to read. Seen in Chapter 4: the player ran into Storage, the Captain followed to where it lost them, the console sat at 0.45 against three tasks at 0.18, and it stood there showing "?" indefinitely. Now, unsure and out of contact for 3 s (`GuardDelay`), it plans a `Guard` at the most likely goal itself: walk there with A*, then ambush facing the player's predicted route. In Chapter 4 that is the console, the one place the player must come to. The 3 s count from the last contact, the last confident prediction, or waking, so a freshly woken Captain still watches first. A guard is not a confident commitment, so it does not lower the keep-threshold to 0.4. Contact or a confident prediction ends it. Tests: `CaptainRobustnessTests.APlayerHidingAwayFromEveryGoalIsWaitedForAtTheLikeliestGoal`, `WhileThePlayerIsInContactAnUnsureCaptainOnlyWatches`.
+
+**Why a goal the Captain cannot reach is no plan.** "Defend `g*`" used to be returned even when the Captain had no path to `g*`, with an arrival time of infinity. It then sat in Intercept with no route, showing "!". This happened when the Chapter 3 cutscene was skipped: the Captain decided before the Control Room door had finished opening. A goal it cannot reach now gives no plan, so it watches. When the door opens, the grid change brings the next decision forward, and Intercept also re-asks for a route at every decision while it has none.
+
+**Doors.** The Captain can open doors; the Tracker cannot, so doors stay the player's tool against the toy.
+- **Routing:** for each new route it runs a door-aware A* (`DoorRouter`) beside the shared one. A closed door is passable at a cost of 11 cells, which is about 1.2 s to stop, open it and step through at 4.6 m/s. It takes the door route only when that crosses a closed door and is cheaper, or is the only way. The penalty only adds to the octile step cost, so the heuristic stays admissible.
+- **Shut in:** when the planner (which only walks open cells) has no plan because a door shuts the Captain out, it defends `g*` by way of the door.
+- **Opening:** within 1.5 m of a closed door on its route it stops, faces the door and emits `AgentAction.OpenDoor`. The body opens it through the door registry, and the route carries on when the door's cells open in the grid. A door that does not open within 3 s (blocked, out of reach) is treated as a wall for 10 s.
+- **Shutting it behind:** after passing a door it opened, at 1-2.3 m beyond it, the Captain shuts it if the door is on the player's predicted route and the player is at least 3 m away. It only ever shuts a door that was closed before it came through: a door that was already open is left as it was. The squad's Saboteurs close doors to slow the player; a Captain that left them open would undo their work. Shutting the door behind it makes boss and squad work together, and it uses the prediction: it only shuts doors the player is predicted to need.
+- **The doorway as an ambush:** if the player is far enough away, the open doorway (a chokepoint) is often the first cell the Captain can hold in time, so it ambushes there instead of shutting it.
+
+**Seeing over props.** Since solid props (the Console, the switch cages, the pressure-plate stop) block their footprint in the grid, the Captain walks round them. Its line of sight uses `GridLineCheck.IsSightClear`, the same cell-by-cell trace as walking, but only walls and closed doors block it, not props and boxes. At 3.25 m it sees over a 1 m console, and its shots pass over it. With the walking check instead, a player holding the Console on the far side was "hidden" from 2 m away. The Captain closed in, the stand-off held it there, it never saw the player and gave up. Closing in also no longer counts being held by the stand-off, within 3 m of the player, as stuck. Test: `CaptainRobustnessTests.APropBetweenItAndThePlayerAtTheConsoleDoesNotStopTheFight` (it fails with the walking check).
+
+**Known limit:** the player's distance fields still treat a closed door as a wall, so a goal behind a closed door counts as unreachable for the player until the door opens. In the level the task doors are open while their chapter is played, so this only matters briefly.
+
+Locking on until the player leaves the room was considered and not used. The brain has no room data; it would turn the Captain into a plain chaser and give up its prediction; and standing in a doorway would beat it. Pursue ends in Reassess, so the Captain goes back to predicting.
 
 ## Why this architecture over the alternatives
 
@@ -125,6 +162,7 @@ P(g | observed) = w(g) / Σ w(g')                 normalise so the goals sum to 
 - `s` is the player's cell 5 s ago and `x` is the player's current cell.
 - `D(g)` measures how far the player's actual movement strays from the shortest route to `g`. It is **0 when the player is on an optimal route to `g`** and grows as they move away from it.
 - `D(g) ≥ 0` always, because the field costs are true shortest paths: going via `x` can never be cheaper than the direct route (triangle inequality).
+- `C(x → g)` and `C(s → g)` are lookups in each goal's field. `C(s → x)` is a single pair of cells, so it comes from one A* query (`OneToOneCost`), bounded at 50 m, not from a field.
 - **Confidence** is the largest posterior, `P(g*)`, where `g*` is the most likely goal.
 
 ### Why β = 0.5 per metre
@@ -212,14 +250,16 @@ Once confidence ≥ 0.5, the Captain picks where to wait.
 | --- | --- | --- |
 | How far is every cell from each goal? (goal inference, predicted route) | One-to-all | Dijkstra field per goal |
 | How soon can I reach every cell on the predicted route? | One-to-all | Dijkstra field from the Captain |
+| How far did the player walk in the last 5 s, `C(s → x)`? | One-to-one, cost only | `OneToOneCost` (A* that keeps no route) |
+| How soon can I reach `g*` when defending it? | One-to-one, cost only | `OneToOneCost` |
 | What path do I actually walk to the chosen cell? | One-to-one | A* |
 
 - **Dijkstra (uniform-cost search)** expands cells in order of cost from its source and gives the exact cost to every reachable cell. One run answers the arrival-time question for the whole route at once. Running A* separately for every route cell would repeat most of the same work.
 - **A*** is the efficient choice when there is a single destination. The octile heuristic is admissible and consistent on the 8-connected grid, so A* returns an optimal path while expanding far fewer cells than Dijkstra. It also goes through the same `IPathfinder` and path scheduler as the other agents, so the Captain's movement follows the shared frame budget and replanning rules.
 
-**Cost:** each field is a bounded Dijkstra run, O(V log V) with the binary heap. Fields are only recomputed when `OnGraphChanged` reports a changed cell inside them, not every tick. Choosing the intercept cell is then O(L) for a route of L cells, because every step is a field lookup.
+**Cost:** each field is a Dijkstra run, O(V log V) with the binary heap, reading neighbours from a precomputed table (`GridAdjacency`). Goal fields are built once per goal and cached. When a door or a pushed box changes the grid they go stale, and each one is **repaired in place** (`DijkstraField.Refresh`). Only the cells whose cost came through a changed cell are invalidated, and Dijkstra runs again from the edge of that damage, the idea behind LPA* and D* Lite. Stale fields are repaired one per frame, the predicted goal's first, so several fields never land in the same frame. Choosing the intercept cell is then O(L) for a route of L cells, because every step is a field lookup.
 
-**Bounding the Captain's field:** a cell can only qualify if `t_captain(i) ≤ t_player(i) − 1 s`, and no route cell is further for the player than `g*` itself. So the Captain's field stops spreading at `(t_player(g*) − 1 s) · v_captain`. Cells beyond that bound could never be chosen, so the search skips them. If no cell qualifies, the planner runs one unbounded field so it can still time the walk to `g*` for defending it.
+**Bounding the Captain's field:** a cell can only qualify if `t_captain(i) ≤ t_player(i) − 1 s`, and no route cell is further for the player than `g*` itself. So the Captain's field stops spreading at `(t_player(g*) − 1 s) · v_captain`. Cells beyond that bound could never be chosen, so the search skips them. If no cell qualifies, the planner times the Captain's walk to `g*` with one A* query (`OneToOneCost`), so it can still defend it.
 
 ## Edge cases
 
@@ -228,10 +268,23 @@ Once confidence ≥ 0.5, the Captain picks where to wait.
 | Two goals nearly equally likely (top two within 0.1) | Look for a chokepoint shared by both predicted routes and ambush there. If none exists, stay in Observe. | `InterceptPlannerTests.TwoCloseGoalsBehindTheSameDoorwayShareTheChokepoint`, `TwoCloseGoalsWithNoSharedChokepointGiveNoPlan` |
 | Player standing still | Every detour is 0, so the posterior equals the prior. The Captain keeps its current plan and does not replan. | `GoalInferenceTests.StandingStillGivesThePrior` |
 | Player too close to `g*` (no cell passes the 1 s margin) | Go straight to `g*` and defend it. | `InterceptPlannerTests.NoQualifyingCellDefendsTheGoal` |
+| ...and the Captain cannot reach `g*` (shut door, walled off) | No plan: Observe. A door that opens triggers a new decision, and the plan is made then. | `CaptainRobustnessTests.AGoalTheCaptainCannotReachGivesNoPlan`, `ADoorThatOpensAfterTheWakeGetsTheCaptainMoving` |
 | Player reaches `g*` (within 1 m) | Remove `g*` from the candidate set and re-predict (Reassess). It counts again once the player is 4 m away or its task completes. | `CaptainBrainTests.GoalThePlayerHasReachedIsLeftOutUntilTheyLeave` |
-| Route blocked by a pushed box or closed door | Recompute only the fields containing a changed cell, then re-run the prediction. If the intercept cell is blocked, Reassess. | `Field_AfterBlock_MatchesFreshCompute` |
+| Player busy at the only goal (the console hold) | Converge: close in at intercept speed until they are in view, then Engage. | `CaptainRobustnessTests.WhileThePlayerHoldsTheOnlyGoalTheCaptainClosesInAndEngages` |
+| Pinned on a prop the grid does not know about, or in a jam | No movement for 2 s gives the target up; its cell and neighbours are avoided for 10 s. | `CaptainRobustnessTests.ATargetItMakesNoProgressTowardsIsGivenUpAndAvoided` |
+| Shut in by a closed door, or a door is a shortcut | Route through it (door-aware A*, a door costs 11 cells), stop at it, open it, carry on; defend `g*` through it when shut in. | `CaptainDoorTests.TheRouterGoesThroughTheOnlyDoorAndPaysForOpeningIt`, `TheRouterWalksRoundWhenThatIsCheaperThanOpeningTheDoor`, `ShutInTheCaptainOpensTheDoorAndGoesThrough` |
+| Passed through a door on the player's predicted route | Shut it behind (1-2.3 m past it, player at least 3 m away), but only a door it had to open itself; an open door is left open. | `CaptainDoorTests.ItShutsTheDoorBehindItWhenTheDoorIsOnThePlayersRoute`, `ItNeverShutsADoorThatWasAlreadyOpen` |
+| A door that will not open | Treated as a wall for 10 s after 3 s of waiting, or at once when the body reports failure. | `CaptainDoorTests.ADoorThatWillNotOpenIsGivenUp`, `ADoorTheCaptainGaveUpOnIsAWall` |
+| Confidence hovering round 0.5 (player weaving between two goals) | Commit at 0.5, keep down to 0.4; switch goal only on a 0.15 lead. | `CaptainRobustnessTests.WeavingBetweenTwoGoalsDoesNotStopAndStartTheCaptain` |
+| Player hiding out of sight, away from every goal (fled into Storage in Chapter 4) | After 3 s unsure and out of contact, guard the most likely goal (the console in Chapter 4) instead of standing where it lost them. | `CaptainRobustnessTests.APlayerHidingAwayFromEveryGoalIsWaitedForAtTheLikeliestGoal`, `WhileThePlayerIsInContactAnUnsureCaptainOnlyWatches` |
+| Observe's back-off step blocked by a body in the aisle | Dropped after 2 s with no movement; the spot is avoided for 10 s; standing, it turns to the player. | `CaptainRobustnessTests.ABackOffStepItCannotFinishIsDroppedAndNotRetried` |
+| Stopped short of the ambush cell on the player's side | Faces the route 3 m back, so still the way the player comes. | `CaptainBrainTests.StoppedShortOnThePlayersSideItStillFacesThePlayersWay` |
+| Route blocked by a pushed box or closed door | Repair the stale goal fields in place, one per frame (predicted goal first), and decide again at once. If the intercept cell is blocked, Reassess. | `DijkstraFieldRepairTests`, `GoalInferenceTests.TheLastPredictedGoalsFieldIsRebuiltFirst` |
+| Player steps in and out of the 10 m range | The fight keeps going while in line of sight within 14 m, lasts at least 2 s, and then goes to the last-seen spot instead of backing off. | `CaptainBrainTests.SteppingInAndOutOfTenMetresDoesNotFlipTheFight` |
+| Player ducks out of sight mid-fight | Hold fire, face the last-seen spot, then Pursue there; contact resumes the fight; give up after a 1 s look or 5 s. | `CaptainBrainTests.AFightLastsAtLeastTwoSecondsThenPursuesToTheLastSeenSpot`, `ContactDuringThePursuitResumesTheFight`, `PursuitGivesUpAfterFiveSecondsIfItNeverGetsThere` |
+| Player dies mid-fight | Leave Engage at once, despite the 2 s minimum. | `CaptainBrainTests.ADeadPlayerEndsTheFightAtOnce` |
 | Goal unreachable (walled off) | Its field cost is infinite, so it is left out of the candidate set. | `GoalInferenceTests.UnreachableGoalIsLeftOut` |
-| All goals unreachable, or no active goals | No prediction: stay in Observe and keep distance from the player. | `GoalInferenceTests.NoGoalsGivesNoPrediction` |
+| All goals unreachable, or no active goals | No prediction: stay in Observe and keep distance from the player (unless the player is busy at a goal: Converge). | `GoalInferenceTests.NoGoalsGivesNoPrediction` |
 | Player's cell 5 s ago not available yet (game start, respawn) | Use the oldest recorded cell. With fewer than 2 samples, stay in Observe. | `PlayerTrackTests.ShortHistoryFallsBackToTheOldestSample`, `PlayerTrackTests.FewerThanTwoSamplesGivesNoPast` |
 | Player off the grid (jumping, standing on a box) | Snap to the nearest traversable cell before looking up field costs. | `GoalInferenceTests.PlayerOnABlockedCellIsSnappedToANearbyWalkableCell` |
 | Chosen ambush cell reserved by another agent | Take the next qualifying chokepoint on the route. | `InterceptPlannerTests.ReservedCellIsSkippedForTheNextChokepoint` |
@@ -266,7 +319,12 @@ EditMode tests run without a scene, which also proves the brain is decoupled fro
 | `WorkedExampleFromTheDesignDocument` | The code matches the maths in this document: 0.84 / 0.11 / 0.04 |
 | `PosteriorsSumToOneOnRandomGrids` | Normalisation is correct, with no NaN, on 50 random grids |
 | `RemovingAGoalDropsItsFieldAndRenormalises` | Goals can come and go as tasks complete |
-| `EachGoalFieldIsBuiltOnceUntilTheGridChanges` | Fields are built lazily and cached, and rebuilt only when the grid changes |
+| `EachGoalFieldIsBuiltOnceUntilTheGridChanges` | Fields are built lazily and cached. A grid change makes them all stale; one is rebuilt per update and the rest by `RefreshOneStaleField` |
+| `TheLastPredictedGoalsFieldIsRebuiltFirst` | After a grid change the field the intercept is planned on is fresh first |
+| `StaleFieldsAgreeWithFreshOnesOnceRefreshed` | After the refreshes, the posteriors equal those of a brand-new inference on the changed grid |
+| `DijkstraFieldRepairTests` (8 tests) | A repaired field equals a fresh one on every cell after 480 random box placements, box moves, openings and door changes; a door opening connects the room behind it; a moved box repairs far fewer cells than a full search; fallbacks and no allocation |
+| `OneToOneCostTests` (8 tests) | The cost-only A* equals the field's cost on 50 random grids and under a penalty model; the bound; no allocation |
+| `GridAdjacencyTests` (5 tests) | The neighbour table matches the grid's own neighbours on random grids and stays correct, refreshing only the affected cells, through 30 changes |
 | `GoalPriorsTests` (9 tests) | The category priors follow the table, including the final-chapter 0.55 / 0.45 example and batteries only below 30% ammo |
 | `HugeDetoursDoNotUnderflowToNaN` | The underflow guard works |
 | `PlayerTrackTests` (9 tests) | The 5 s window, the short-history fallback and the ring buffer |
@@ -297,6 +355,7 @@ Implemented: `CaptainBrainTests` (16 tests), on a three-room level with two goal
 | `ChapterThreeWakesTheCaptainEvenIfTheSignalWasMissed` | The chapter safety net |
 | `WalkingTowardsAGoalCommitsToTheFirstChokepointItCanBeat` | Observe → Intercept at confidence ≥ 0.5; the first doorway is skipped because the player would beat it, the second qualifies, and `t_captain + 1 s ≤ t_player` holds; A* walks to it |
 | `ReachingTheCellTurnsToAmbushFacingTheWayThePlayerComes` | Intercept → Ambush, facing the approach |
+| `StoppedShortOnThePlayersSideItStillFacesThePlayersWay` | Standing 0.55 m short on the player's side, it still faces the player's route |
 | `AmbushHoldsWhileTheCellIsStillAheadOfThePlayer` | No creeping towards the player while waiting |
 | `TaskCompletedMidInterceptDropsThePlanAndRepredicts` | A goal leaving the objectives sends the Captain to Reassess and onto the other goal |
 | `PlayerInViewWithinTenMetresIsEngagedOneShotPerInterval` | Engage asks for a shot at once (the body adds the 0.3 s telegraph), then one per 1.2 s |
@@ -315,12 +374,14 @@ Edge-case tests are listed in the table above.
 
 | Part | Code | Status |
 | --- | --- | --- |
-| Distance fields | `AI/Core/Search/DijkstraField` | Implemented, 20 tests |
+| Distance fields | `AI/Core/Search/DijkstraField` | Implemented, 21 tests + 8 repair tests |
+| Neighbour table | `AI/Core/Search/GridAdjacency` | Implemented, 5 tests |
+| Cost-only A* | `AI/Core/Search/OneToOneCost` | Implemented, 8 tests |
 | Candidate goals and priors | `Captain/CandidateGoal`, `GoalCategory`, `GoalPriors` | Implemented, 9 tests |
 | Player history (5 s window) | `Captain/PlayerTrack` | Implemented, 9 tests |
-| Goal inference | `Captain/GoalInference` | Implemented, 14 tests |
+| Goal inference | `Captain/GoalInference` | Implemented, 16 tests |
 | Intercept planner | `Captain/InterceptPlanner`, `InterceptPlan` | Implemented, 14 tests |
-| `CaptainBrain` states and transitions | `Captain/CaptainBrain`, `CaptainBrain.States` | Implemented, 16 tests |
+| `CaptainBrain` states and transitions | `Captain/CaptainBrain`, `CaptainBrain.States` | Implemented, 21 tests |
 | `PredictedGoal` on the blackboard | `Core/IGoalPredictor`, `Blackboard/PredictedGoal`, copied by `AgentController` | Implemented |
 | Wake flag | `Blackboard.CaptainAwake`, `Runtime/CaptainWakeWriter` | Implemented |
 | Live view (F3 debug overlay) | `Runtime/Debug/CaptainOverlayLayer` | Implemented: P(g) per goal, predicted route, intercept cell and arrival times |
@@ -339,7 +400,12 @@ Edge-case tests are listed in the table above.
 
 The prediction is confident after 1.0 s, well inside the 3 s requirement. The north goal keeps more probability than the west goal because walking east costs less detour towards north than towards west. These values match the formula worked by hand to two decimal places. In-game accuracy runs replace them once the level exists.
 
-**Cost in the full game (2026-10-09, `Test_FourAgentsStress`, editor):** 0.095 ms a frame on average, but 4.97 ms at p99 and 14.0 ms at worst, with 67 frames over 1 ms in 30 s. Each 2 Hz decision rebuilds two distance fields while the player moves (the player's, for goal inference, and the Captain's own, for the intercept), and one full-level field costs 4.3 ms in the editor. The cached goal fields are not the cause: they are not rebuilt while the goals stay put. Fixed and re-measured in `OptimisationLog.md`.
+**Cost in the full game (2026-10-09, `Test_FourAgentsStress`, editor):** 0.095 ms a frame on average, but 4.97 ms at p99 and 14.0 ms at worst, with 67 frames over 1 ms in 30 s. Each 2 Hz decision rebuilds two distance fields while the player moves (the player's, for goal inference, and the Captain's own, for the intercept), and one full-level field costs 4.3 ms in the editor. The cached goal fields are not the cause: they are not rebuilt while the goals stay put.
+
+**After the fix (same day, same tests):** p99 0.14 ms and worst 1.1 ms in normal play, against 7.2 ms and 15.1 ms for `develop` in the same session. With a box pushed every 0.5 s (`Test_PushedBoxStress`), p99 is 0.20 ms against 32 ms, and no frame is over 1 ms. The three changes are in `OptimisationLog.md`:
+1. Fields read neighbours from a precomputed table, making a full field 7× faster.
+2. `C(s → x)` and the defend-`g*` time come from a cost-only A*, which searches 21–166 cells instead of the whole level.
+3. A grid change repairs the stale goal fields in place, one per frame.
 
 **Intercept choice (EditMode scenario, 2026-10-04):** a 45 × 10 m level (90 × 20 cells) with walls at x = 15 m and x = 30 m, each with a one-cell doorway, and `g*` at the far east end. Captain speed 4.6 m/s (the prototype's value). Printed by `InterceptPlanner.Plan` through the Unity editor:
 
@@ -349,7 +415,7 @@ The prediction is confident after 1.0 s, well inside the 3 s requirement. The no
 | west end | just past the first doorway | 3 m/s (walk) | First doorway | 4.17 s | 0.99 s | 3.18 s | 1762 / 1762 |
 | west end | past the second doorway | 7 m/s | Second doorway | 3.93 s | 1.36 s | 2.57 s | 1143 / 1762 |
 | middle room | past the second doorway | 7 m/s | Route cell 1.5 m past the doorway | 1.64 s | 0.57 s | 1.07 s | 665 / 1762 |
-| 2.5 m from `g*` | west end | 7 m/s | Defend `g*` | 0.36 s | 8.15 s | −7.80 s | full (unbounded fallback) |
+| 2.5 m from `g*` | west end | 7 m/s | Defend `g*` | 0.36 s | 8.15 s | −7.80 s | full (unbounded fallback; since 2026-10-09 one A* query instead) |
 
 What this shows:
 - **Planning against the sprint speed changes the choice.** Against a walking player the Captain takes the first doorway with 3 s to spare. Against a sprinting one it would only arrive 0.80 s early there (1.79 s against 0.99 s), inside the 1 s margin, so it waits at the second doorway instead. It never over-promises.

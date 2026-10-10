@@ -151,6 +151,12 @@ namespace ToyFactory.Tests.EditMode
                     Assert.AreEqual(InterceptKind.None, plan.Kind, $"Trial {trial}: unreachable goal must give no plan.");
                     continue;
                 }
+                if (!captainField.IsReachable(goal))
+                {
+                    // Every route cell leads to the goal, so the Captain reaches none of them either.
+                    Assert.AreEqual(InterceptKind.None, plan.Kind, $"Trial {trial}: a goal the Captain cannot reach must give no plan.");
+                    continue;
+                }
 
                 var route = planner.PredictedRoute;
                 if (plan.Kind == InterceptKind.DefendGoal)

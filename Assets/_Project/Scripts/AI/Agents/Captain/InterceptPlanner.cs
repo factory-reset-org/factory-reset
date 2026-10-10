@@ -16,7 +16,8 @@ namespace ToyFactory.AI.Agents.Captain
     /// qualifies    when t_captain(i) + margin ≤ t_player(i)
     /// </code>
     /// The first qualifying chokepoint wins; if there is none, the first qualifying route
-    /// cell; if no cell qualifies, the Captain defends g* itself. See Docs/AI/CaptainBot.md
+    /// cell; if no cell qualifies, the Captain defends g* itself, provided it can reach g*
+    /// at all (otherwise there is no plan). See Docs/AI/CaptainBot.md
     /// for why the first cell, why a 1 s margin and why the sprint speed.
     /// </summary>
     /// <remarks>
@@ -36,6 +37,7 @@ namespace ToyFactory.AI.Agents.Captain
         readonly GridGraph _grid;
         readonly float _margin;
         readonly DijkstraField _fromCaptain;
+        readonly OneToOneCost _toGoal;
         readonly List<Vector2Int> _route = new List<Vector2Int>(64);
         readonly List<Vector2Int> _otherRoute = new List<Vector2Int>(64);
         readonly HashSet<Vector2Int> _otherRouteCells = new HashSet<Vector2Int>();
@@ -54,6 +56,7 @@ namespace ToyFactory.AI.Agents.Captain
                 throw new ArgumentOutOfRangeException(nameof(marginSeconds), "The margin must be a finite number of seconds, zero or more.");
             _margin = marginSeconds;
             _fromCaptain = new DijkstraField(grid);
+            _toGoal = new OneToOneCost(grid);
         }
 
         /// <summary>
@@ -96,10 +99,49 @@ namespace ToyFactory.AI.Agents.Captain
                 return MakePlan(InterceptKind.RouteCell, goalField, playerTotal, firstCell, playerSpeed, captainSpeed);
 
             // No cell gives the margin: the player is too close to g*, so guard g* itself.
-            // g* may lie beyond the bounded field, so time it with an unbounded one (rare,
-            // and only here) instead of reporting an arrival of infinity.
-            _fromCaptain.Compute(captain, BaseCostModel.Instance);
-            return MakePlan(InterceptKind.DefendGoal, goalField, playerTotal, _route.Count - 1, playerSpeed, captainSpeed);
+            return AtGoal(InterceptKind.DefendGoal, goalField, playerTotal, captain, playerSpeed, captainSpeed, isReserved);
+        }
+
+        /// <summary>
+        /// Waits at the goal itself, with no race against the player: for when the Captain is
+        /// not confident and cannot see them (hiding, or still), so there is no intercept to
+        /// time. The predicted route is still traced, so the Captain faces the way they would
+        /// come. No plan if either side cannot reach the goal.
+        /// </summary>
+        public InterceptPlan PlanGuard(DijkstraField goalField, Vector2Int playerCell, Vector2Int captainCell,
+            float playerSpeed, float captainSpeed, Predicate<Vector2Int> isReserved = null)
+        {
+            if (goalField == null) throw new ArgumentNullException(nameof(goalField));
+            CheckSpeed(playerSpeed, nameof(playerSpeed));
+            CheckSpeed(captainSpeed, nameof(captainSpeed));
+
+            _route.Clear();
+            if (!TraceRoute(goalField, playerCell, _route) ||
+                !_grid.TryFindNearestTraversable(captainCell, SnapRadius, out Vector2Int captain))
+                return InterceptPlan.None;
+            return AtGoal(InterceptKind.Guard, goalField, goalField.Cost(_route[0]), captain, playerSpeed, captainSpeed, isReserved);
+        }
+
+        // A plan at g*, the last cell of the traced route. g* may lie beyond the bounded field,
+        // so time the Captain's walk to it with one A* query (a single pair of cells) instead
+        // of reporting an arrival of infinity. An unbounded field here cost the whole level
+        // for that one number.
+        InterceptPlan AtGoal(InterceptKind kind, DijkstraField goalField, float playerTotal, Vector2Int captain,
+            float playerSpeed, float captainSpeed, Predicate<Vector2Int> isReserved)
+        {
+            int last = _route.Count - 1;
+            Vector2Int goalCell = _route[last];
+            if (isReserved != null && isReserved(goalCell))
+                return InterceptPlan.None;
+            float captainCost = _toGoal.Compute(captain, goalCell, BaseCostModel.Instance);
+            // The Captain cannot get there at all (a shut door, a box): there is nothing to
+            // defend from here, so no plan. A plan it cannot walk would leave it standing
+            // still in Intercept.
+            if (float.IsPositiveInfinity(captainCost))
+                return InterceptPlan.None;
+            return new InterceptPlan(kind, goalCell, last,
+                PlayerArrival(goalField, playerTotal, goalCell, playerSpeed),
+                captainCost * GridGraph.CellSize / captainSpeed);
         }
 
         /// <summary>

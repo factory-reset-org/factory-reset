@@ -89,6 +89,7 @@ namespace ToyFactory.Tests.EditMode
             string[] lines = table.Split('\n');
             StringAssert.StartsWith("110 | Dormant -> Observe", lines[1]);
             StringAssert.Contains("80 | Ambush -> Engage", table);
+            StringAssert.Contains("70 | Engage -> Pursue", table);
             StringAssert.Contains("20 | Observe -> Intercept", table);
         }
 
@@ -193,6 +194,21 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void StoppedShortOnThePlayersSideItStillFacesThePlayersWay()
+        {
+            // The body stops up to 0.6 m off its cell. Coming from the player's side it stands
+            // past the next route cell, so facing that cell turned it round (seen guarding the
+            // console in Chapter 4: facing the wall, back to the Storage door).
+            CaptainBrain brain = CommittedToTheSecondDoorway(out _);
+            Vector3 standing = _grid.CellToWorld(DoorB) + new Vector3(-0.55f, 0f, 0f);
+
+            AgentIntent intent = brain.Tick(new AgentContext(DoorB, standing, Vector3.right, 0.6f, _world, default(SensorSnapshot)));
+
+            Assert.AreEqual("Ambush", brain.StateName);
+            Assert.Less(intent.LookTarget.Value.x, standing.x - 1f, "Faces well west, the way the player comes.");
+        }
+
+        [Test]
         public void AmbushHoldsWhileTheCellIsStillAheadOfThePlayer()
         {
             CaptainBrain brain = CommittedToTheSecondDoorway(out _);
@@ -251,20 +267,107 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void LosingSightForLongerThanTheDelayEndsTheEngagement()
+        public void SteppingInAndOutOfTenMetresDoesNotFlipTheFight()
+        {
+            // The old rule left Engage after 0.7 s beyond 10 m, so this walk switched it on and
+            // off. Contact out to 14 m keeps the fight going.
+            CaptainBrain brain = Captain();
+            Vector2Int captain = new Vector2Int(27, 3);
+            Vector2Int near = new Vector2Int(8, 3);   // 9.5 m west, down the open row
+            Vector2Int far = new Vector2Int(5, 3);    // 11 m
+            PlacePlayer(near);
+            Tick(brain, captain, 0f, Vector3.left);
+            Assert.AreEqual("Engage", brain.StateName);
+
+            for (float t = 0.25f; t < 6f; t += 0.25f)
+            {
+                // About 1 s out, 0.25 s in, over and over.
+                PlacePlayer(t % 1.25f < 1f ? far : near);
+                Tick(brain, captain, t, Vector3.left);
+                Assert.AreEqual("Engage", brain.StateName, $"t = {t}");
+            }
+        }
+
+        [Test]
+        public void AFightLastsAtLeastTwoSecondsThenPursuesToTheLastSeenSpot()
+        {
+            CaptainBrain brain = Captain();
+            Vector2Int captain = new Vector2Int(22, 3);
+            Vector2Int lastSeen = new Vector2Int(26, 3);
+            PlacePlayer(lastSeen);
+            Tick(brain, captain, 0f, Vector3.right);
+            Assert.AreEqual("Engage", brain.StateName);
+
+            PlacePlayer(new Vector2Int(18, 1));   // behind the wall between the rooms
+            AgentIntent hidden = Tick(brain, captain, 1.5f, Vector3.right);
+            Assert.AreEqual("Engage", brain.StateName, "Committed for at least 2 s.");
+            Assert.AreEqual(AgentAction.None, hidden.Action, "No shots without contact.");
+            Assert.AreEqual(_grid.CellToWorld(lastSeen), hidden.LookTarget, "Faces where it last saw the player, not through the wall.");
+
+            AgentIntent pursue = Tick(brain, captain, 2.1f, Vector3.right);
+            Assert.AreEqual("Pursue", brain.StateName);
+            Assert.AreEqual(CaptainBrain.InterceptSpeed, pursue.DesiredSpeed);
+            Assert.IsNotNull(pursue.Path);
+            Assert.AreEqual(_grid.CellToWorld(lastSeen), pursue.Path[pursue.Path.Count - 1], "Walks to the last-seen spot.");
+            Assert.AreEqual(AlertLevel.Alert, pursue.Alert);
+
+            // There: it stops and looks round for a second, then predicts again.
+            AgentIntent arrived = Tick(brain, lastSeen, 2.6f, Vector3.right);
+            Assert.AreEqual("Pursue", brain.StateName);
+            Assert.AreEqual(0f, arrived.DesiredSpeed);
+            Tick(brain, lastSeen, 3.7f, Vector3.right);
+            Tick(brain, lastSeen, 3.8f, Vector3.right);
+            Assert.AreNotEqual("Pursue", brain.StateName);
+            Assert.AreNotEqual("Engage", brain.StateName);
+        }
+
+        [Test]
+        public void PursuitGivesUpAfterFiveSecondsIfItNeverGetsThere()
         {
             CaptainBrain brain = Captain();
             Vector2Int captain = new Vector2Int(22, 3);
             PlacePlayer(new Vector2Int(26, 3));
             Tick(brain, captain, 0f, Vector3.right);
+            PlacePlayer(new Vector2Int(18, 1));
+            Tick(brain, captain, 2.1f, Vector3.right);
+            Assert.AreEqual("Pursue", brain.StateName);
+
+            Tick(brain, captain, 2.1f + CaptainBrain.PursueTimeout, Vector3.right);
+            Tick(brain, captain, 2.2f + CaptainBrain.PursueTimeout, Vector3.right);
+            Assert.AreNotEqual("Pursue", brain.StateName);
+        }
+
+        [Test]
+        public void ContactDuringThePursuitResumesTheFight()
+        {
+            CaptainBrain brain = Captain();
+            Vector2Int captain = new Vector2Int(22, 3);
+            PlacePlayer(new Vector2Int(26, 3));
+            Tick(brain, captain, 0f, Vector3.right);
+            PlacePlayer(new Vector2Int(18, 1));
+            Tick(brain, captain, 2.1f, Vector3.right);
+            Assert.AreEqual("Pursue", brain.StateName);
+
+            // Back in line of sight through the doorway, 6 m west and behind it: contact,
+            // even outside the view cone.
+            PlacePlayer(new Vector2Int(10, 3));
+            AgentIntent again = Tick(brain, captain, 2.4f, Vector3.right);
             Assert.AreEqual("Engage", brain.StateName);
+            Assert.AreEqual(AgentAction.Shoot, again.Action);
+        }
 
-            PlacePlayer(new Vector2Int(5, 3));   // gone into the west room
-            Tick(brain, captain, 0.5f, Vector3.right);
-            Assert.AreEqual("Engage", brain.StateName, "Within 0.7 s it keeps facing where the player was.");
+        [Test]
+        public void ADeadPlayerEndsTheFightAtOnce()
+        {
+            CaptainBrain brain = Captain();
+            Vector2Int captain = new Vector2Int(22, 3);
+            PlacePlayer(new Vector2Int(26, 3));
+            Tick(brain, captain, 0f, Vector3.right);
 
-            Tick(brain, captain, 0.8f, Vector3.right);
-            Assert.AreNotEqual("Engage", brain.StateName);
+            PlacePlayer(new Vector2Int(26, 3), alive: false);
+            Tick(brain, captain, 0.2f, Vector3.right);
+            Assert.AreNotEqual("Engage", brain.StateName, "The 2 s commitment does not outlive the player.");
+            Assert.AreNotEqual("Pursue", brain.StateName);
         }
 
         [Test]

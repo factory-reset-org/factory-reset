@@ -72,6 +72,7 @@ namespace ToyFactory.Interaction
         Vector3 _closedPosition;
         Vector3 _openPosition;
         float _retryTimer;
+        Transform _useZone;
 
         /// <summary>Raised once the door settles fully open or fully closed.</summary>
         public event Action<Door> StateChanged;
@@ -108,9 +109,22 @@ namespace ToyFactory.Interaction
             }
         }
 
-        void OnEnable() => CutsceneEvents.OnCriticalSignal += HandleSignal;
+        void OnEnable()
+        {
+            CutsceneEvents.OnCriticalSignal += HandleSignal;
 
-        void OnDisable() => CutsceneEvents.OnCriticalSignal -= HandleSignal;
+            // The Saboteur finds the door by its doorway id. It is sent to the use zone, which
+            // stays in the doorway; the panel itself slides out of reach when the door is open.
+            if (doorId >= 0)
+                SabotageTargets.Register(SabotageKind.Door, doorId, this, _useZone);
+        }
+
+        void OnDisable()
+        {
+            CutsceneEvents.OnCriticalSignal -= HandleSignal;
+            if (doorId >= 0)
+                SabotageTargets.Unregister(SabotageKind.Door, doorId, this);
+        }
 
         void HandleSignal(string signalId)
         {
@@ -240,6 +254,7 @@ namespace ToyFactory.Interaction
             }
 
             zone.AddComponent<DoorUseZone>().Bind(this);
+            _useZone = zone.transform;
         }
 
         void SetGridClosed(bool closed)

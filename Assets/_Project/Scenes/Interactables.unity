@@ -715,6 +715,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.BatteryPickup
   spinDegreesPerSecond: 90
+  sabotageId: 3
 --- !u!23 &88981530
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -880,6 +881,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.BatteryPickup
   spinDegreesPerSecond: 90
+  sabotageId: 2
 --- !u!23 &160482675
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -1302,6 +1304,7 @@ MonoBehaviour:
   loudness: 50
   body: {fileID: 0}
   armedColour: {r: 1, g: 0.25, b: 0.2, a: 1}
+  sabotageId: 1
 --- !u!65 &266655310
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -1501,6 +1504,7 @@ MonoBehaviour:
   loudness: 50
   body: {fileID: 0}
   armedColour: {r: 1, g: 0.25, b: 0.2, a: 1}
+  sabotageId: 2
 --- !u!65 &370414608
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -1657,6 +1661,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.BatteryPickup
   spinDegreesPerSecond: 90
+  sabotageId: 6
 --- !u!23 &544572573
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -1860,6 +1865,7 @@ GameObject:
   - component: {fileID: 575870765}
   - component: {fileID: 575870764}
   - component: {fileID: 575870763}
+  - component: {fileID: 1900000029}
   m_Layer: 14
   m_Name: Switch_2
   m_TagString: Untagged
@@ -1986,6 +1992,7 @@ GameObject:
   - component: {fileID: 584930140}
   - component: {fileID: 584930139}
   - component: {fileID: 584930138}
+  - component: {fileID: 1900000036}
   m_Layer: 14
   m_Name: Switch_3
   m_TagString: Untagged
@@ -2768,6 +2775,7 @@ GameObject:
   - component: {fileID: 716186074}
   - component: {fileID: 716186076}
   - component: {fileID: 716186075}
+  - component: {fileID: 1900000008}
   m_Layer: 14
   m_Name: ConveyorLever
   m_TagString: Untagged
@@ -2846,6 +2854,7 @@ GameObject:
   - component: {fileID: 725213729}
   - component: {fileID: 725213728}
   - component: {fileID: 725213727}
+  - component: {fileID: 1900000043}
   m_Layer: 14
   m_Name: SwitchCage_1
   m_TagString: Untagged
@@ -3524,6 +3533,7 @@ GameObject:
   - component: {fileID: 831772939}
   - component: {fileID: 831772938}
   - component: {fileID: 831772937}
+  - component: {fileID: 1900000057}
   m_Layer: 14
   m_Name: SwitchCage_3
   m_TagString: Untagged
@@ -4620,6 +4630,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.BatteryPickup
   spinDegreesPerSecond: 90
+  sabotageId: 1
 --- !u!23 &1111604645
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -4841,6 +4852,7 @@ GameObject:
   - component: {fileID: 1193556186}
   - component: {fileID: 1193556185}
   - component: {fileID: 1193556184}
+  - component: {fileID: 1900000022}
   m_Layer: 14
   m_Name: Switch_1
   m_TagString: Untagged
@@ -5350,6 +5362,7 @@ GameObject:
   - component: {fileID: 1284042829}
   - component: {fileID: 1284042828}
   - component: {fileID: 1284042827}
+  - component: {fileID: 1900000015}
   m_Layer: 7
   m_Name: PlateStop
   m_TagString: Untagged
@@ -5986,6 +5999,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.BatteryPickup
   spinDegreesPerSecond: 90
+  sabotageId: 5
 --- !u!23 &1489136406
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -6207,6 +6221,7 @@ GameObject:
   - component: {fileID: 1548744454}
   - component: {fileID: 1548744453}
   - component: {fileID: 1548744452}
+  - component: {fileID: 1900000050}
   m_Layer: 14
   m_Name: SwitchCage_2
   m_TagString: Untagged
@@ -6334,6 +6349,7 @@ GameObject:
   - component: {fileID: 1595024061}
   - component: {fileID: 1595024060}
   - component: {fileID: 1595024059}
+  - component: {fileID: 1900000001}
   m_Layer: 14
   m_Name: Console
   m_TagString: Untagged
@@ -8107,6 +8123,7 @@ MonoBehaviour:
   loudness: 50
   body: {fileID: 0}
   armedColour: {r: 1, g: 0.25, b: 0.2, a: 1}
+  sabotageId: 3
 --- !u!65 &1929681645
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -8236,6 +8253,7 @@ MonoBehaviour:
   loudness: 50
   body: {fileID: 0}
   armedColour: {r: 1, g: 0.25, b: 0.2, a: 1}
+  sabotageId: 4
 --- !u!65 &1982385046
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -8305,6 +8323,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.BatteryPickup
   spinDegreesPerSecond: 90
+  sabotageId: 4
 --- !u!23 &1999783604
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -8679,6 +8698,123 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 3.5990295, y: 0.5, z: 2.9023857}
   m_Center: {x: 0, y: 0.25, z: 0}
+--- !u!114 &1900000001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1595024057}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73d1315b64e32744d88bb737af0de88a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.World.GridFootprint
+  footprint: {fileID: 0}
+--- !u!114 &1900000008
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 716186073}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73d1315b64e32744d88bb737af0de88a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.World.GridFootprint
+  footprint: {fileID: 0}
+--- !u!114 &1900000015
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1284042825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73d1315b64e32744d88bb737af0de88a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.World.GridFootprint
+  footprint: {fileID: 0}
+--- !u!114 &1900000022
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1193556182}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73d1315b64e32744d88bb737af0de88a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.World.GridFootprint
+  footprint: {fileID: 0}
+--- !u!114 &1900000029
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 575870761}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73d1315b64e32744d88bb737af0de88a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.World.GridFootprint
+  footprint: {fileID: 0}
+--- !u!114 &1900000036
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 584930136}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73d1315b64e32744d88bb737af0de88a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.World.GridFootprint
+  footprint: {fileID: 0}
+--- !u!114 &1900000043
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 725213725}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73d1315b64e32744d88bb737af0de88a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.World.GridFootprint
+  footprint: {fileID: 0}
+--- !u!114 &1900000050
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1548744450}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73d1315b64e32744d88bb737af0de88a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.World.GridFootprint
+  footprint: {fileID: 0}
+--- !u!114 &1900000057
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 831772935}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73d1315b64e32744d88bb737af0de88a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.World.GridFootprint
+  footprint: {fileID: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

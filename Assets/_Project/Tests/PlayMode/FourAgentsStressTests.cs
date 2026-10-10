@@ -13,6 +13,7 @@ using ToyFactory.Interfaces;
 using ToyFactory.Journey.Chapters;
 using ToyFactory.Journey.Debugging;
 using ToyFactory.Runtime.Agents;
+using ToyFactory.Runtime.World;
 using Object = UnityEngine.Object;
 
 namespace ToyFactory.Tests
@@ -20,6 +21,7 @@ namespace ToyFactory.Tests
     /// <summary>
     /// <c>Test_FourAgentsStress</c>: all four agent types, seven instances, active at once in
     /// the real level, measured over 30 s. Fills the stress-test table in AIPerformanceLog.md.
+    /// <c>Test_PushedBoxStress</c> adds a box moving every 0.5 s (see that test).
     /// </summary>
     /// <remarks>
     /// <para>Loads <c>Bootstrap</c>, jumps to Chapter 4 (the Captain awake, every door open),
@@ -31,9 +33,9 @@ namespace ToyFactory.Tests
     /// <c>AI.Brain.Tick.*</c> markers in <see cref="AgentController"/>, which contain the
     /// searches); the searches on their own; and memory allocated in the frame by everything
     /// (Unity's "GC Allocated In Frame" counter). Editor timings: a player build is faster.</para>
-    /// <para>Explicit, so it only runs when asked for (it takes about 40 s).</para>
+    /// <para>Explicit, so they only run when asked for (about 40 s and 30 s).</para>
     /// </remarks>
-    [Explicit("Evidence run: about 40 s. Run it on its own for AIPerformanceLog.md.")]
+    [Explicit("Evidence runs: about 40 s and 30 s. Run them on their own for the performance logs.")]
     [Category("Evidence")]
     public sealed class FourAgentsStressTests
     {
@@ -41,9 +43,10 @@ namespace ToyFactory.Tests
         const float Measure = 30f;
         const float PlayerSpeed = 4f;
         const float AiBudgetMs = 2f;   // the plan's AI budget per frame
+        const float CaptainBudgetMs = 1f;   // the Captain's share: half the budget at p99
 
         static readonly string[] Brains = { "Tracker", "Guard", "Saboteur", "Captain" };
-        static readonly string[] Searches = { "AI.Tracker.GBFS", "AI.AStarSearch.FindPath", "AI.DijkstraField.Compute", "AI.NoisePropagation.Propagate" };
+        static readonly string[] Searches = { "AI.Tracker.GBFS", "AI.AStarSearch.FindPath", "AI.DijkstraField.Compute", "AI.DijkstraField.Repair", "AI.OneToOneCost.Compute", "AI.NoisePropagation.Propagate" };
 
         // A loop through the Control Room and out through door 3 into Storage and back.
         static readonly Vector3[] Loop =
@@ -90,8 +93,8 @@ namespace ToyFactory.Tests
             return sorted[Mathf.Clamp((int)Math.Ceiling(p * sorted.Count) - 1, 0, sorted.Count - 1)];
         }
 
-        [UnityTest]
-        public IEnumerator Test_FourAgentsStress()
+        // Loads Bootstrap and jumps to Chapter 4: the Captain awake, every door open.
+        static IEnumerator LoadChapterFour()
         {
             SceneManager.LoadScene("Bootstrap");
             yield return Until(() => ChapterManager.Current != null && ChapterManager.Current.Flow != null && ChapterManager.Current.Flow.HasBegun
@@ -102,6 +105,12 @@ namespace ToyFactory.Tests
             jump.JumpTo(4);
             yield return Until(() => !jump.IsJumping, 20f, "the jump to Chapter 4");
             Assert.IsTrue(AgentSpawner.Instance.Blackboard.CaptainAwake, "All four types active: the Captain is awake.");
+        }
+
+        [UnityTest]
+        public IEnumerator Test_FourAgentsStress()
+        {
+            yield return LoadChapterFour();
 
             var player = (Component)PlayerState.Current;
             var body = player.GetComponent<CharacterController>();
@@ -182,11 +191,103 @@ namespace ToyFactory.Tests
             TestContext.WriteLine(report.ToString());
 
             Assert.Greater(frames, 100, "Enough frames measured.");
-            // A warning, not a failure, while the Captain's field spikes are being fixed
-            // (OptimisationLog.md): a run filtered by assembly includes this explicit test.
+            // The Captain's share is a hard check; the total stays a warning until the Guard's
+            // spikes (S2) are fixed, since this test cannot fix another agent's brain.
+            Assert.Less(Percentile(brainMs[3], 0.99), CaptainBudgetMs, "Captain p99 per frame");
             double p99 = Percentile(aiMs, 0.99);
             if (p99 >= AiBudgetMs)
                 Debug.LogWarning($"[Stress] AI p99 {p99:F2} ms is over its {AiBudgetMs} ms budget per frame.");
+        }
+
+        /// <summary>
+        /// <c>Test_PushedBoxStress</c>: the same Chapter 4 run, but a box-sized blocker moves
+        /// one cell every 0.5 s across the Control Room, the way a pushed box updates the grid
+        /// (<see cref="GridManager.SetBlocker"/>, the call PushableBox makes). Every move makes
+        /// all the Captain's goal fields stale. Measures the Captain's tick and the field
+        /// rebuilds per frame for OptimisationLog.md.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Test_PushedBoxStress()
+        {
+            const float Seconds = 20f;
+            const float MoveEvery = 0.5f;
+            const int BoxOwner = 990001;   // a test-only blocker id, released at the end
+
+            yield return LoadChapterFour();
+            var player = (Component)PlayerState.Current;
+            var body = player.GetComponent<CharacterController>();
+            Component health = player.GetComponents<Component>().First(c => c.GetType().Name == "PlayerHealth");
+            MethodInfo setHealth = health.GetType().GetProperty("Current").GetSetMethod(true);
+            float maxHealth = (float)health.GetType().GetField("maxHealth", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(health);
+
+            var captain = ProfilerRecorder.StartNew(ProfilerCategory.Scripts, "AI.Brain.Tick.Captain", 1);
+            var fields = ProfilerRecorder.StartNew(ProfilerCategory.Scripts, "AI.DijkstraField.Compute", 1);
+            var repairs = ProfilerRecorder.StartNew(ProfilerCategory.Scripts, "AI.DijkstraField.Repair", 1);
+            var captainMs = new List<double>();
+            var fieldMs = new List<double>();
+            var repairMs = new List<double>();
+            int version = GridManager.Current.Version;
+            int moves = 0;
+            int leg = 0;
+            Vector3 at = Loop[0];
+            float start = Time.realtimeSinceStartup;
+            float nextMove = start + WarmUp;
+
+            try
+            {
+                while (Time.realtimeSinceStartup - start < WarmUp + Seconds)
+                {
+                    Vector3 target = Loop[(leg + 1) % Loop.Length];
+                    at = Vector3.MoveTowards(at, target, PlayerSpeed * Time.deltaTime);
+                    if ((at - target).sqrMagnitude < 0.01f)
+                        leg++;
+                    body.enabled = false;
+                    player.transform.SetPositionAndRotation(at, Quaternion.LookRotation(target - at + Vector3.forward * 0.001f));
+                    body.enabled = true;
+                    setHealth.Invoke(health, new object[] { maxHealth });
+
+                    // Back and forth along x = 4 to 9 m at z = 34 m, one 0.5 m cell a move.
+                    if (Time.realtimeSinceStartup >= nextMove)
+                    {
+                        int step = moves % 20;
+                        float x = 4f + 0.5f * (step < 10 ? step : 20 - step);
+                        GridManager.SetBlocker(BoxOwner, new Bounds(new Vector3(x, 0.5f, 34f), new Vector3(0.9f, 1f, 0.9f)));
+                        moves++;
+                        nextMove += MoveEvery;
+                    }
+
+                    yield return null;
+
+                    if (Time.realtimeSinceStartup - start < WarmUp)
+                        continue;
+                    captainMs.Add(captain.LastValue / 1e6);
+                    fieldMs.Add(fields.LastValue / 1e6);
+                    repairMs.Add(repairs.LastValue / 1e6);
+                }
+            }
+            finally
+            {
+                captain.Dispose();
+                fields.Dispose();
+                repairs.Dispose();
+                GridManager.ClearBlocker(BoxOwner);
+            }
+
+            int changes = GridManager.Current.Version - version;
+            int frames = captainMs.Count;
+            var report = new StringBuilder();
+            report.AppendLine($"Test_PushedBoxStress: {frames} frames over {Seconds} s, box moved {moves} times, {changes} grid changes, Chapter 4, editor");
+            report.AppendLine($"  Captain ticks: avg {captainMs.Average():F4}, p99 {Percentile(captainMs, 0.99):F3}, worst {captainMs.Max():F3} ms/frame; frames over 1 ms {captainMs.Count(v => v > 1.0)}");
+            report.AppendLine($"  AI.DijkstraField.Compute: avg {fieldMs.Average():F4}, p99 {Percentile(fieldMs, 0.99):F3}, worst {fieldMs.Max():F3} ms/frame; frames over 1 ms {fieldMs.Count(v => v > 1.0)}");
+            report.AppendLine($"  AI.DijkstraField.Repair: avg {repairMs.Average():F4}, p99 {Percentile(repairMs, 0.99):F3}, worst {repairMs.Max():F3} ms/frame; frames with a repair {repairMs.Count(v => v > 0)}");
+            foreach (string line in report.ToString().Split('\n'))
+                if (line.Trim().Length > 0)
+                    Debug.Log("[Stress] " + line.Trim());
+            TestContext.WriteLine(report.ToString());
+
+            Assert.Greater(moves, 30, "The box kept moving.");
+            Assert.Greater(changes, 0, "Each move changed the grid.");
+            Assert.Less(Percentile(captainMs, 0.99), CaptainBudgetMs, "Captain p99 per frame while the box moves");
         }
     }
 }

@@ -21,12 +21,16 @@ namespace ToyFactory.Runtime.Movement
         [Tooltip("Maximum turn speed in degrees per second. 360 turns the agent fully around in half a second.")]
         [SerializeField, Min(1f)] float turnSpeed = 360f;
 
+        [Tooltip("Metres per second gained or lost per second when the speed changes: starting off, or a new route at a different speed. 12 reaches 4.6 m/s in about 0.4 s.")]
+        [SerializeField, Min(0.1f)] float acceleration = 12f;
+
         // Reused for every route so setting a new path does not allocate.
         readonly List<Vector3> _path = new List<Vector3>();
 
         CharacterController _controller;
         int _targetIndex;
-        float _speed;
+        float _speed;        // the route's speed
+        float _moveSpeed;    // the speed now, easing towards _speed
         float _verticalVelocity;
         bool _holding;
         Vector3 _holdLook;
@@ -45,8 +49,22 @@ namespace ToyFactory.Runtime.Movement
         /// <summary>True while <see cref="Hold"/> keeps the agent standing where it is.</summary>
         public bool IsHolding => _holding;
 
-        /// <summary>Horizontal speed this frame in metres per second, for animation.</summary>
+        /// <summary>Horizontal speed it was told to move at this frame, in metres per second.</summary>
         public float CurrentSpeed { get; private set; }
+
+        /// <summary>
+        /// Horizontal speed it really moved at this frame, in metres per second, for animation:
+        /// pressed against something it cannot pass, it is 0 while <see cref="CurrentSpeed"/> is
+        /// not, so the agent stands instead of running on the spot. Never above
+        /// <see cref="CurrentSpeed"/>: a push or a teleport is not walking.
+        /// </summary>
+        public float GroundSpeed { get; private set; }
+
+        /// <summary>
+        /// The direction it last moved in, on the ground plane (unit length, or zero before it
+        /// has moved). Not always where it faces: aiming on the move turns the body, not the path.
+        /// </summary>
+        public Vector3 MoveDirection { get; private set; }
 
         /// <summary>
         /// Signed turn speed this frame in degrees per second (positive = turning right),
@@ -77,6 +95,31 @@ namespace ToyFactory.Runtime.Movement
             _targetIndex = 0;
             _speed = Mathf.Max(0f, speed);
             SkipReachedWaypoints();
+            SkipPassedFirstWaypoint();
+        }
+
+        // A new route starts at the centre of the cell the agent stands in. Re-planned
+        // mid-walk, that centre is often just behind it, and walking back to it first shows as
+        // a hitch. If the agent is already nearer the next waypoint than the first one is, it
+        // has effectively passed the first: go straight on.
+        void SkipPassedFirstWaypoint()
+        {
+            if (_path.Count - _targetIndex < 2)
+                return;
+            Vector3 first = _path[_targetIndex];
+            Vector3 next = _path[_targetIndex + 1];
+            if (FlatSqrDistance(transform.position, next) < FlatSqrDistance(first, next))
+                _targetIndex++;
+        }
+
+        static float FlatSpeed(Vector3 from, Vector3 to) =>
+            Time.deltaTime > 0f ? Mathf.Sqrt(FlatSqrDistance(from, to)) / Time.deltaTime : 0f;
+
+        static float FlatSqrDistance(Vector3 a, Vector3 b)
+        {
+            float dx = a.x - b.x;
+            float dz = a.z - b.z;
+            return dx * dx + dz * dz;
         }
 
         /// <summary>
@@ -120,6 +163,7 @@ namespace ToyFactory.Runtime.Movement
         {
             _path.Clear();
             _targetIndex = 0;
+            _moveSpeed = 0f;
         }
 
         void Update()
@@ -131,6 +175,7 @@ namespace ToyFactory.Runtime.Movement
             {
                 facing = _holdLook - transform.position;
                 facing.y = 0f;
+                _moveSpeed = 0f;   // starts off again from standing when released
             }
             else if (HasPath)
             {
@@ -140,12 +185,19 @@ namespace ToyFactory.Runtime.Movement
 
                 if (distance > 0f)
                 {
-                    // Never step further than the remaining distance, so the agent
-                    // does not overshoot the waypoint on a long frame.
-                    float frameSpeed = Mathf.Min(_speed, distance / Time.deltaTime);
+                    // Ease towards the route's speed, so starting off and a new route at another
+                    // speed do not jump; never step further than the remaining distance, so the
+                    // agent does not overshoot the waypoint on a long frame.
+                    _moveSpeed = Mathf.MoveTowards(_moveSpeed, _speed, acceleration * Time.deltaTime);
+                    float frameSpeed = Mathf.Min(_moveSpeed, distance / Time.deltaTime);
                     horizontalVelocity = toTarget / distance * frameSpeed;
                     facing = horizontalVelocity;
+                    MoveDirection = toTarget / distance;
                 }
+            }
+            else
+            {
+                _moveSpeed = 0f;
             }
 
             if (_facing && !_holding)
@@ -159,8 +211,10 @@ namespace ToyFactory.Runtime.Movement
 
             Vector3 velocity = horizontalVelocity;
             velocity.y = _verticalVelocity;
+            Vector3 before = transform.position;
             _controller.Move(velocity * Time.deltaTime);
             CurrentSpeed = horizontalVelocity.magnitude;
+            GroundSpeed = Mathf.Min(CurrentSpeed, FlatSpeed(before, transform.position));
 
             SkipReachedWaypoints();
         }

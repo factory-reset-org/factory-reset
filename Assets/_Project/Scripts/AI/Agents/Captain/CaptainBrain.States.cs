@@ -40,6 +40,8 @@ namespace ToyFactory.AI.Agents.Captain
         /// <summary>
         /// Not confident enough to commit. Watches the player from a distance and backs off
         /// if they come within 8 m, so it is not simply chasing while the prediction settles.
+        /// A back-off step that makes no progress for 2 s is dropped. With nothing to watch
+        /// (no contact for 3 s), the decision turns into guarding g*, which leaves this state.
         /// </summary>
         sealed class ObserveState : CaptainState
         {
@@ -62,6 +64,15 @@ namespace ToyFactory.AI.Agents.Captain
 
                 // Back off at most once per decision, and only once the last step is done.
                 bool stepping = b._routeCells != null && !b.ArrivedAt(b._routeGoal);
+                if (stepping && b.NoProgressTowards(b._grid.CellToWorld(b._routeGoal)))
+                {
+                    // Pressed against something the grid does not know about (a body lying in
+                    // the aisle, another agent): drop the step and stand, which turns it to face
+                    // the player. That spot is not stepped to again for a while.
+                    b.Avoid(b._routeGoal);
+                    b.StopMoving();
+                    return;
+                }
                 if (!b._decidedThisTick || stepping || FlatDistance(b._ctx.Position, player) >= ObserveDistance)
                     return;
 
@@ -70,14 +81,18 @@ namespace ToyFactory.AI.Agents.Captain
                 if (away.sqrMagnitude < 1e-4f)
                     away = -b._ctx.Forward;
                 Vector3 target = b._ctx.Position + away.normalized * RetreatStep;
-                b.MoveTo(b.ClampedCell(target));
+                Vector2Int cell = b.ClampedCell(target);
+                if (b.TryWalkable(cell, out Vector2Int step) && b.IsAvoided(step))
+                    return;
+                b.ResetProgress();
+                b.MoveTo(cell);
             }
         }
 
         /// <summary>
         /// Confident about g*: walks with A* to the planned cell, the first chokepoint (or
-        /// route cell) it reaches 1 s before the player. Follows the plan as it is refreshed,
-        /// and gives it up if the goal changes or the plan disappears.
+        /// route cell) it reaches 1 s before the player; or, guarding, to g* itself. Follows the
+        /// plan as it is refreshed, and gives it up if the goal changes or the plan disappears.
         /// </summary>
         sealed class InterceptState : CaptainState
         {
@@ -89,12 +104,22 @@ namespace ToyFactory.AI.Agents.Captain
                 b._planInvalid = false;
                 b._targetCell = b._plan.Cell;
                 b._targetGoalId = b._planGoalId;
+                b.ResetProgress();
                 b.MoveTo(b._targetCell);
             }
 
             public override void Tick(CaptainBrain b)
             {
                 b._outSpeed = InterceptSpeed;
+
+                // Getting no closer (a prop in the way, a jam of bodies): give the cell up,
+                // keep away from it for a while and plan again.
+                if (b.NoProgressTowards(b._grid.CellToWorld(b._targetCell)))
+                {
+                    b.Avoid(b._targetCell);
+                    b._planInvalid = true;
+                    return;
+                }
                 if (!b._decidedThisTick)
                     return;
 
@@ -107,6 +132,12 @@ namespace ToyFactory.AI.Agents.Captain
                 {
                     // The player moved on: the earliest cell that still beats them has changed.
                     b._targetCell = b._plan.Cell;
+                    b.MoveTo(b._targetCell);
+                }
+                else if (b._routeCells == null && !b.ArrivedAt(b._targetCell))
+                {
+                    // No route yet (a door was still shut when it last asked): ask again now,
+                    // rather than only when the target changes.
                     b.MoveTo(b._targetCell);
                 }
             }
@@ -133,14 +164,19 @@ namespace ToyFactory.AI.Agents.Captain
                 if (!b._decidedThisTick)
                     return;
 
-                if (!b._plan.HasPlan || b._planGoalId != b._targetGoalId || !b.IsAheadOfPlayer(b._targetCell))
+                // Pushed off its cell (a box, another body): it is not holding it any more.
+                bool offCell = FlatDistance(b._ctx.Position, b._grid.CellToWorld(b._targetCell)) > AmbushLeaveDistance;
+                if (!b._plan.HasPlan || b._planGoalId != b._targetGoalId || !b.IsAheadOfPlayer(b._targetCell) || offCell)
                     b._planInvalid = true;
             }
         }
 
         /// <summary>
-        /// The player is in view within 10 m: stands, faces them and asks for a shot every 1.2 s.
-        /// The body's weapon aims for 0.3 s (the telegraph) before each shot, so the player can react.
+        /// A fight: stands, faces the player and asks for a shot every 1.2 s while in contact.
+        /// The body's weapon aims for 0.3 s (the telegraph) before each shot, so the player can
+        /// react. Starts when the player is seen within 10 m and lasts at least 2 s; contact
+        /// (line of sight within 14 m) keeps it going, so stepping in and out of 10 m does not
+        /// switch it on and off.
         /// </summary>
         sealed class EngageState : CaptainState
         {
@@ -152,6 +188,7 @@ namespace ToyFactory.AI.Agents.Captain
             {
                 base.Enter(b);
                 b.StopMoving();
+                b._engagedAt = b.Now;
                 _lastShotAt = float.NegativeInfinity;
             }
 
@@ -160,12 +197,110 @@ namespace ToyFactory.AI.Agents.Captain
                 b._outSpeed = 0f;
                 if (!b.PlayerAvailable())
                     return;
-                b._outLook = b.Player.Position;
 
-                if (b._seesPlayer && b.Now - _lastShotAt >= FireInterval)
+                // Out of contact it faces where it last saw the player, not where they are now.
+                b._outLook = b._inContact ? b.Player.Position : b._lastContactPosition;
+                if (b._inContact && b.Now - _lastShotAt >= FireInterval)
                 {
                     b._outAction = AgentAction.Shoot;
                     _lastShotAt = b.Now;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Lost the player mid-fight: walks at intercept speed to where it last had contact,
+        /// then stands there for 1 s looking the way the player was heading. Contact again
+        /// returns it to Engage; otherwise, after that look or 5 s, it predicts again.
+        /// </summary>
+        sealed class PursueState : CaptainState
+        {
+            float _enteredAt;
+            float _arrivedAt;
+            bool _arrived;
+
+            public PursueState() : base("Pursue") { }
+
+            public override void Enter(CaptainBrain b)
+            {
+                base.Enter(b);
+                b._pursueOver = false;
+                _enteredAt = b.Now;
+                _arrived = false;
+                b.ResetProgress();
+                if (!b.MoveTo(b.ClampedCell(b._lastContactPosition)))
+                    b._pursueOver = true;   // no route there: give up and predict again
+            }
+
+            public override void Tick(CaptainBrain b)
+            {
+                b._outSpeed = InterceptSpeed;
+                if (b.Now - _enteredAt >= PursueTimeout ||
+                    (!_arrived && b.NoProgressTowards(b._grid.CellToWorld(b._routeGoal))))
+                {
+                    b._pursueOver = true;
+                    return;
+                }
+
+                if (!_arrived && b.ArrivedAt(b._routeGoal))
+                {
+                    _arrived = true;
+                    _arrivedAt = b.Now;
+                    b.StopMoving();
+                }
+                if (!_arrived)
+                    return;
+
+                b._outSpeed = 0f;
+                b._outLook = b._lastContactPosition + b._lastContactHeading * 3f;
+                if (b.Now - _arrivedAt >= LookAroundTime)
+                    b._pursueOver = true;
+            }
+        }
+
+        /// <summary>
+        /// The player is busy at a goal they reached (a task, the console hold) and nothing
+        /// else is predicted: closes in on them at intercept speed until they are in view,
+        /// instead of watching from a distance while they finish. Getting stuck on the way
+        /// gives up for a while (back to predicting).
+        /// </summary>
+        sealed class ConvergeState : CaptainState
+        {
+            public ConvergeState() : base("Converge") { }
+
+            public override void Enter(CaptainBrain b)
+            {
+                base.Enter(b);
+                b.ResetProgress();
+                b._convergeCell = b.Player.Cell;
+                b.MoveTo(b._convergeCell);
+            }
+
+            public override void Tick(CaptainBrain b)
+            {
+                b._outSpeed = InterceptSpeed;
+                if (!b.PlayerAvailable())
+                    return;
+                b._outLook = b.Player.Position;
+
+                // Next to the player the body's stand-off holds it still: that is arriving, not
+                // being stuck, so the stuck check does not count it.
+                if (FlatDistance(b._ctx.Position, b.Player.Position) <= ConvergeArrivedDistance)
+                {
+                    b.ResetProgress();
+                    return;
+                }
+                if (b.NoProgressTowards(b.Player.Position))
+                {
+                    b._convergeBlockedUntil = b.Now + AvoidSeconds;
+                    b.StopMoving();
+                    return;
+                }
+                // Follow the player if they shuffle along the goal, at the decision rate.
+                if (b._decidedThisTick && (b.Player.Cell != b._convergeCell || b._routeCells == null))
+                {
+                    b._convergeCell = b.Player.Cell;
+                    b.MoveTo(b._convergeCell);
                 }
             }
         }

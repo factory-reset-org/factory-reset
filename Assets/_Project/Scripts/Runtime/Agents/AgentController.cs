@@ -34,12 +34,27 @@ namespace ToyFactory.Runtime.Agents
         [Tooltip("Scrap the agent for good when it goes down instead of knocking it out (the Saboteurs).")]
         [SerializeField] bool scrapWhenDown;
 
+        [Header("Sabotage")]
+        [Tooltip("How close (flat metres) the agent must be to a door, trap or battery to act on it. Above the Saboteur brain's own 1.5 m to the door cell, so a door registered at its hinge is still in reach.")]
+        [SerializeField, Min(0.1f)] float sabotageReach = 2.5f;
+
+        [Tooltip("Seconds a door, trap or battery request may stay out of reach before it fails.")]
+        [SerializeField, Min(0f)] float sabotageGiveUpSeconds = 2f;
+
+        [Tooltip("Curve into a new route from the current heading when the brain replans mid-walk, instead of pivoting on the spot. Untick to compare.")]
+        [SerializeField] bool blendReplans = true;
+
         // Reused for every new route, so smoothing allocates nothing once they have grown.
         readonly List<Vector3> _pulledPath = new List<Vector3>();
         readonly List<Vector3> _smoothedPath = new List<Vector3>();
+        readonly List<Vector3> _blendedPath = new List<Vector3>();
+
+        // Frames this agent's brain has waited for the AI frame budget (BrainTickScheduler).
+        int _waitedFrames;
 
         AgentPathFollower _follower;
         AgentWeapon _weapon;
+        bool _facingLook;   // the body is turned to the brain's LookTarget
 
         // One marker per agent type around the brain's Tick, for the Profiler and the
         // four-agent stress test (AI time per frame, by brain). Indexed by AgentType.
@@ -52,6 +67,8 @@ namespace ToyFactory.Runtime.Agents
         };
         IAgentBrain _brain;
         IGoalPredictor _predictor;
+        IActionFeedback _feedback;
+        IHealthAware _health;
         WorldBlackboard _blackboard;
         GridGraph _grid;
         bool _warnedNotInitialised;
@@ -74,6 +91,13 @@ namespace ToyFactory.Runtime.Agents
         /// blackboard, never through a brain.
         /// </summary>
         public IAgentBrain Brain => _brain;
+
+        /// <summary>
+        /// The shared blackboard, for body components that show the state of the world (the
+        /// Captain's dormant kneel and dark visor read <c>CaptainAwake</c>). Null until
+        /// <see cref="Initialise"/>. Body components only read it; only Runtime writers set it.
+        /// </summary>
+        public WorldBlackboard World => _blackboard;
 
         /// <summary>The body's path follower, for debug tools (the overlay draws the route left to walk).</summary>
         public AgentPathFollower Follower => _follower;
@@ -98,7 +122,7 @@ namespace ToyFactory.Runtime.Agents
         Vector3 _lastPosition;
 
         /// <inheritdoc/>
-        public float Speed => _follower.CurrentSpeed;
+        public float Speed => _follower.GroundSpeed;
 
         /// <inheritdoc/>
         public float TurnRate => _follower.TurnRate;
@@ -111,11 +135,27 @@ namespace ToyFactory.Runtime.Agents
 
         bool _shootRequested;
 
+        // The brain's action on its previous tick: a door, trap or battery request starts when
+        // the (action, target) pair changes, so a brain that repeats it every tick asks once.
+        AgentAction _lastAction;
+        int _lastTargetId;
+
+        // The request waiting to be carried out; None when there is none.
+        AgentAction _sabotageAction;
+        int _sabotageTarget;
+        float _sabotageSince;
+
         /// <summary>Hits left before this agent goes down. Back to full when it reboots.</summary>
         public int HitPointsLeft { get; private set; }
 
         /// <summary>Hits this agent can take, for the HUD and tests.</summary>
         public int MaxHitPoints => hitPoints;
+
+        /// <summary>
+        /// Raised for each hit that counts (<see cref="TakeHit"/>), before the agent goes down
+        /// if it was the last hit point. The body's hit effects listen.
+        /// </summary>
+        public event Action Hit;
 
         /// <summary>True once <see cref="Scrap"/> has been called. Never becomes false again.</summary>
         public bool IsDead { get; private set; }
@@ -173,6 +213,8 @@ namespace ToyFactory.Runtime.Agents
                 return;
 
             HitPointsLeft--;
+            Hit?.Invoke();
+            _health?.OnHealthChanged(HitPointsLeft, hitPoints);
             if (HitPointsLeft > 0)
                 return;
 
@@ -194,6 +236,11 @@ namespace ToyFactory.Runtime.Agents
             _blackboard = blackboard ?? throw new ArgumentNullException(nameof(blackboard));
             _predictor = brain as IGoalPredictor;
             WindUp = brain as IWindUpState;
+            _feedback = brain as IActionFeedback;
+            _health = brain as IHealthAware;
+            _lastAction = AgentAction.None;
+            _sabotageAction = AgentAction.None;
+            _health?.OnHealthChanged(HitPointsLeft, hitPoints);
 
             if (_grid != null)
                 _grid.Changed -= HandleGridChanged;
@@ -241,8 +288,10 @@ namespace ToyFactory.Runtime.Agents
             IsDead = true;
             HitPointsLeft = 0;
             _shootRequested = false;
+            _sabotageAction = AgentAction.None;   // the brain is released below; no answer
             _weapon?.Cancel();
             _follower.Stop();
+            ReleaseLook();
 
             // Release the brain's claims before the event, so listeners such as the
             // Saboteur squad already see the freed targets when they react.
@@ -268,6 +317,9 @@ namespace ToyFactory.Runtime.Agents
             _weapon?.Cancel();
             _heard = default; // a noise from before the knock-out is stale by the reboot
             _follower.Stop();
+            ReleaseLook();   // a downed body does not turn
+            ResolveSabotage(false);         // went down before it got there
+            _lastAction = AgentAction.None; // a request repeated after the reboot is a new one
             _brain?.OnStunned(_rebootAt - Now);
             if (_predictor != null)
                 _blackboard.SetPredictedGoal(_predictor.Prediction);   // not ticked until the reboot
@@ -280,6 +332,7 @@ namespace ToyFactory.Runtime.Agents
         {
             IsDisabled = false;
             HitPointsLeft = hitPoints;
+            _health?.OnHealthChanged(HitPointsLeft, hitPoints);
             AgentEvents.RaiseRebooted(this);
         }
 
@@ -306,6 +359,15 @@ namespace ToyFactory.Runtime.Agents
                 return;
             }
 
+            // The frame's AI budget is spent (another brain made a heavy decision this frame):
+            // wait a frame, at most a few, while the body keeps walking its route.
+            if (!BrainTickScheduler.TryBegin(_waitedFrames))
+            {
+                _waitedFrames++;
+                return;
+            }
+            _waitedFrames = 0;
+
             Vector3 position = transform.position;
             var context = new AgentContext(CurrentCell(position), position, transform.forward,
                 Now, _blackboard, _heard);
@@ -313,14 +375,17 @@ namespace ToyFactory.Runtime.Agents
 
             AgentIntent intent;
             int type = (int)Type;
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
             using (TickMarkers[type < TickMarkers.Length ? type : 0].Auto())
                 intent = _brain.Tick(context);
+            BrainTickScheduler.End(System.Diagnostics.Stopwatch.GetTimestamp() - started);
 
             // Brains never write the blackboard: copy the Captain's goal prediction for the others.
             if (_predictor != null)
                 _blackboard.SetPredictedGoal(_predictor.Prediction);
 
             ApplyPath(intent);
+            ApplyLook(intent);
             ApplyAction(intent);
             DebugState = intent.DebugState ?? string.Empty;
             _alert = intent.Alert != AlertLevel.None ? intent.Alert : AlertFromState.For(DebugState);
@@ -359,6 +424,8 @@ namespace ToyFactory.Runtime.Agents
             IAgentBrain brain = _brain;
             _brain = null;
             WindUp = null;
+            _feedback = null;
+            _health = null;
             brain.OnDestroyed();
 
             // A prediction from a brain that has gone must not outlive it.
@@ -376,13 +443,129 @@ namespace ToyFactory.Runtime.Agents
             _grid != null ? _grid.WorldToCell(position) : Vector2Int.zero;
 
         // Carries out the brain's action. Shoot goes to the weapon, which aims for 0.3 s (the
-        // telegraph) before the hitscan; a request while it is still busy is ignored. The
-        // Saboteur's door, trap and battery actions are added when its brain outputs them.
+        // telegraph) before the hitscan; a request while it is still busy is ignored. A door
+        // (close or open), trap or battery action is a request that starts when the (action,
+        // target) pair changes and stays open until it is carried out or given up, even if the
+        // brain moves on.
         void ApplyAction(in AgentIntent intent)
         {
             _shootRequested = intent.Action == AgentAction.Shoot;
             if (_shootRequested && _weapon != null)
                 _weapon.RequestShot();
+
+            bool fresh = intent.Action != _lastAction || intent.ActionTargetId != _lastTargetId;
+            _lastAction = intent.Action;
+            _lastTargetId = intent.ActionTargetId;
+            if (fresh && TryKindOf(intent.Action, out _))
+            {
+                ResolveSabotage(false);   // a newer request replaces one still waiting
+                _sabotageAction = intent.Action;
+                _sabotageTarget = intent.ActionTargetId;
+                _sabotageSince = Now;
+            }
+            TrySabotage();
+        }
+
+        // Every request gets exactly one answer: carried out within reach, or failed because the
+        // target is not registered (now or any more), it stayed out of reach for
+        // sabotageGiveUpSeconds, a newer request replaced it, or the agent went down.
+        void TrySabotage()
+        {
+            if (!TryKindOf(_sabotageAction, out SabotageKind kind))
+                return;
+
+            if (!SabotageTargets.TryGet(kind, _sabotageTarget, out ISabotageable target, out Transform where))
+            {
+                ResolveSabotage(false);
+                return;
+            }
+
+            Vector3 offset = where.position - transform.position;
+            offset.y = 0f;   // a battery on a shelf is still in reach from the floor
+            if (offset.sqrMagnitude <= sabotageReach * sabotageReach)
+            {
+                if (_sabotageAction == AgentAction.OpenDoor)
+                {
+                    // The same registered door, opened rather than closed (the Captain).
+                    if (!(target is IDoor door))
+                    {
+                        ResolveSabotage(false);
+                        return;
+                    }
+                    door.Open();
+                }
+                else
+                {
+                    target.Execute();
+                }
+                ResolveSabotage(true);
+            }
+            else if (Now - _sabotageSince > sabotageGiveUpSeconds)
+            {
+                ResolveSabotage(false);
+            }
+        }
+
+        void ResolveSabotage(bool success)
+        {
+            if (_sabotageAction == AgentAction.None)
+                return;
+
+            // Cleared first, so a brain that asks again from inside the callback starts afresh.
+            AgentAction action = _sabotageAction;
+            _sabotageAction = AgentAction.None;
+            _feedback?.OnActionResolved(action, _sabotageTarget, success);
+        }
+
+        static bool TryKindOf(AgentAction action, out SabotageKind kind)
+        {
+            switch (action)
+            {
+                case AgentAction.CloseDoor:
+                case AgentAction.OpenDoor:
+                    kind = SabotageKind.Door;
+                    return true;
+                case AgentAction.ArmTrap:
+                    kind = SabotageKind.Trap;
+                    return true;
+                case AgentAction.StealBattery:
+                    kind = SabotageKind.Battery;
+                    return true;
+                default:
+                    kind = default;
+                    return false;
+            }
+        }
+
+        // The brain's LookTarget, honoured while the body stands still: a Captain in ambush
+        // faces the way the player will come, a watching agent faces the player. Vision uses
+        // the body's facing, so this is what lets them see what they are looking for. While
+        // walking the body faces where it goes (no walking sideways), and while the weapon
+        // aims it turns the body itself, so the weapon wins.
+        void ReleaseLook()
+        {
+            if (_facingLook)
+                _follower.StopFacing();
+            _facingLook = false;
+        }
+
+        void ApplyLook(in AgentIntent intent)
+        {
+            if (_weapon != null && _weapon.IsBusy)
+            {
+                _facingLook = false;   // the weapon owns the facing and releases it when done
+                return;
+            }
+            if (intent.LookTarget.HasValue && !_follower.HasPath)
+            {
+                _follower.FaceTowards(intent.LookTarget.Value);
+                _facingLook = true;
+            }
+            else if (_facingLook)
+            {
+                _follower.StopFacing();
+                _facingLook = false;
+            }
         }
 
         void ApplyPath(in AgentIntent intent)
@@ -394,19 +577,26 @@ namespace ToyFactory.Runtime.Agents
             if (intent.Path.Count == 0)
             {
                 _follower.Stop();
+                return;
             }
-            else if (smoothPaths && _grid != null && intent.Path.Count > 2)
+
+            IReadOnlyList<Vector3> route = intent.Path;
+            if (smoothPaths && _grid != null && intent.Path.Count > 2)
             {
                 // Both stages keep the first and last waypoints and never cross a cell the
                 // brain's path avoided, so the brain's route is still respected.
                 PathSmoother.StringPull(_grid, intent.Path, _pulledPath);
                 PathSmoother.CatmullRom(_grid, _pulledPath, _smoothedPath);
-                _follower.SetPath(_smoothedPath, intent.DesiredSpeed);
+                route = _smoothedPath;
             }
-            else
-            {
-                _follower.SetPath(intent.Path, intent.DesiredSpeed);
-            }
+
+            // A replan while walking: curve into the new route from the current heading rather
+            // than pivoting on the spot (PathBlender checks the curve against the grid).
+            if (blendReplans && _grid != null && _follower.HasPath &&
+                PathBlender.Blend(_grid, transform.position, _follower.MoveDirection, _follower.CurrentSpeed, route, _blendedPath))
+                route = _blendedPath;
+
+            _follower.SetPath(route, intent.DesiredSpeed);
         }
     }
 }
