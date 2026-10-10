@@ -442,6 +442,7 @@ Intercepting against chasing (Chapter 3, the Captain waking at its spawn, the pl
 
 What this shows:
 - **Predicting pays most against a fast player:** a sprinting player (7 m/s) outruns a 4.6 m/s chaser, which reaches them before the task in 1 of 10 straight runs. The Captain, already heading for the task, reaches them in 5.
+- **To see it:** in Play mode, *Factory Reset → Demo → Intercept vs Chase* puts this chaser beside the Captain and *Top-Down View* shows both routes from above (DesignDoc, debug overlay).
 - **The one loss is the case it should lose:** a walking player wandering off their route stays close enough for a chaser to catch, while the detour makes the route the Captain is cutting off less certain.
 - **The sealed-goal priors were a measured fix.** With the old console share (0.45 next to the cores), Chapter 4 accuracy on straight walks was 30% and the Captain was confidently wrong on 53% of them, sure of the sealed console before the player moved. The sealed share (0.05) raised it to 71% and 0%, and feints are now read back in 98% of trips instead of 77%.
 - **Limits:** these are scripted players on the level's grid, not people; detours are random rather than tactical; and the Chapter 3 number is easy because only one task was open when the snapshot was taken.

@@ -169,6 +169,28 @@ namespace ToyFactory.Runtime.Agents
         }
 
         /// <summary>
+        /// Spawns one more agent of <paramref name="type"/> with <paramref name="brain"/>,
+        /// standing at <paramref name="feet"/>, after the level's own agents: for demos such as
+        /// the intercept against a chaser. It takes the next id, the shared blackboard and the
+        /// level grid, and joins <see cref="SpawnedAgents"/>, so the debug overlay draws it.
+        /// Returns null if there is no body for the type.
+        /// </summary>
+        public AgentController Spawn(AgentType type, IAgentBrain brain, Vector3 feet, Quaternion rotation, string label)
+        {
+            if (brain == null)
+                throw new ArgumentNullException(nameof(brain));
+            AgentController body = BodyFor(type);
+            if (body == null)
+                return null;
+            var identity = new AgentIdentity(type, _spawned.Count);
+            AgentController agent = Instantiate(body, feet + Vector3.up * FeetToPivotHeight(body), rotation, transform);
+            agent.name = string.IsNullOrEmpty(label) ? identity.ToString() : label;
+            agent.Initialise(identity, brain, _blackboard, GridManager.Current);
+            _spawned.Add(agent);
+            return agent;
+        }
+
+        /// <summary>
         /// Builds the brain for a spawn point's agent type. Every type uses the mock brain
         /// until its owner's real brain exists; each owner replaces only their own case.
         /// <paramref name="setup"/> carries everything a brain may need: the identity (its
