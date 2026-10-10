@@ -81,7 +81,7 @@ LKP means **last known position** of the player. Speeds are in m/s.
 | --- | --- | ---: |
 | **Patrol** | GBFS to each patrol point in turn; an unreachable point is skipped. | 1.9 |
 | **Investigate** | GBFS to the best one-off noise; on arrival stand and sweep the head round for **2.4 s**, then mark the noise handled. A better noise heard on the way retargets it. A noise heard through a closed door is checked from the near side of that door. | 3.2 |
-| **Distracted** | Circle a repeating source at **1.5 m**, stepping to the next of 8 points every **1.2 s**, looking at it. On leaving, the source is marked handled so it is not then investigated. | 3.6 |
+| **Distracted** | Follow a repeating source (a thrown wind-up toy walks; the terminal) and watch it, as in the prototype: GBFS towards it, replanning every **0.5 s**; stop **1.3 m** away facing it; set off again only once it is **2 m** away. While a lure ticks, a player more than **3 m** away goes unseen, so a toy also pulls the Tracker off a chase (see Lures below). On leaving, the source is marked handled so it is not then investigated. | 3.6 |
 | **Chase** | GBFS to the player (or LKP if not currently seen), replanning every **0.5 s**; looks at the target. If a closed door is in the way, it runs to the near side of the door. | 4.6 |
 | **WaitAtDoor** | The player escaped through a door and shut it. Runs to the near side of the door, then stands and stares at it for **2.5 s**: the toy has no hands to open it. | 4.6 |
 | **Search** | GBFS round three rings about LKP (1.5, 3 and 4.5 m, 8 points each), starting in the direction the player was moving. After WaitAtDoor the rings are centred on the door's near side instead, the side it can reach. Gives up after **8 s**. | 3.3 |
@@ -100,10 +100,12 @@ LKP means **last known position** of the player. Speeds are in m/s.
 | Top | 90 | Stunned → Hunting | was hunting, LKP known, player alive |
 | Top | 89 | Stunned → Calm | otherwise |
 | Top | 80 | Calm → Rewind, Hunting → Rewind | energy reached 0 |
+| Top | 71 | Rewind (from Hunting) → Calm | energy full again, and a lure is ticking with the player not within 3 m |
 | Top | 70 | Rewind → Calm / Hunting | energy full again (back to the parent it left) |
+| Top | 60 | Hunting → Calm | a lure is ticking and the player is not within 3 m |
 | Top | 50 | Calm → Hunting | sees the player |
 | Top | 40 | Hunting → Calm | Search timed out, or the player is gone or dead |
-| Calm | 30 | any → Distracted | the best noise is a repeating source, and not already Distracted |
+| Calm | 30 | any → Distracted | a repeating source is ticking, and not already Distracted |
 | Calm | 25 | Distracted → Patrol | the source has been silent for 1.5 s |
 | Calm | 20 | Patrol → Investigate | an unhandled one-off noise is remembered |
 | Calm | 15 | Investigate → Patrol | arrived and looked around for 2.4 s |
@@ -114,9 +116,13 @@ LKP means **last known position** of the player. Speeds are in m/s.
 | Hunting | 22 | WaitAtDoor → Search | waited 2.5 s at the shut door |
 | Hunting | 20 | Chase → Search | not seen for 0.7 s |
 
-Why these priorities: a stun outranks everything because the body has physically fallen apart; Rewind outranks sight because a spent spring cannot chase (that is the counter-play window); inside Calm a repeating lure outranks a one-off noise because that is the point of throwing a toy. Rewind does not look for the player, so a Tracker that is winding up stays vulnerable for the full 3 s. Inside Hunting, a shut door outranks losing sight. Once the door shuts, the player is out of sight within 0.7 s anyway, so without that priority the Tracker would search rings it cannot reach, all on the far side of the door.
+Why these priorities: a stun outranks everything because the body has physically fallen apart; Rewind outranks sight because a spent spring cannot chase (that is the counter-play window); a ticking lure outranks a hunt (60 over 50 and 40) and, inside Calm, a one-off noise, because that is the point of throwing a toy. Rewind does not look for the player, so a Tracker that is winding up stays vulnerable for the full 3 s. Inside Hunting, a shut door outranks losing sight. Once the door shuts, the player is out of sight within 0.7 s anyway, so without that priority the Tracker would search rings it cannot reach, all on the far side of the door.
 
 **Stun rules.** `OnStunned` sets a pending flag, records whether the Tracker was hunting, and drops the route; LKP is kept. On the first tick after the reboot the brain calls `WindUpEnergy.Resume` (so the stun costs no energy), the Stunned row fires, and the pass-through picks Rewind, Hunting or Calm and plans a fresh route on that same tick.
+
+**Lures.** A repeating source (any source heard again within 1.5 s: the thrown wind-up toy every 0.6 s, the terminal every 0.8 s) is a lure. While one ticks, a hunting Tracker does not see a player more than **3 m** away (`LureIgnoreRange`), Hunting drops back to Calm (priority 60) and Calm goes straight to Distracted on the same tick. A player within 3 m is still seen and chased. Once distracted, it notices the player again only within **2 m** (`LureNoticeRange`): with one limit, a player standing near it flipped the Tracker between the toy and the chase every tick, turning it back and forth. When the lure has been quiet for 1.5 s it goes back to Patrol, and sees the player again if they are still in view. This is the prototype's toy lock (`toyLock`, ignored unless the player is within 3 m), and it is the player's way to shake off a chase. The lure is the best *repeating* source (`NoiseMemory.TryGetBestRepeating`), so a louder one-off noise such as the player's own blaster shot never hides it. Before this (fixed 2026-10-10) a toy only worked on a Tracker that had not yet seen the player: Hunting ignored all noise, so a toy thrown during a chase did nothing.
+
+**Why follow, not circle.** Distracted first circled the lure at 1.5 m, stepping to the next of 8 points every 1.2 s. In play this read as irrational: on each step the body turned its back on the toy to walk to the next point, then turned round to face it again. Following and watching keeps the Tracker facing the toy the whole time (walking towards it, or standing and turning to it), and the 1.3 m / 2 m gap stops it stopping and starting as the toy walks off at 0.8 m/s.
 
 **Senses.** Vision is S2's `VisionQuery` cone (12 m, 60° half-angle), widened to all round within 2.5 m, with line of sight traced on the grid by `GridLineCheck`. The trace stops 0.8 m short of the player: cells within the 0.55 m agent clearance of a wall are unwalkable, so a player standing against a wall would otherwise always count as hidden. Hearing goes through `NoiseMemory` (see Maths).
 
@@ -232,7 +238,7 @@ lambda = 0.3/s
 
 For an otherwise equivalent noise aged 5 seconds, the multiplier is `exp(-0.3 * 5) ≈ 0.223`, about **22%** of its fresh score. This is a consequence of the formula, not an experimental measurement.
 
-**Implementation** (`AI/Agents/Tracker/NoiseMemory.cs`): one entry per source, so the hack terminal's beep every 0.8 s refreshes a single entry instead of piling up. An entry is forgotten once its score falls to the hearing threshold (10), e.g. a level-20 noise after 2.3 s. A source heard again within **1.5 s** of its previous noise is *repeating* (what sends the Tracker to Distracted) until it has been silent for 1.5 s. Investigated sources are marked handled and ignored until they make a new noise. Fixed capacity of 8 and no allocation after construction. Example: a 30-level beep 0.2 s old (score 28.3) beats an 80-level shot 5 s old (score 17.9).
+**Implementation** (`AI/Agents/Tracker/NoiseMemory.cs`): one entry per source, so the hack terminal's beep every 0.8 s refreshes a single entry instead of piling up. An entry is forgotten once its score falls to the hearing threshold (10), e.g. a level-20 noise after 2.3 s. A source heard again within **1.5 s** of its previous noise is *repeating* (a lure: what sends the Tracker to Distracted) until it has been silent for 1.5 s. `TryGetBestRepeating` picks the best lure among repeating sources only. Investigated sources are marked handled and ignored until they make a new noise. Fixed capacity of 8 and no allocation after construction. Example: a 30-level beep 0.2 s old (score 28.3) beats an 80-level shot 5 s old (score 17.9).
 
 **Deviation:** the plan breaks ties by **path** distance; `NoiseMemory` uses flat (straight-line) distance. The hearing hook gives the brain each noise's level at its cell but not the path distance to the source, so breaking ties by path would mean running one search per tied noise every tick. Exact ties are rare (same level, same age), so the cheaper rule was kept.
 
@@ -265,9 +271,10 @@ For an otherwise equivalent noise aged 5 seconds, the multiplier is `exp(-0.3 * 
 
 ### Brain tests (EditMode, all passing)
 
-`Tests/EditMode/TrackerBrainTests.cs` (31), on a 20 m x 10 m open grid driven tick by tick with game time:
+`Tests/EditMode/TrackerBrainTests.cs` (37), on a 20 m x 10 m open grid driven tick by tick with game time:
 - **Patrol:** `FirstTickPatrolsWithAGbfsRoute`, `PatrolKeepsItsRouteUntilArrivalThenGoesToTheNextPoint`.
-- **Hearing:** `ALoudNoiseStartsAnInvestigation`, `InvestigationLooksAroundThenReturnsToPatrolAndDoesNotRepeat`, `ARepeatingSourceDistractsUntilItGoesQuiet`.
+- **Hearing:** `ALoudNoiseStartsAnInvestigation`, `InvestigationLooksAroundThenReturnsToPatrolAndDoesNotRepeat`, `ARepeatingSourceDistractsUntilItGoesQuiet`, `ARepeatingSourceBeatsALouderOneOffShot`.
+- **Lures:** `AToyPullsTheTrackerOffAChaseUntilItGoesQuiet`, `APlayerWithinThreeMetresIsChasedEvenWithAToyTicking`, `ADistractedTrackerStopsShortOfTheToyFacingItAndFollowsOnlyOnceItWalksOff`, `ADistractedTrackerNoticesThePlayerOnlyWithinTwoMetres`, `ARewindFromTheHuntWithAToyTickingGoesStraightToTheToy`.
 - **Vision and hunting:** `SeeingThePlayerStartsTheChase`, `APlayerBehindAWallIsNotSeen`, `APlayerBehindTheTrackerIsSeenOnlyUpClose`, `ChaseReplansEveryHalfSecond`, `LosingSightSwitchesToSearchAfterPointSevenSeconds`, `SearchGivesUpAfterEightSeconds`, `SeeingThePlayerAgainDuringSearchResumesTheChase`, `AMissingOrDeadPlayerEndsTheHunt`.
 - **Energy:** `RunningOutOfEnergyRewindsInPlaceThenCarriesOn` (empty path, `Action = Rewind`, double damage, back after 3 s), `ChasingDrainsEnergyFiveTimesFaster`, `ARewindFromTheHuntReturnsToTheHunt`.
 - **Stuns and priority:** `AStunDoesNotDrainEnergyAndAFreshRouteGoesOutOnTheFirstTickAfter`, `AStunWhileHuntingResumesTheHunt`, `AStunDuringARewindGoesBackToRewinding`, `TheStunInterruptHasTheHighestPriority` (every machine's rows are in descending priority and the stun is the top machine's first row).
@@ -276,7 +283,7 @@ For an otherwise equivalent noise aged 5 seconds, the multiplier is `exp(-0.3 * 
 - **Alert icon:** `TheAlertLevelFollowsTheState` (None in Patrol, Suspicious in Investigate and Search, Alert in Chase).
 - `ConstructorRejectsMissingInputs`.
 
-`Tests/EditMode/NoiseMemoryTests.cs` (11): decay formula, a repeating beep beating an older louder shot, the 1.5 s repeat window, the closer-noise tie-break, handled noises, forgetting at the threshold, ignoring out-of-order noises, and replacing the weakest entry when full.
+`Tests/EditMode/NoiseMemoryTests.cs` (14): decay formula, a repeating beep beating an older louder shot, the best lure ignoring a louder one-off shot, the 1.5 s repeat window, the closer-noise tie-break, handled noises, forgetting at the threshold, ignoring out-of-order noises, and replacing the weakest entry when full.
 
 `Tests/EditMode/NoisePropagationTests.cs` (25): full level at the source; 4 per metre along the grid, not the straight line; a closed door costs 35, an open one nothing, a deep door 35 once, two doors 70; a door slam is heard on both sides; walls and boxes block; sound goes round corners with exactly the A* route's loss; fades out at the threshold (footsteps 11 at 3.5 m, gone at 4 m) and exactly-10 is not heard; only audible cells are expanded; a source in a wall snaps out; off-grid sources are heard nowhere; no allocation on reuse; and `SensorSnapshot.Loudest`.
 
@@ -315,7 +322,7 @@ Both scenes have the F3 overlay on from the start, a runtime NavMesh, and no pla
 | Scene | Set-up | What it shows | Screenshots |
 | --- | --- | --- | --- |
 | `Scenes/Test/Test_DoorClosedNoise.unity` | Two rooms and a closed door. A relay alarm (90) sounds 3 m past the door every 7 s. The Tracker patrols 5 m from the door. **O** toggles the door. | Closed: the heatmap is warm on the alarm's side and drops to cold past the door (the −35). The Tracker hears about 23, walks to the door, and looks around there ("?"). Open: the heatmap stays warm through the doorway, and the Tracker walks through to the alarm. | `Docs/Evidence/Tracker/door_closed_noise.png`, `door_open_noise.png` |
-| `Scenes/Test/Test_TerminalNoise.unity` | One room with two cover blocks. A colour-terminal stand-in beeps (60) every 0.8 s, 8 times (the 6.4 s hold), then is quiet for 10 s. | The Tracker turns Distracted ("?") and circles the terminal while it beeps, then goes back to Patrol 1.5 s after the last beep. The heatmap has gaps behind the cover. | `Docs/Evidence/Tracker/terminal_distracted.png` (taken with the terminal held on) |
+| `Scenes/Test/Test_TerminalNoise.unity` | One room with two cover blocks. A colour-terminal stand-in beeps (60) every 0.8 s, 8 times (the 6.4 s hold), then is quiet for 10 s. | The Tracker turns Distracted ("?"), goes to the terminal and watches it from 1.3 m while it beeps, then goes back to Patrol 1.5 s after the last beep. The heatmap has gaps behind the cover. | `Docs/Evidence/Tracker/terminal_distracted.png` (taken with the terminal held on) |
 
 The noise sources are `ScriptedNoiseSource` and the door is `DebugDoorToggle` (`Runtime/Debug`), stand-ins until S2's terminal and relays exist. The screenshots are camera renders, so the overlay's on-screen labels (OnGUI) are not in them; in play they show above each cell.
 
