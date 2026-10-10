@@ -3,9 +3,10 @@ using UnityEngine;
 namespace ToyFactory.Interaction
 {
     /// <summary>
-    /// A belt that carries whatever rests on it. The belt itself never travels: each physics
-    /// step its kinematic body is stepped back and then moved to where it was, so friction
-    /// drags the objects on top along while the belt stays put.
+    /// A conveyor belt: a kinematic body that carries what stands on it. Rigidbodies are carried
+    /// by the "position reset" trick (step the body back by one frame of belt travel, then move
+    /// it forward again, so physics sees it moving at belt speed without it going anywhere).
+    /// The player reads <see cref="Velocity"/> and is carried by the character controller.
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
     public sealed class ConveyorBelt : MonoBehaviour
@@ -23,9 +24,17 @@ namespace ToyFactory.Interaction
 
         public bool IsRunning { get; private set; }
 
-        /// <summary>World velocity the belt gives to what stands on it; zero while stopped.</summary>
-        public Vector3 Velocity =>
-            IsRunning ? transform.TransformDirection(localDirection).normalized * speed : Vector3.zero;
+        /// <summary>The way the belt carries, in the belt's own space.</summary>
+        public Vector3 LocalDirection => localDirection;
+
+        /// <summary>The way the belt carries, in the world, running or not.</summary>
+        public Vector3 Direction => transform.TransformDirection(localDirection).normalized;
+
+        /// <summary>Metres per second when running.</summary>
+        public float Speed => speed;
+
+        /// <summary>The velocity of the belt's surface in the world: zero while it is off.</summary>
+        public Vector3 Velocity => IsRunning ? Direction * speed : Vector3.zero;
 
         void Awake()
         {
@@ -33,6 +42,9 @@ namespace ToyFactory.Interaction
             _rb.isKinematic = true;
             IsRunning = startRunning;
         }
+
+        // Its chevrons, when the effects asset is there.
+        void Start() => BeltSurface.Attach(this);
 
         public void SetRunning(bool running) => IsRunning = running;
 

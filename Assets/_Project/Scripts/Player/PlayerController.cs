@@ -72,6 +72,14 @@ namespace ToyFactory.Player
         Collider _groundCollider;
         ConveyorBelt _groundBelt;
 
+        // Footsteps are noise the Tracker can follow: walking carries a few metres, running more.
+        // The prototype's step spacing: 0.45 s walking, 0.32 s running.
+        const float WalkStepSeconds = 0.45f;
+        const float RunStepSeconds = 0.32f;
+        const float RunStepLoudness = 36f;
+        const int PlayerNoiseSourceId = -1;
+        float _stepTimer;
+
         // Slippery patches the player is standing in, and the walking velocity carried over
         // between frames so the player can slide on them.
         readonly List<SlipperyFloor> _slipperyFloors = new List<SlipperyFloor>();
@@ -121,6 +129,10 @@ namespace ToyFactory.Player
             _sprintAction = map.FindAction("Sprint");
             map.Enable();
 
+            // The view's bob and shake. Added here so no prefab has to carry it.
+            if (!TryGetComponent(out PlayerCameraEffects _))
+                gameObject.AddComponent<PlayerCameraEffects>();
+
             SetCursorLocked(true);
             PlayerState.Publish(this);
         }
@@ -136,6 +148,7 @@ namespace ToyFactory.Player
             // Title, cutscenes, pause and results all take the controls away.
             bool playing = GameClock.Current == null || GameClock.Current.State == GameState.Playing;
             HandleCursorLock(playing);
+            HandleSoundToggle();
 
             if (!playing)
             {
@@ -145,6 +158,17 @@ namespace ToyFactory.Player
 
             Look();
             Move();
+        }
+
+        // Domain reload is off, so a mute from the last session must not carry on.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetSound() => AudioListener.volume = 1f;
+
+        // M mutes and unmutes everything, as in the prototype.
+        static void HandleSoundToggle()
+        {
+            if (Keyboard.current != null && Keyboard.current.mKey.wasPressedThisFrame)
+                AudioListener.volume = AudioListener.volume > 0f ? 0f : 1f;
         }
 
         // Fires once per colliding hit during CharacterController.Move(). Pushes are
@@ -205,6 +229,7 @@ namespace ToyFactory.Player
             float speed = sprinting ? sprintSpeed : walkSpeed;
 
             Vector3 wanted = (transform.right * moveInput.x + transform.forward * moveInput.y) * speed;
+            MakeFootsteps(moveInput.sqrMagnitude > 0.01f, sprinting);
 
             // On normal floor the player moves exactly as asked. On a slippery patch their
             // speed only eases towards it, so they slide on when they turn or let go.
@@ -252,6 +277,25 @@ namespace ToyFactory.Player
             float now = GameClock.Current != null ? GameClock.Current.GameTime : Time.time;
             float loudness = sprinting ? NoiseLoudness.SprintFootsteps : NoiseLoudness.Footsteps;
             NoiseEvents.Emit(new NoiseEvent(transform.position, loudness, PlayerSourceId, now));
+        }
+
+        // A step is a noise now and then while the player is moving on the ground.
+        void MakeFootsteps(bool moving, bool sprinting)
+        {
+            if (!moving || !_controller.isGrounded)
+            {
+                _stepTimer = 0f;
+                return;
+            }
+
+            _stepTimer -= Time.deltaTime;
+            if (_stepTimer > 0f)
+                return;
+
+            _stepTimer = sprinting ? RunStepSeconds : WalkStepSeconds;
+            float time = GameClock.Current != null ? GameClock.Current.GameTime : Time.time;
+            float loudness = sprinting ? RunStepLoudness : NoiseLoudness.Footsteps;
+            NoiseEvents.Emit(new NoiseEvent(transform.position, loudness, PlayerNoiseSourceId, time));
         }
 
         /// <summary>Called by a slippery patch when the player steps into it.</summary>

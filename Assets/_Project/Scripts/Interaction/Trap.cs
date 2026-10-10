@@ -2,6 +2,8 @@ using System;
 using UnityEngine;
 using ToyFactory.Interfaces;
 using ToyFactory.Player;
+using ToyFactory.Runtime.Effects;
+using Random = UnityEngine.Random;
 
 namespace ToyFactory.Interaction
 {
@@ -27,7 +29,11 @@ namespace ToyFactory.Interaction
         [SerializeField] Renderer body;
         [SerializeField] Color armedColour = new Color(1f, 0.25f, 0.2f);
 
+        static readonly Color SparkColour = new Color(0.38f, 0.85f, 1f);
+
         int _playerLayer;
+        PropGlow _glow;
+        float _nextSparkAt;
 
         public bool IsArmed { get; private set; }
 
@@ -46,8 +52,32 @@ namespace ToyFactory.Interaction
             SetArmed(startArmed);
         }
 
+        void Start() => _glow = PropGlow.Attach(gameObject, SparkColour, 3.2f, 0.5f, 0.35f, 9f, new Vector3(0f, 0.5f, 0f));
+
+        // An armed trap crackles: its glow flickers and it throws a spark now and then.
+        void Update()
+        {
+            if (_glow != null)
+                _glow.Intensity = IsArmed ? 0.6f + 0.4f * Random.value : 0f;
+
+            if (!IsArmed || Time.time < _nextSparkAt)
+                return;
+
+            _nextSparkAt = Time.time + 0.18f;
+            Vector3 at = transform.position + new Vector3(Random.Range(-0.4f, 0.4f), 0.1f, Random.Range(-0.4f, 0.4f));
+            PropEffects.Spark(at, SparkColour);
+        }
+
         /// <summary>Saboteur action: arm the trap.</summary>
-        void ISabotageable.Execute() => SetArmed(true);
+        void ISabotageable.Execute()
+        {
+            if (!IsArmed)
+            {
+                PropEffects.Word("zap", transform.position + Vector3.up * 1.2f);
+                GameSfx.Play(Sfx.Zap);
+            }
+            SetArmed(true);
+        }
 
         /// <summary>Player use: clear the trap.</summary>
         public void Interact() => SetArmed(false);
@@ -63,6 +93,9 @@ namespace ToyFactory.Interaction
 
             SetArmed(false);
             player.TakeDamage(damage, PlayerHealth.NoSource);
+            PropEffects.Word("zap", transform.position + Vector3.up * 1.4f, 1.2f);
+            PropEffects.Spark(transform.position + Vector3.up * 0.4f, SparkColour);
+            GameSfx.Play(Sfx.Zap);
 
             float time = GameClock.Current != null ? GameClock.Current.GameTime : Time.time;
             NoiseEvents.Emit(new NoiseEvent(transform.position, loudness, GetHashCode(), time));

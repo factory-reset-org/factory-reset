@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using ToyFactory.Interfaces;
+using ToyFactory.Runtime.Effects;
 using ToyFactory.Runtime.World;
 
 namespace ToyFactory.Interaction
@@ -139,7 +140,10 @@ namespace ToyFactory.Interaction
         public void Open()
         {
             if (_state == State.Closed || _state == State.Closing)
+            {
                 _state = State.Opening;
+                GameSfx.Play(Sfx.Door);
+            }
         }
 
         [ContextMenu("Close")]
@@ -151,6 +155,7 @@ namespace ToyFactory.Interaction
             // Blocked for agents from the moment it starts closing, not once it has shut.
             _state = State.Closing;
             SetGridClosed(true);
+            GameSfx.Play(Sfx.Door);
         }
 
         /// <summary>Player use: opens a closed door and closes an open one.</summary>

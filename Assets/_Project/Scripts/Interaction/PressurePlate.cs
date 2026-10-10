@@ -1,5 +1,6 @@
 using UnityEngine;
 using ToyFactory.Interfaces;
+using ToyFactory.Runtime.Effects;
 
 namespace ToyFactory.Interaction
 {
@@ -21,8 +22,12 @@ namespace ToyFactory.Interaction
 
         [SerializeField, Min(0.05f)] float checkInterval = 0.2f;
 
+        static readonly Color WaitingColour = new Color(1f, 0.19f, 0.25f);
+        static readonly Color LatchedColour = new Color(0.24f, 0.86f, 0.69f);
+
         readonly Collider[] _overlaps = new Collider[4];
         float _nextCheckTime;
+        Renderer _body;
 
         public override string Id => taskId;
 
@@ -30,6 +35,10 @@ namespace ToyFactory.Interaction
         {
             if (crateMask.value == 0)
                 crateMask = LayerMask.GetMask("Pushable");
+
+            // Red until a crate is on it, green after.
+            _body = GetComponentInChildren<Renderer>();
+            PropTint.Set(_body, WaitingColour);
         }
 
         void Update()
@@ -53,6 +62,10 @@ namespace ToyFactory.Interaction
         void Latch()
         {
             EmitNoise(NoiseLoudness.PlateClick);
+            PropTint.Set(_body, LatchedColour);
+            PropEffects.Word("click", transform.position + Vector3.up * 1.6f);
+            PropEffects.Spark(transform.position + Vector3.up * 0.2f, LatchedColour);
+            GameSfx.Play(Sfx.Switch);
             Complete();
         }
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using ToyFactory.Interfaces;
 using ToyFactory.Journey.Chapters;
+using ToyFactory.Runtime.Effects;
 
 namespace ToyFactory.Interaction
 {
@@ -33,6 +34,9 @@ namespace ToyFactory.Interaction
         IReadOnlyList<int> _order;
         int _step;
         float _nextCheckTime;
+
+        // How long every relay flickers red after a wrong press.
+        const float WrongOrderFlicker = 0.8f;
 
         public override string Id => taskId;
 
@@ -92,18 +96,31 @@ namespace ToyFactory.Interaction
             {
                 relay.SetOn(true);
                 _step++;
+                GameSfx.Play(Sfx.Switch);
+                PropEffects.Word(relay.ColourWord, relay.transform.position + Vector3.up * 2.2f);
                 if (_step >= order.Count)
+                {
                     Complete();
+                    PropEffects.Word("sequenceok", transform.position + Vector3.up * 1.5f);
+                }
                 else
+                {
                     ReportProgress(_step / (float)order.Count);
+                }
                 return;
             }
 
             _step = 0;
             foreach (Relay other in relays)
-                if (other != null)
-                    other.SetOn(false);
+            {
+                if (other == null)
+                    continue;
+                other.SetOn(false);
+                other.Alarm(WrongOrderFlicker);
+            }
             EmitNoise(NoiseLoudness.RelayAlarm);
+            GameSfx.Play(Sfx.Alarm);
+            PropEffects.Word("wrong", relay.transform.position + Vector3.up * 2.2f);
             ReportProgress(0f);
             OnWrongOrder?.Invoke();
         }
