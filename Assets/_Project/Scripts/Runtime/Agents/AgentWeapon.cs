@@ -60,6 +60,11 @@ namespace ToyFactory.Runtime.Agents
         float _fireAt;
         float _tracerUntil;
 
+        // True while the weapon is turning the body (aiming, and until the tracer fades). It
+        // lets go once: stopping the facing every idle frame also cancelled the controller's
+        // look target, so a standing agent did not turn to face where its brain asked.
+        bool _ownsFacing;
+
         static float Now => GameClock.Current != null ? GameClock.Current.GameTime : Time.time;
 
         /// <summary>True while aiming (the telegraph); the shot follows when the aim time is up.</summary>
@@ -123,8 +128,7 @@ namespace ToyFactory.Runtime.Agents
         public void Cancel()
         {
             IsAiming = false;
-            if (_follower != null)
-                _follower.StopFacing();
+            ReleaseFacing();
             _tracerUntil = 0f;
             if (_line != null)
                 _line.enabled = false;
@@ -153,7 +157,10 @@ namespace ToyFactory.Runtime.Agents
                 // Turn to the target while aiming, even on the move, and only fire once
                 // facing it: the shot leaves along the cannon, never out of its side.
                 if (_follower != null)
+                {
                     _follower.FaceTowards(player.Position);
+                    _ownsFacing = true;
+                }
                 Vector3 from = Muzzle();
                 Vector3 to = player.Position + Vector3.up * chestHeight;
                 Show(from, to, aimColour, 0.02f);
@@ -171,11 +178,18 @@ namespace ToyFactory.Runtime.Agents
                 return;
             }
 
-            if (_follower != null && Now >= _tracerUntil)
-                _follower.StopFacing();
+            if (Now >= _tracerUntil)
+                ReleaseFacing();
 
             if (_line.enabled && Now >= _tracerUntil)
                 _line.enabled = false;
+        }
+
+        void ReleaseFacing()
+        {
+            if (_ownsFacing && _follower != null)
+                _follower.StopFacing();
+            _ownsFacing = false;
         }
 
         void Fire(Vector3 from, Vector3 to, IPlayerState player)

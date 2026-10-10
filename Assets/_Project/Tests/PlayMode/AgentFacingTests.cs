@@ -13,8 +13,9 @@ namespace ToyFactory.Tests
 {
     /// <summary>
     /// The body honours the brain's LookTarget while it stands (a Captain in ambush faces the
-    /// way the player will come), faces where it walks while it walks, and a new route does
-    /// not send it back to the centre of the cell it is already leaving.
+    /// way the player will come) and an idle weapon does not cancel that, faces where it walks
+    /// while it walks, and a new route does not send it back to the centre of the cell it is
+    /// already leaving.
     /// </summary>
     public sealed class AgentFacingTests
     {
@@ -96,6 +97,23 @@ namespace ToyFactory.Tests
             Quaternion held = agent.transform.rotation;
             yield return Seconds(0.3f);
             Assert.Less(Quaternion.Angle(held, agent.transform.rotation), 0.5f, "With no look target it keeps its facing.");
+        }
+
+        [UnityTest]
+        public IEnumerator AnIdleWeaponLeavesTheBodysFacingAlone()
+        {
+            // The weapon used to stop the facing on every idle frame. Depending on which script
+            // ran first, a Captain guarding the console stood with its back to the way the
+            // player would come.
+            Floor();
+            var brain = new LookBrain(new List<Vector3>());
+            AgentController agent = Agent(brain, new Vector3(0f, 0.1f, 0f));
+            agent.gameObject.AddComponent<AgentWeapon>();
+            yield return null;
+
+            agent.Follower.FaceTowards(new Vector3(6f, 0f, 0.1f));
+            yield return Seconds(0.6f);
+            Assert.Less(Vector3.Angle(agent.transform.forward, Vector3.right), 3f, "Still turned to face it.");
         }
 
         [UnityTest]

@@ -101,7 +101,7 @@ A read-only struct built by `AgentController` every frame.
 - Speed is capped at the remaining distance each frame, so the agent never overshoots on a long frame.
 - Turns towards the direction of travel with `Quaternion.RotateTowards`, at up to 360°/s, around the vertical axis only. It never snaps round, and it never tilts on slopes.
 - Applies gravity by hand, because `CharacterController` has none. While grounded, vertical speed is held at −2 m/s so the agent stays pressed onto slopes and steps.
-- Exposes `CurrentSpeed` (m/s) and `TurnRate` (°/s, positive = turning right) for the animation Blend Tree.
+- Exposes `GroundSpeed` (m/s) and `TurnRate` (°/s, positive = turning right) for the animation Blend Tree. `GroundSpeed` is how far the body really moved this frame, capped at `CurrentSpeed`, the speed it was told to move at. Pressed against something it cannot pass (an agent's body in an aisle), it shows standing instead of running on the spot, and a push or a teleport never shows as walking. `CurrentSpeed` still feeds the route blending.
 - Reuses one waypoint list, so a new route allocates no memory.
 - A new route starts at the centre of the cell the agent stands in. If the agent is already nearer the second waypoint than that centre is, the centre is skipped. Otherwise a route planned mid-walk sent the agent back to the centre first, which showed as a hitch (once in seven re-routes in a scripted run).
 
@@ -134,7 +134,7 @@ A read-only view of an agent's body, in `Scripts/Interfaces/`. `AgentController`
 | `Type` | Tracker, Guard, Saboteur or Captain (`AgentType`, also in `Interfaces`) | `Identity.Type` |
 | `Identity` | `AgentIdentity`: type, unique `Id` and `SquadIndex` (`SquadLetter` gives A-D). Fixed for the agent's life | The spawner, through `Initialise` |
 | `Position` | World position of the body's root, on the floor under its feet, in metres. A scrapped agent reports where it went down; after its body is destroyed, the last position it had | The root `Transform`, read live; saved in `OnDestroy` |
-| `Speed` | Ground speed in m/s | `AgentPathFollower.CurrentSpeed` |
+| `Speed` | Ground speed in m/s: how fast it really moves, 0 while pinned | `AgentPathFollower.GroundSpeed` |
 | `TurnRate` | Degrees per second, positive = turning right | `AgentPathFollower.TurnRate` |
 | `IsAttacking` | True while the brain's action is `Shoot` | The latest `AgentIntent` |
 | `IsDead` | True once the agent is scrapped; never becomes false again | Set by `AgentController.Scrap` |
@@ -747,6 +747,8 @@ If the wall is closer than the barrel tip, the shot is only the sparks: a bolt f
 | 2026-10-09 | The player's gun is drawn by an overlay camera on its own layer, and the main camera's near plane is 0.1 m | Pull the gun back when a wall is near (it reaches 1.3 m ahead of the camera and cannot fit in front of a camera 0.4 m from a wall); keep the 0.3 m near plane (its corners cut through walls the player stands against at an angle) | The prototype draws its gun in a separate scene for the same reason. A second camera makes the gun always on top and never inside anything, and costs one layer (16, `ViewModel`) | S2 |
 | 2026-10-09 | A blaster shot is a hitscan hit with a flying picture of it (core, camera-facing glow, spark burst) from pools, sized like the prototype's | Real projectiles like the prototype (damage would arrive late and miss moving agents); a thin line tracer (it shrank to nothing when flying straight away, and looked small) | The hit has to be instant and exact for the Guard's and the Captain's logic, and S4's agent hit sparks are instant. The bolt at 90 m/s is slow enough to be seen and the sparks appear where it lands | S2 |
 | 2026-10-09 | `ObjectPool<T>` lives in `Runtime/Pooling`, not `Managers/` as the plan has it | `Managers/ObjectPool` | `Managers/` is the default assembly, which no test assembly can reference; in `Runtime` the pool is covered by PlayMode tests | S2 |
+| 2026-10-10 | Unsure and out of contact with the player for 3 s, the Captain guards the most likely goal (`InterceptKind.Guard`) instead of watching; Observe's back-off step gets the 2 s stuck check | Keep watching (it stood showing "?" for good after the player fled into Storage in Chapter 4); hunt the player's live position (perfect knowledge, no prediction); predict only the console in Chapter 4 (one goal makes the confidence always 1, so there is nothing to infer) | Watching only means something while there is something to see. The likeliest goal is where the player must come in the end, so waiting there uses the prediction instead of cheating. Agents are not in the grid, so a body lying in an aisle pinned the back-off step: the same stuck check as the other states lets it go | S4 |
+| 2026-10-10 | Animation speed is the speed the body really moved at (`AgentPathFollower.GroundSpeed`), capped at the commanded speed; the weapon releases the body's facing once instead of every idle frame | Commanded speed (a pinned agent ran on the spot); ease it per agent | `IAgentState.Speed` already promises ground speed. Capped, a push or a teleport never shows as walking. The weapon's every-frame release cancelled the controller's look target whenever it updated after the controller, so a Captain guarding the console stood facing the wall | S4 |
 
 ## 8. Greybox character model contract (S3)
 

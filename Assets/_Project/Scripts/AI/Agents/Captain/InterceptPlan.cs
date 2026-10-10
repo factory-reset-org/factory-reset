@@ -15,7 +15,10 @@ namespace ToyFactory.AI.Agents.Captain
         RouteCell,
 
         /// <summary>No route cell qualified (the player is too close): go to the goal and defend it. Only when the Captain can reach the goal.</summary>
-        DefendGoal
+        DefendGoal,
+
+        /// <summary>Not confident and out of contact with the player: wait at the likeliest goal, the place they must come to in the end.</summary>
+        Guard
     }
 
     /// <summary>

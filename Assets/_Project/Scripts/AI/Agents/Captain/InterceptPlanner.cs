@@ -99,9 +99,36 @@ namespace ToyFactory.AI.Agents.Captain
                 return MakePlan(InterceptKind.RouteCell, goalField, playerTotal, firstCell, playerSpeed, captainSpeed);
 
             // No cell gives the margin: the player is too close to g*, so guard g* itself.
-            // g* may lie beyond the bounded field, so time the Captain's walk to it with one
-            // A* query (a single pair of cells) instead of reporting an arrival of infinity.
-            // An unbounded field here cost the whole level for that one number.
+            return AtGoal(InterceptKind.DefendGoal, goalField, playerTotal, captain, playerSpeed, captainSpeed, isReserved);
+        }
+
+        /// <summary>
+        /// Waits at the goal itself, with no race against the player: for when the Captain is
+        /// not confident and cannot see them (hiding, or still), so there is no intercept to
+        /// time. The predicted route is still traced, so the Captain faces the way they would
+        /// come. No plan if either side cannot reach the goal.
+        /// </summary>
+        public InterceptPlan PlanGuard(DijkstraField goalField, Vector2Int playerCell, Vector2Int captainCell,
+            float playerSpeed, float captainSpeed, Predicate<Vector2Int> isReserved = null)
+        {
+            if (goalField == null) throw new ArgumentNullException(nameof(goalField));
+            CheckSpeed(playerSpeed, nameof(playerSpeed));
+            CheckSpeed(captainSpeed, nameof(captainSpeed));
+
+            _route.Clear();
+            if (!TraceRoute(goalField, playerCell, _route) ||
+                !_grid.TryFindNearestTraversable(captainCell, SnapRadius, out Vector2Int captain))
+                return InterceptPlan.None;
+            return AtGoal(InterceptKind.Guard, goalField, goalField.Cost(_route[0]), captain, playerSpeed, captainSpeed, isReserved);
+        }
+
+        // A plan at g*, the last cell of the traced route. g* may lie beyond the bounded field,
+        // so time the Captain's walk to it with one A* query (a single pair of cells) instead
+        // of reporting an arrival of infinity. An unbounded field here cost the whole level
+        // for that one number.
+        InterceptPlan AtGoal(InterceptKind kind, DijkstraField goalField, float playerTotal, Vector2Int captain,
+            float playerSpeed, float captainSpeed, Predicate<Vector2Int> isReserved)
+        {
             int last = _route.Count - 1;
             Vector2Int goalCell = _route[last];
             if (isReserved != null && isReserved(goalCell))
@@ -112,7 +139,7 @@ namespace ToyFactory.AI.Agents.Captain
             // still in Intercept.
             if (float.IsPositiveInfinity(captainCost))
                 return InterceptPlan.None;
-            return new InterceptPlan(InterceptKind.DefendGoal, goalCell, last,
+            return new InterceptPlan(kind, goalCell, last,
                 PlayerArrival(goalField, playerTotal, goalCell, playerSpeed),
                 captainCost * GridGraph.CellSize / captainSpeed);
         }

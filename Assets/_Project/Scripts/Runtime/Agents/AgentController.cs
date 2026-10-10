@@ -122,7 +122,7 @@ namespace ToyFactory.Runtime.Agents
         Vector3 _lastPosition;
 
         /// <inheritdoc/>
-        public float Speed => _follower.CurrentSpeed;
+        public float Speed => _follower.GroundSpeed;
 
         /// <inheritdoc/>
         public float TurnRate => _follower.TurnRate;
