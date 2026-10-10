@@ -21,6 +21,7 @@ GameObject:
   - component: {fileID: 2045013324036941734}
   - component: {fileID: 4730924927841941763}
   - component: {fileID: 4562163883646627793}
+  - component: {fileID: 4060259561142310334}
   m_Layer: 11
   m_Name: Agent_CaptainBot
   m_TagString: Untagged
@@ -139,7 +140,7 @@ MonoBehaviour:
   maxTurnWait: 0.5
   damage: 15
   range: 20
-  chestHeight: 1.2
+  chestHeight: 1.45
   tracerSeconds: 0.08
   lineMaterial: {fileID: 2100000, guid: f7a1b61649e9f404b8a6efe2fac01eb8, type: 2}
   aimColour: {r: 1, g: 0.25, b: 0.2, a: 0.6}
@@ -194,7 +195,7 @@ MonoBehaviour:
   torso: {fileID: 557454021947322219}
   head: {fileID: 8566529918625814095}
   duration: 0.28
-  armKick: 28
+  armKick: 8
   torsoKick: 6
   headKick: 8
   shape:
@@ -344,6 +345,23 @@ MonoBehaviour:
   beamMaterial: {fileID: 2100000, guid: eefa8f9de227cf04f8ecdf06e45958f2, type: 2}
   markSeconds: 2
   beamScale: 0.6
+--- !u!114 &4060259561142310334
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2423681692945176304}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 09938cbc254302644996d4c49c3ec766, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentCannonAim
+  arms:
+  - {fileID: 2373857575970691528}
+  - {fileID: 5360294489629131018}
+  maxCorrection: 35
+  blendSeconds: 0.1
 --- !u!1 &6231920233453024729
 GameObject:
   m_ObjectHideFlags: 0
