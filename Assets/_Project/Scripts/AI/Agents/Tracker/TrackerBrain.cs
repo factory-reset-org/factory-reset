@@ -259,7 +259,11 @@ namespace ToyFactory.AI.Agents.Tracker
                 Action = _outAction,
                 ActionTargetId = 0,
                 DebugState = _debugState,
-                Alert = _alert
+                Alert = _alert,
+                // Calm (patrolling, investigating, watching a toy): the body must not stand off
+                // from and pounce on a player in reach, or a toy thrown at an attacking Tracker
+                // would turn its brain but leave its body biting.
+                IgnorePlayer = _machine.Current == _calm
             };
         }
 

@@ -41,5 +41,12 @@ namespace ToyFactory.AI.Core
         /// <see cref="DebugState"/> instead.
         /// </summary>
         public AlertLevel Alert;
+
+        /// <summary>
+        /// True when the agent is busy with something else (the Tracker watching a thrown toy)
+        /// and its body should not stand off from, face or strike the player this tick, even
+        /// at close range. Optional: left false, the body engages a player in reach as before.
+        /// </summary>
+        public bool IgnorePlayer;
     }
 }

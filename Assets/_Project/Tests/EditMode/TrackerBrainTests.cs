@@ -269,12 +269,15 @@ namespace ToyFactory.Tests.EditMode
             TrackerBrain brain = Brain();
             brain.Tick(At(Start, 0f));
             PlacePlayer(new Vector2Int(12, 10));   // 1 m ahead: in reach
-            Assert.AreEqual("Chase", brain.Tick(At(Start, 0.1f)).DebugState);
+            AgentIntent chasing = brain.Tick(At(Start, 0.1f));
+            Assert.AreEqual("Chase", chasing.DebugState);
+            Assert.IsFalse(chasing.IgnorePlayer, "Chasing: the body stands off and pounces.");
 
             var toy = new Vector2Int(10, 16);
             AgentIntent intent = brain.Tick(At(Start, 0.2f, ToyTick(toy, 50f, 9, 0.2f)));
             Assert.AreEqual("Distracted", intent.DebugState, "The toy lock beats even a player 1 m away.");
             Assert.AreEqual(AgentAction.None, intent.Action, "No attack while locked onto the toy.");
+            Assert.IsTrue(intent.IgnorePlayer, "The body walks off to the toy instead of holding and pouncing on the player.");
             Assert.AreEqual(_grid.CellToWorld(toy), intent.LookTarget);
 
             Assert.AreEqual("Distracted", brain.Tick(At(Start, 1.4f, ToyTick(toy, 50f, 9, 1.4f))).DebugState);
