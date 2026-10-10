@@ -45,6 +45,17 @@ namespace ToyFactory.Player
                  "or it will never start moving.")]
         [SerializeField] float pushForce = 400f;
 
+        [Header("Footsteps")]
+        [Tooltip("Seconds between footstep noises while walking. The agents hear them (NoiseLoudness.Footsteps, 3.75 m) and the Tracker follows them.")]
+        [SerializeField, Min(0.05f)] float walkStepInterval = 0.45f;
+        [Tooltip("Seconds between footstep noises while sprinting (NoiseLoudness.SprintFootsteps, 9 m).")]
+        [SerializeField, Min(0.05f)] float sprintStepInterval = 0.32f;
+        [Tooltip("Moving slower than this (m/s) makes no footsteps.")]
+        [SerializeField, Min(0f)] float silentBelowSpeed = 0.5f;
+
+        // Every noise the player makes carries this source id (the NoiseEvent contract).
+        const int PlayerSourceId = -1;
+
         CharacterController _controller;
         PlayerHealth _health;
         PlayerBattery _battery;
@@ -65,6 +76,7 @@ namespace ToyFactory.Player
         // between frames so the player can slide on them.
         readonly List<SlipperyFloor> _slipperyFloors = new List<SlipperyFloor>();
         Vector3 _walkVelocity;
+        float _nextStepIn;
 
         /// <summary>Current world position, for the blackboard.</summary>
         public Vector3 Position => transform.position;
@@ -189,7 +201,8 @@ namespace ToyFactory.Player
         void Move()
         {
             Vector2 moveInput = _moveAction.ReadValue<Vector2>();
-            float speed = _sprintAction.IsPressed() ? sprintSpeed : walkSpeed;
+            bool sprinting = _sprintAction.IsPressed();
+            float speed = sprinting ? sprintSpeed : walkSpeed;
 
             Vector3 wanted = (transform.right * moveInput.x + transform.forward * moveInput.y) * speed;
 
@@ -216,6 +229,29 @@ namespace ToyFactory.Player
 
             _controller.Move(motion * Time.deltaTime);
             Velocity = motion;
+
+            Footsteps(sprinting);
+        }
+
+        // Footsteps are noises the agents hear, so walking near the Tracker gives the player
+        // away. Only the player's own walking counts: standing on a running belt is silent.
+        // The first step sounds as soon as the player sets off.
+        void Footsteps(bool sprinting)
+        {
+            float speed = new Vector2(_walkVelocity.x, _walkVelocity.z).magnitude;
+            if (!_controller.isGrounded || speed < silentBelowSpeed)
+            {
+                _nextStepIn = 0f;
+                return;
+            }
+
+            _nextStepIn -= Time.deltaTime;
+            if (_nextStepIn > 0f)
+                return;
+            _nextStepIn = sprinting ? sprintStepInterval : walkStepInterval;
+            float now = GameClock.Current != null ? GameClock.Current.GameTime : Time.time;
+            float loudness = sprinting ? NoiseLoudness.SprintFootsteps : NoiseLoudness.Footsteps;
+            NoiseEvents.Emit(new NoiseEvent(transform.position, loudness, PlayerSourceId, now));
         }
 
         /// <summary>Called by a slippery patch when the player steps into it.</summary>

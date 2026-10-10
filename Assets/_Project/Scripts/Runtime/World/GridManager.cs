@@ -28,6 +28,17 @@ namespace ToyFactory.Runtime.World
         [Tooltip("Maximum sample height difference from Origin.y; does not change cell heights.")]
         [SerializeField, Min(0f)] float verticalTolerance = 0.1f;
 
+        [Header("Sight")]
+        [Tooltip("A cell hides what is behind it from the agents when something at least this tall (m above the floor) stands in it: walls, presses, shelves. Lower props are seen over. 1.3 m, as in the prototype.")]
+        [SerializeField, Min(0.1f)] float sightBlockHeight = 1.3f;
+        [Tooltip("Physics layers that can hide the player: the level and its props. Nothing set = Default, Environment and TaskProp. Agents, the player, pushable boxes and thrown things never count.")]
+        [SerializeField] LayerMask sightBlockingLayers;
+
+        // The sight probe: a thin slab just under sightBlockHeight over the middle of the cell, so a
+        // wall face lying on a cell boundary does not mark the cell next to it.
+        const float SightProbeHalfWidth = 0.2f;
+        const float SightProbeHalfHeight = 0.01f;
+
         /// <summary>
         /// Clearance added round a blocker's bounds, matching the NavMesh agent radius, so a box
         /// blocks the same band of cells that a wall of the same size does after the bake.
@@ -282,6 +293,7 @@ namespace ToyFactory.Runtime.World
                         throw new InvalidOperationException("No grid cell is supported by the selected NavMesh and sampling settings.");
                     batch.Commit();
                 }
+                MarkSightBlockers(graph);
             }
             finally
             {
@@ -297,6 +309,30 @@ namespace ToyFactory.Runtime.World
             // Publication has succeeded even if a consumer's event handler throws.
             Ready?.Invoke(graph);
             return graph;
+        }
+
+        /// <summary>
+        /// Fills the grid's sight layer: a cell blocks sight when a collider on
+        /// <see cref="sightBlockingLayers"/> reaches <see cref="sightBlockHeight"/> over its middle.
+        /// Doorways are left clear, because a closed door already blocks sight and an open one
+        /// must not. Runs once per build, after every scene's props have loaded.
+        /// </summary>
+        void MarkSightBlockers(GridGraph graph)
+        {
+            int layers = sightBlockingLayers.value != 0
+                ? sightBlockingLayers.value
+                : LayerMask.GetMask("Default", "Environment", "TaskProp");
+            Physics.SyncTransforms();
+            var halfExtents = new Vector3(SightProbeHalfWidth, SightProbeHalfHeight, SightProbeHalfWidth);
+            float probeY = sightBlockHeight - SightProbeHalfHeight;
+            for (int i = 0; i < graph.CellCount; i++)
+            {
+                Vector2Int cell = graph.FromIndex(i);
+                bool blocks = !graph.GetNode(cell).IsDoorway &&
+                              Physics.CheckBox(graph.CellToWorld(cell) + Vector3.up * probeY, halfExtents,
+                                  Quaternion.identity, layers, QueryTriggerInteraction.Ignore);
+                graph.SetBlocksSight(cell, blocks);
+            }
         }
 
         static Dictionary<int, Vector2Int[]> MapDoorways(GridGraph graph, DoorwayMarker[] markers)

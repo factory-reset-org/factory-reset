@@ -13,7 +13,7 @@ namespace ToyFactory.Runtime.Animation
     /// the body starts an attack of its own (<see cref="AgentController.IsAttacking"/>).
     /// Each move deals <see cref="Damage"/> once, at the moment of contact, if the player is
     /// still alive, within reach and in front; the brain never sees it. A move with no damage
-    /// (the Tracker's pounce) is cosmetic.
+    /// is cosmetic.
     /// </summary>
     /// <remarks>
     /// The subclass poses the rig in <see cref="Pose"/>, from normalised time 0 to 1, in
@@ -58,7 +58,7 @@ namespace ToyFactory.Runtime.Animation
         /// <summary>Moves that hit the player (for tests and the debug overlay).</summary>
         public int Hits { get; private set; }
 
-        /// <summary>Damage one move deals to the player (Saboteur 10; the Tracker's pounce 0, cosmetic). 0 never hits.</summary>
+        /// <summary>Damage one move deals to the player (Saboteur 10; the Tracker's pounce 8). 0 never hits.</summary>
         public abstract float Damage { get; }
 
         /// <summary>True while a move is playing.</summary>

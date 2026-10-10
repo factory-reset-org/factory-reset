@@ -48,6 +48,10 @@ namespace ToyFactory.Tests.EditMode
         SensorSnapshot Noise(Vector2Int cell, float level, int sourceId, float time) =>
             new SensorSnapshot(_grid.CellToWorld(cell), level, sourceId, time);
 
+        // A tick of the thrown wind-up toy: marked as a lure.
+        SensorSnapshot ToyTick(Vector2Int cell, float level, int sourceId, float time) =>
+            new SensorSnapshot(_grid.CellToWorld(cell), level, sourceId, time, noiseIsLure: true);
+
         Vector2Int EndCell(AgentIntent intent) => _grid.WorldToCell(intent.Path[intent.Path.Count - 1]);
 
         // ---- Patrol ---------------------------------------------------------------------
@@ -231,6 +235,34 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual("Hunting", brain.TopStateName);
         }
 
+        [Test]
+        public void AThrownToyDistractsOnItsFirstTick()
+        {
+            TrackerBrain brain = Brain();
+            var toy = new Vector2Int(14, 16);
+            brain.Tick(At(Start, 0f));
+
+            AgentIntent intent = brain.Tick(At(Start, 0.2f, ToyTick(toy, 50f, 9, 0.2f)));
+
+            Assert.AreEqual("Distracted", intent.DebugState, "No Investigate first, no wait for a second tick.");
+            Assert.AreEqual(_grid.CellToWorld(toy), intent.LookTarget);
+            Assert.IsNotNull(intent.Path);
+        }
+
+        [Test]
+        public void AThrownToysFirstTickPullsTheTrackerOffAChase()
+        {
+            TrackerBrain brain = Brain();
+            brain.Tick(At(Start, 0f));
+            PlacePlayer(new Vector2Int(25, 10));   // 7.5 m ahead
+            Assert.AreEqual("Chase", brain.Tick(At(Start, 0.1f)).DebugState);
+
+            AgentIntent intent = brain.Tick(At(Start, 0.2f, ToyTick(new Vector2Int(10, 16), 50f, 9, 0.2f)));
+
+            Assert.AreEqual("Distracted", intent.DebugState);
+            Assert.AreEqual("Calm", brain.TopStateName);
+        }
+
         // ---- Vision ---------------------------------------------------------------------
 
         [Test]
@@ -273,6 +305,76 @@ namespace ToyFactory.Tests.EditMode
 
             PlacePlayer(new Vector2Int(7, 10));   // 1.5 m behind
             Assert.AreEqual("Chase", brain.Tick(At(Start, 0.2f)).DebugState);
+        }
+
+        // A 1.5 m wide prop across the line of sight, on a grid with a sight layer.
+        void PropAcrossTheView(bool tall)
+        {
+            for (int y = 8; y <= 12; y++)
+            {
+                _grid.SetWalkable(new Vector2Int(18, y), false);
+                _grid.SetBlocksSight(new Vector2Int(18, y), tall);
+            }
+        }
+
+        [Test]
+        public void ThePlayerIsSeenOverALowProp()
+        {
+            PropAcrossTheView(tall: false);   // a crate or a belt: walking must go round it
+            TrackerBrain brain = Brain();
+            brain.Tick(At(Start, 0f));
+            PlacePlayer(new Vector2Int(25, 10));
+
+            Assert.AreEqual("Chase", brain.Tick(At(Start, 0.1f)).DebugState);
+        }
+
+        [Test]
+        public void ThePlayerIsNotSeenThroughATallProp()
+        {
+            PropAcrossTheView(tall: true);    // a press or a shelf
+            TrackerBrain brain = Brain();
+            brain.Tick(At(Start, 0f));
+            PlacePlayer(new Vector2Int(25, 10));
+
+            Assert.AreEqual("Patrol", brain.Tick(At(Start, 0.1f)).DebugState);
+        }
+
+        [Test]
+        public void TheTrackersOwnCellNeverBlocksItsSight()
+        {
+            // Brushing a wall, the body can stand in a cell the wall overlaps.
+            _grid.SetBlocksSight(Start, true);
+            TrackerBrain brain = Brain();
+            brain.Tick(At(Start, 0f));
+            PlacePlayer(new Vector2Int(25, 10));
+
+            Assert.AreEqual("Chase", brain.Tick(At(Start, 0.1f)).DebugState);
+        }
+
+        [TestCase(39, 10, "Chase", TestName = "TheTrackerSeesFourteenAndAHalfMetresAhead")]
+        [TestCase(13, 18, "Chase", TestName = "TheTrackerSeesSeventyDegreesOffItsHeading")]
+        [TestCase(11, 18, "Patrol", TestName = "TheTrackerDoesNotSeeEightyThreeDegreesOffItsHeading")]
+        public void TheVisionConeIsSixteenMetresAndSeventyTwoDegreesEachSide(int x, int y, string expected)
+        {
+            TrackerBrain brain = Brain();
+            brain.Tick(At(Start, 0f));
+            PlacePlayer(new Vector2Int(x, y));
+
+            Assert.AreEqual(expected, brain.Tick(At(Start, 0.1f)).DebugState);
+        }
+
+        [Test]
+        public void ATrailOfFootstepsIsFollowedNotWatchedLikeAToy()
+        {
+            TrackerBrain brain = Brain();
+            brain.Tick(At(Start, 0f));
+            int player = NoiseMemory.PlayerSourceId;
+
+            brain.Tick(At(Start, 0.1f, Noise(new Vector2Int(10, 16), 20f, player, 0.1f)));
+            brain.Tick(At(Start, 0.55f, Noise(new Vector2Int(11, 16), 20f, player, 0.55f)));
+            AgentIntent intent = brain.Tick(At(Start, 1.0f, Noise(new Vector2Int(12, 16), 20f, player, 1.0f)));
+
+            Assert.AreEqual("Investigate", intent.DebugState, "Steps 0.45 s apart are not a lure.");
         }
 
         [Test]

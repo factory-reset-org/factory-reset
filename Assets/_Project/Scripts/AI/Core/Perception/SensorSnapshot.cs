@@ -31,13 +31,18 @@ namespace ToyFactory.AI.Core.Perception
         /// <summary>Game time the noise was made.</summary>
         public readonly float NoiseTime;
 
-        public SensorSnapshot(Vector3 noisePosition, float noiseLevel, int noiseSourceId, float noiseTime)
+        /// <summary>The noise is a deliberate lure (the thrown wind-up toy, <c>NoiseEvent.IsLure</c>).</summary>
+        public readonly bool NoiseIsLure;
+
+        public SensorSnapshot(Vector3 noisePosition, float noiseLevel, int noiseSourceId, float noiseTime,
+            bool noiseIsLure = false)
         {
             HasNoise = true;
             NoisePosition = noisePosition;
             NoiseLevel = noiseLevel;
             NoiseSourceId = noiseSourceId;
             NoiseTime = noiseTime;
+            NoiseIsLure = noiseIsLure;
         }
 
         /// <summary>

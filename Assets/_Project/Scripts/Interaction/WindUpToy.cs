@@ -5,8 +5,9 @@ namespace ToyFactory.Interaction
 {
     /// <summary>
     /// A thrown wind-up toy. Once it lands it walks for a while, turning away from walls,
-    /// and ticks loudly at a steady rate under one source id. To the Tracker that is a
-    /// repeating source, which pulls it into its Distracted state, circling the toy.
+    /// and ticks loudly at a steady rate under one source id. Each tick is marked as a lure
+    /// (<see cref="NoiseEvent.IsLure"/>), so the Tracker is Distracted by the first tick on
+    /// landing, goes to the toy and watches it, instead of waiting to hear it repeat.
     /// When its spring runs out it stands still for a moment, then goes away.
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
@@ -119,7 +120,7 @@ namespace ToyFactory.Interaction
 
             if (now >= _nextTickAt)
             {
-                NoiseEvents.Emit(new NoiseEvent(transform.position, tickLoudness, GetHashCode(), now));
+                NoiseEvents.Emit(new NoiseEvent(transform.position, tickLoudness, GetHashCode(), now, isLure: true));
                 _nextTickAt += tickInterval;
             }
 

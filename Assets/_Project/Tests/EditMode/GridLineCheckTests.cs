@@ -214,5 +214,81 @@ namespace ToyFactory.Tests.EditMode
             Assert.IsTrue(GridLineCheck.IsSightClear(grid, Row(5, 13), Row(15, 13)));
             Assert.IsTrue(GridLineCheck.IsWalkable(grid, Row(5, 13), Row(15, 13)));
         }
+
+        // ---- Line of sight on the sight layer ---------------------------------------------
+
+        [Test]
+        public void WithoutASightLayerEveryUnwalkableCellBlocksSight()
+        {
+            GridGraph grid = GridFromRows(".....", "..#..", ".....");
+
+            Assert.IsFalse(grid.HasSightLayer);
+            Assert.IsFalse(GridLineCheck.HasLineOfSight(grid, Centre(grid, 0, 1), Centre(grid, 4, 1)));
+            Assert.IsTrue(GridLineCheck.HasLineOfSight(grid, Centre(grid, 0, 0), Centre(grid, 4, 0)));
+        }
+
+        [Test]
+        public void OnTheSightLayerALowPropIsSeenOverAndATallOneIsNot()
+        {
+            GridGraph grid = GridFromRows(".....", "..#..", ".....");   // (2, 1) is not walkable
+            grid.SetBlocksSight(new Vector2Int(2, 1), false);           // a crate: low
+
+            Assert.IsTrue(grid.HasSightLayer);
+            Assert.IsTrue(GridLineCheck.HasLineOfSight(grid, Centre(grid, 0, 1), Centre(grid, 4, 1)), "Seen over.");
+
+            grid.SetBlocksSight(new Vector2Int(2, 1), true);            // a press: tall
+            Assert.IsFalse(GridLineCheck.HasLineOfSight(grid, Centre(grid, 0, 1), Centre(grid, 4, 1)));
+        }
+
+        [Test]
+        public void TheCellsAtBothEndsOfASightLineAreNotTested()
+        {
+            // The agent brushing a wall and the player pressed against a press stand in cells
+            // the obstacle overlaps.
+            GridGraph grid = GridFromRows(".....");
+            grid.SetBlocksSight(new Vector2Int(0, 0), true);
+            grid.SetBlocksSight(new Vector2Int(4, 0), true);
+
+            Assert.IsTrue(GridLineCheck.HasLineOfSight(grid, Centre(grid, 0, 0), Centre(grid, 4, 0)));
+
+            grid.SetBlocksSight(new Vector2Int(2, 0), true);
+            Assert.IsFalse(GridLineCheck.HasLineOfSight(grid, Centre(grid, 0, 0), Centre(grid, 4, 0)));
+        }
+
+        [Test]
+        public void AClosedDoorBlocksSightOnTheSightLayer()
+        {
+            GridGraph grid = GridFromRows(".....");
+            grid.SetBlocksSight(new Vector2Int(0, 0), false);
+            grid.SetDoorway(new Vector2Int(2, 0), true);
+            grid.SetDoor(new Vector2Int(2, 0), 1, true);
+
+            Assert.IsFalse(GridLineCheck.HasLineOfSight(grid, Centre(grid, 0, 0), Centre(grid, 4, 0)));
+            grid.SetDoor(new Vector2Int(2, 0), 1, false);
+            Assert.IsTrue(GridLineCheck.HasLineOfSight(grid, Centre(grid, 0, 0), Centre(grid, 4, 0)));
+        }
+
+        [Test]
+        public void ASightLineThroughACornerIsBlockedOnlyWhenBothSideCellsAre()
+        {
+            // From the centre of (0, 0) to the centre of (2, 2): through the corners at (1, 1) and (2, 2).
+            GridGraph grid = GridFromRows("...", "...", "...");
+            grid.SetBlocksSight(new Vector2Int(1, 0), true);
+
+            Assert.IsTrue(GridLineCheck.HasLineOfSight(grid, Centre(grid, 0, 0), Centre(grid, 2, 2)), "One side open: seen past the corner.");
+
+            grid.SetBlocksSight(new Vector2Int(0, 1), true);
+            Assert.IsFalse(GridLineCheck.HasLineOfSight(grid, Centre(grid, 0, 0), Centre(grid, 2, 2)), "Both sides tall: hidden.");
+        }
+
+        [Test]
+        public void OutsideTheGridBlocksSight()
+        {
+            GridGraph grid = GridFromRows("...");
+            grid.SetBlocksSight(new Vector2Int(0, 0), false);
+
+            Assert.IsTrue(grid.BlocksSight(new Vector2Int(-1, 0)));
+            Assert.IsTrue(grid.BlocksSight(new Vector2Int(3, 0)));
+        }
     }
 }

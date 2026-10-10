@@ -15,8 +15,8 @@ namespace ToyFactory.Tests
 {
     /// <summary>
     /// The Saboteur's swipe hurts the player once per move, at the moment of contact, and only
-    /// if the player is alive, within reach and in front. The Tracker's pounce is cosmetic
-    /// unless it is given a damage value.
+    /// if the player is alive, within reach and in front. The Tracker's pounce deals 8 the
+    /// same way; set to 0 it is cosmetic.
     /// </summary>
     public sealed class AgentMeleeDamageTests
     {
@@ -134,7 +134,7 @@ namespace ToyFactory.Tests
         }
 
         [UnityTest]
-        public IEnumerator TheTrackersPounceIsCosmeticUntilItIsGivenDamage()
+        public IEnumerator TheTrackersPounceDealsEightAndZeroMakesItCosmetic()
         {
             Floor();
             var player = new CountingPlayer { Position = new Vector3(0f, 0f, 3f) };
@@ -142,14 +142,14 @@ namespace ToyFactory.Tests
             AgentBite bite = Body<AgentBite>(AgentType.Tracker, 0, new TestBrain(player.Position), out AgentController agent);
 
             yield return Seconds(1.5f);
-            Assert.GreaterOrEqual(bite.Strikes, 1);
-            Assert.AreEqual(0f, bite.Damage);
-            Assert.IsEmpty(player.Damage, "No contact damage by default (the Tracker's design).");
+            Assert.AreEqual(8f, bite.Damage);
+            Assert.GreaterOrEqual(bite.Hits, 1, "The pounce lands.");
+            Assert.AreEqual((8f, agent.Identity.Id), player.Damage[0]);
 
-            bite.GetType().GetField("damage", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(bite, 9f);
+            int hitsSoFar = player.Damage.Count;
+            bite.GetType().GetField("damage", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(bite, 0f);
             yield return Seconds(1.5f);
-            Assert.GreaterOrEqual(bite.Hits, 1, "With a value set, the same pounce lands.");
-            Assert.AreEqual((9f, agent.Identity.Id), player.Damage[0]);
+            Assert.AreEqual(hitsSoFar, player.Damage.Count, "At 0 the same pounce is cosmetic.");
         }
 
         [UnityTest]

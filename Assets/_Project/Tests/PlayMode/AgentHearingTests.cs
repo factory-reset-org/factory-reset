@@ -61,6 +61,20 @@ namespace ToyFactory.Tests
             Assert.AreEqual(CellCentre(5, 5), heard.NoisePosition, "The brain gets the source, not its own position.");
             Assert.AreEqual(-1, heard.NoiseSourceId);
             Assert.AreEqual(7.5f, heard.NoiseTime);
+            Assert.IsFalse(heard.NoiseIsLure);
+        }
+
+        [Test]
+        public void ALureNoiseReachesTheListenerMarkedAsALure()
+        {
+            var grid = new GridGraph(40, 10, Vector3.zero);
+            var listener = new FakeListener { HearingPosition = CellCentre(15, 5) };
+            var hearing = Create(new[] { listener }, grid);
+
+            hearing.Hear(new NoiseEvent(CellCentre(5, 5), 70f, 9, 1f, isLure: true));
+
+            Assert.AreEqual(1, listener.Heard.Count);
+            Assert.IsTrue(listener.Heard[0].NoiseIsLure, "The thrown toy's tick stays a lure all the way to the brain.");
         }
 
         [Test]

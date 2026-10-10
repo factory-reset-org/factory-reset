@@ -17,12 +17,19 @@ namespace ToyFactory.Interfaces
         /// <summary>Game time at which the sound occurred.</summary>
         public float Time { get; }
 
-        public NoiseEvent(Vector3 position, float loudness, int sourceId, float time)
+        /// <summary>
+        /// True for a deliberate lure (the thrown wind-up toy): an agent that can be distracted
+        /// treats it as one from its first noise, instead of waiting to hear it repeat.
+        /// </summary>
+        public bool IsLure { get; }
+
+        public NoiseEvent(Vector3 position, float loudness, int sourceId, float time, bool isLure = false)
         {
             Position = position;
             Loudness = loudness;
             SourceId = sourceId;
             Time = time;
+            IsLure = isLure;
         }
     }
 }

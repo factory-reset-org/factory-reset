@@ -26,8 +26,8 @@ namespace ToyFactory.Runtime.Animation
         [SerializeField] Transform earRight;
         [SerializeField] Transform tail;
 
-        [Tooltip("Damage one pounce deals to the player. 0 = cosmetic: the Tracker's design has no contact damage (S1's call).")]
-        [SerializeField, Min(0f)] float damage;
+        [Tooltip("Damage one pounce deals to the player: 8, just under the Saboteur's swipe (the prototype's bite dealt 9 a second). 0 = cosmetic. S1's call.")]
+        [SerializeField, Min(0f)] float damage = 8f;
 
         [Header("Curves over normalised time")]
         [Tooltip("Root forward offset (m): back in the wind-up, forward in the strike.")]
