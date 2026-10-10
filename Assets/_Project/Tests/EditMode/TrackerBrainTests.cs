@@ -263,6 +263,105 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual("Calm", brain.TopStateName);
         }
 
+        [Test]
+        public void AThrownToyPullsAnAttackingTrackerAwayForThreeSeconds()
+        {
+            TrackerBrain brain = Brain();
+            brain.Tick(At(Start, 0f));
+            PlacePlayer(new Vector2Int(12, 10));   // 1 m ahead: in reach
+            AgentIntent chasing = brain.Tick(At(Start, 0.1f));
+            Assert.AreEqual("Chase", chasing.DebugState);
+            Assert.IsFalse(chasing.IgnorePlayer, "Chasing: the body stands off and pounces.");
+
+            var toy = new Vector2Int(10, 16);
+            AgentIntent intent = brain.Tick(At(Start, 0.2f, ToyTick(toy, 50f, 9, 0.2f)));
+            Assert.AreEqual("Distracted", intent.DebugState, "The toy lock beats even a player 1 m away.");
+            Assert.AreEqual(AgentAction.None, intent.Action, "No attack while locked onto the toy.");
+            Assert.IsTrue(intent.IgnorePlayer, "The body walks off to the toy instead of holding and pouncing on the player.");
+            Assert.AreEqual(_grid.CellToWorld(toy), intent.LookTarget);
+
+            Assert.AreEqual("Distracted", brain.Tick(At(Start, 1.4f, ToyTick(toy, 50f, 9, 1.4f))).DebugState);
+            Assert.AreEqual("Distracted", brain.Tick(At(Start, 2.6f, ToyTick(toy, 50f, 9, 2.6f))).DebugState,
+                "Still locked 2.4 s after the first tick.");
+            Assert.AreEqual("Chase", brain.Tick(At(Start, 3.3f, ToyTick(toy, 50f, 9, 3.2f))).DebugState,
+                "After 3 s the usual rule is back: a player within 2 m is noticed.");
+        }
+
+        [Test]
+        public void ATerminalBeepDoesNotLockLikeAThrownToy()
+        {
+            TrackerBrain brain = Brain();
+            brain.Tick(At(Start, 0f));
+            PlacePlayer(new Vector2Int(12, 10));   // 1 m ahead
+            Assert.AreEqual("Chase", brain.Tick(At(Start, 0.1f)).DebugState);
+
+            var terminal = new Vector2Int(10, 16);
+            brain.Tick(At(Start, 0.2f, Noise(terminal, 50f, 9, 0.2f)));
+            Assert.AreEqual("Chase", brain.Tick(At(Start, 0.8f, Noise(terminal, 50f, 9, 0.8f))).DebugState,
+                "A repeating noise that is not a thrown toy keeps the 3 m rule.");
+        }
+
+        // ---- Spawn grace ------------------------------------------------------------------
+
+        TrackerBrain GraceBrain()
+        {
+            var points = new List<Vector3> { _grid.CellToWorld(PatrolA), _grid.CellToWorld(PatrolB) };
+            return new TrackerBrain(_grid, _world, points, spawnGrace: true);
+        }
+
+        [Test]
+        public void WithSpawnGraceAPlayerWhoHasNotMovedIsNotSeen()
+        {
+            TrackerBrain brain = GraceBrain();
+            PlacePlayer(new Vector2Int(25, 10));   // 7.5 m ahead, in view, where it spawned
+            brain.Tick(At(Start, 0f));
+            Assert.AreEqual("Patrol", brain.Tick(At(Start, 0.5f)).DebugState, "Standing still where it spawned.");
+
+            PlacePlayer(new Vector2Int(25, 12));   // 1 m from the spawn
+            Assert.AreEqual("Patrol", brain.Tick(At(Start, 1.0f)).DebugState, "Within 1.5 m of the spawn.");
+
+            PlacePlayer(new Vector2Int(25, 14));   // 2 m from the spawn
+            Assert.AreEqual("Chase", brain.Tick(At(Start, 1.5f)).DebugState, "Moved off: seen.");
+        }
+
+        [Test]
+        public void SpawnGraceEndsWhenTheTrackerIsRightNextToThePlayer()
+        {
+            TrackerBrain brain = GraceBrain();
+            brain.Tick(At(Start, 0f));
+            PlacePlayer(new Vector2Int(14, 10));   // 2 m ahead: inside the 2.6 m all-round range
+
+            Assert.AreEqual("Chase", brain.Tick(At(Start, 0.1f)).DebugState);
+        }
+
+        [Test]
+        public void SpawnGraceStartsAgainAfterARespawn()
+        {
+            TrackerBrain brain = GraceBrain();
+            brain.Tick(At(Start, 0f));
+            PlacePlayer(new Vector2Int(25, 10));
+            brain.Tick(At(Start, 0.1f));
+            PlacePlayer(new Vector2Int(25, 14));
+            Assert.AreEqual("Chase", brain.Tick(At(Start, 0.2f)).DebugState);
+
+            PlacePlayer(new Vector2Int(25, 14), alive: false);
+            brain.Tick(At(Start, 0.3f));
+            PlacePlayer(new Vector2Int(28, 6));    // respawned, in view
+            brain.Tick(At(Start, 0.4f));
+
+            Assert.AreEqual("Calm", brain.TopStateName, "A respawned player standing still is not seen.");
+        }
+
+        [Test]
+        public void WithoutSpawnGraceAPlayerInViewIsSeenAtOnce()
+        {
+            TrackerBrain brain = Brain();
+            PlacePlayer(new Vector2Int(25, 10));
+            brain.Tick(At(Start, 0f));
+
+            Assert.AreEqual("Chase", brain.Tick(At(Start, 0.1f)).DebugState, "Tests and tools build it without the grace.");
+        }
+
         // ---- Vision ---------------------------------------------------------------------
 
         [Test]

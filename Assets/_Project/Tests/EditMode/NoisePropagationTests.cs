@@ -136,6 +136,26 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void AListenerInACellTheNoiseSkipsHearsItsLoudestNeighbour()
+        {
+            var clearance = new Vector2Int(12, 10);   // e.g. an agent standing in a box's clearance cell
+            _grid.SetWalkable(clearance, false);
+            _noise.Propagate(Source, 100f);
+
+            Assert.AreEqual(0f, _noise.Level(clearance));
+            Assert.AreEqual(Expected(100f, 1.5f), _noise.LevelNear(clearance), Tolerance);
+        }
+
+        [Test]
+        public void LevelNearDoesNotHearThroughAWall()
+        {
+            Wall(10);
+            _noise.Propagate(Source, 100f);
+
+            Assert.AreEqual(0f, _noise.LevelNear(new Vector2Int(11, 10)), "The wall cells were never reached either.");
+        }
+
+        [Test]
         public void BoxesBlockTheNoiseToo()
         {
             for (int y = 0; y < _grid.Height; y++)
