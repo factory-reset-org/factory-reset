@@ -7,6 +7,7 @@ using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
 using ToyFactory.AI.Core.FSM;
 using ToyFactory.AI.Core.Grid;
+using ToyFactory.AI.Core.Perception;
 using ToyFactory.AI.Core.Search;
 
 namespace ToyFactory.AI.Agents.Guard
@@ -31,10 +32,25 @@ namespace ToyFactory.AI.Agents.Guard
         public const float AdvanceSpeed = 4.5f;
         public const float PatrolSpeed = 2f;
 
-        // Engagement: alerted when the player comes within AlertRange, and stays alerted
-        // until they are farther than DisengageRange, so it follows them out of its room.
+        // Engagement: the Guard is alerted the moment the player steps into its room. A player
+        // just outside it (within HomeMargin, such as in a doorway) is fought only if they are
+        // within AlertRange and the Guard sees them or hears them fire. Once alerted it stays so
+        // until the player leaves the room (plus the margin) or gets farther than DisengageRange.
         public const float AlertRange = 20f;
         public const float DisengageRange = 30f;
+
+        // How far outside its room a player can stand and still be fought: a few metres, so a
+        // player in a doorway is a target but one on the other side of a wall is not.
+        public const float HomeMargin = 3f;
+
+        // Cover is only taken inside the room, with a metre of slack for cells in the doorway.
+        public const float CoverMargin = 1f;
+
+        // A shot the Guard heard counts only if it is loud enough here and recent. The player's
+        // own sounds carry this source id (see NoiseEvent).
+        public const int PlayerNoiseSourceId = -1;
+        public const float ShotAlertLevel = 40f;
+        public const float HearingWindow = 1f;
         public const float ShootRange = 15f;
         public const float FireInterval = 1.2f;
 
@@ -112,6 +128,7 @@ namespace ToyFactory.AI.Agents.Guard
         readonly GridRegions _regions;
         readonly int _agentId;
         readonly IReadOnlyList<Vector3> _patrolPoints;
+        readonly IGuardHome _home;
 
         readonly List<RankedCover> _best = new List<RankedCover>(TopCandidates);
         readonly Predicate<Vector2Int> _isAvailable;
@@ -186,8 +203,10 @@ namespace ToyFactory.AI.Agents.Guard
         /// <param name="visibility">Line of sight from the player's eye, implemented by Runtime.</param>
         /// <param name="agentId">This agent's unique id, the owner of its cover reservation.</param>
         /// <param name="patrolPoints">Points walked while no player is in range; may be null or empty.</param>
+        /// <param name="home">The room this Guard holds. Null: it has no room and fights wherever the player is in range.</param>
         public GuardBrain(GridGraph grid, IPathfinder pathfinder, WorldBlackboard blackboard,
-            ICoverVisibility visibility, int agentId, IReadOnlyList<Vector3> patrolPoints = null)
+            ICoverVisibility visibility, int agentId, IReadOnlyList<Vector3> patrolPoints = null,
+            IGuardHome home = null)
         {
             _grid = grid ?? throw new ArgumentNullException(nameof(grid));
             _blackboard = blackboard ?? throw new ArgumentNullException(nameof(blackboard));
@@ -195,6 +214,7 @@ namespace ToyFactory.AI.Agents.Guard
             _pathfinder = pathfinder ?? new AStarSearch(grid);
             _agentId = agentId;
             _patrolPoints = patrolPoints ?? Array.Empty<Vector3>();
+            _home = home;
             _sight = new CachedCoverVisibility(visibility, grid);
             _evaluator = new CoverEvaluator(grid, _sight, GridGraph.CellSize);
             _isAvailable = IsAvailable;
@@ -435,12 +455,42 @@ namespace ToyFactory.AI.Agents.Guard
                 && !_visibility.IsBlocked(_ctx.Cell, CoverEvaluator.ChestHeight);
         }
 
+        // Distance alone is not a reason to fight: a player on the far side of a wall is not a
+        // threat. Stepping into the Guard's room is (it is the Guard's territory), and so is
+        // being seen or heard near it.
         bool ComputeEngaged()
         {
             if (!PlayerAvailable())
                 return false;
+
+            // The leash holds an alerted Guard to its room too: it does not follow the player out.
+            if (_home != null && !_home.Contains(Player.Position, HomeMargin))
+                return false;
+
             float distance = FlatDistance(_ctx.Position, Player.Position);
-            return distance <= (_engaged ? DisengageRange : AlertRange);
+            if (_engaged)
+                return distance <= DisengageRange;
+
+            // In the room: detected, whether or not the Guard has a line to them.
+            if (_home != null && _home.Contains(Player.Position, 0f))
+                return true;
+
+            if (distance > AlertRange)
+                return false;
+            return CanSeePlayer() || HeardPlayerShoot();
+        }
+
+        // The player's eye has a clear line to the Guard's chest.
+        bool CanSeePlayer() => !_visibility.IsBlocked(_ctx.Cell, CoverEvaluator.ChestHeight);
+
+        // A loud noise the player made, in the last second.
+        bool HeardPlayerShoot()
+        {
+            SensorSnapshot senses = _ctx.Senses;
+            return senses.HasNoise
+                && senses.NoiseSourceId == PlayerNoiseSourceId
+                && senses.NoiseLevel >= ShotAlertLevel
+                && Now - senses.NoiseTime <= HearingWindow;
         }
 
         /// <summary>Reads the battery tier off the player. Returns true if the tier changed.</summary>
@@ -484,11 +534,13 @@ namespace ToyFactory.AI.Agents.Guard
         /// <summary>True if the player can see <paramref name="cell"/>. Cached until the player changes cell.</summary>
         bool IsExposed(Vector2Int cell) => !_sight.IsBlocked(cell, CoverEvaluator.ChestHeight);
 
-        // A cover cell another agent has reserved is not on offer.
+        // A cover cell another agent has reserved is not on offer, nor is one outside the room.
         bool IsAvailable(Vector2Int cell)
         {
             int? holder = World.Reservations.ReservedBy(cell);
-            return !holder.HasValue || holder.Value == _agentId;
+            if (holder.HasValue && holder.Value != _agentId)
+                return false;
+            return _home == null || _home.Contains(_grid.CellToWorld(cell), CoverMargin);
         }
 
         // ---- Cover selection -----------------------------------------------------------
@@ -650,6 +702,8 @@ namespace ToyFactory.AI.Agents.Guard
                 {
                     Vector2Int cell = new Vector2Int(_ctx.Cell.x + dx, _ctx.Cell.y + dy);
                     if (!_grid.IsTraversable(cell) || IsExposed(cell))
+                        continue;
+                    if (_home != null && !_home.Contains(_grid.CellToWorld(cell), CoverMargin))
                         continue;
                     _retreatOptions.Add(new RankedCandidate(new CoverCandidate(cell, 0f, false),
                         Vector2Int.Distance(cell, playerCell)));

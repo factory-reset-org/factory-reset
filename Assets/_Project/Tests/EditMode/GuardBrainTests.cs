@@ -28,8 +28,13 @@ namespace ToyFactory.Tests.EditMode
             public bool HalfHeightOnly;
             public readonly HashSet<Vector2Int> Exposed = new HashSet<Vector2Int>();
 
+            // Cells the player has no line of sight to at any height (the far side of a wall).
+            public readonly HashSet<Vector2Int> Blocked = new HashSet<Vector2Int>();
+
             public bool IsBlocked(Vector2Int cell, float height)
             {
+                if (Blocked.Contains(cell))
+                    return true;
                 if (!WallCastsShadow || Exposed.Contains(cell))
                     return false;
                 bool inShadow = cell.x > WallX && cell.x <= WallX + 4 && cell.y >= 3 && cell.y <= 7;
@@ -37,6 +42,15 @@ namespace ToyFactory.Tests.EditMode
                     return false;
                 return !HalfHeightOnly || height < 1f;
             }
+        }
+
+        // A room that spans the world x range [MinX, MaxX], all of z.
+        sealed class FakeHome : IGuardHome
+        {
+            public float MinX, MaxX;
+
+            public bool Contains(Vector3 position, float margin) =>
+                position.x >= MinX - margin && position.x <= MaxX + margin;
         }
 
         GridGraph _grid;
@@ -53,15 +67,17 @@ namespace ToyFactory.Tests.EditMode
             _visibility = new FakeVisibility();
         }
 
-        GuardBrain Guard(int id = GuardId, IReadOnlyList<Vector3> patrol = null) =>
-            new GuardBrain(_grid, new AStarSearch(_grid), _world, _visibility, id, patrol);
+        GuardBrain Guard(int id = GuardId, IReadOnlyList<Vector3> patrol = null, IGuardHome home = null) =>
+            new GuardBrain(_grid, new AStarSearch(_grid), _world, _visibility, id, patrol, home);
 
-        void SetPlayer(float ammo = 1f, float overcharge = 0f, bool alive = true, bool reloading = false)
+        void SetPlayer(float ammo = 1f, float overcharge = 0f, bool alive = true, bool reloading = false,
+            Vector2Int? at = null)
         {
+            Vector2Int cell = at ?? PlayerCell;
             _world.SetPlayer(new PlayerSnapshot(
                 isKnown: true,
-                cell: PlayerCell,
-                position: _grid.CellToWorld(PlayerCell),
+                cell: cell,
+                position: _grid.CellToWorld(cell),
                 velocity: Vector3.zero,
                 forward: Vector3.right,
                 sprintSpeed: 7f,
@@ -79,6 +95,9 @@ namespace ToyFactory.Tests.EditMode
 
         AgentIntent TickAt(GuardBrain brain, Vector2Int cell, float time) =>
             TickAt(brain, _grid.CellToWorld(cell), time);
+
+        AgentIntent TickAt(GuardBrain brain, Vector2Int cell, float time, SensorSnapshot senses) =>
+            brain.Tick(new AgentContext(cell, _grid.CellToWorld(cell), Vector3.left, time, _world, senses));
 
         // Walks the Guard into its cover: one tick to choose it, one tick standing on it.
         Vector2Int SettleInCover(GuardBrain brain)
@@ -451,6 +470,170 @@ namespace ToyFactory.Tests.EditMode
 
             Assert.AreEqual("TakeCover", brain.StateName);
             Assert.AreNotEqual(cover, brain.CoverCell);
+        }
+
+        // ---- Engagement: sight or sound, in its own room, from its chapter -------------
+
+        [Test]
+        public void Guard_PlayerInRangeBehindAWall_StaysOnPatrol()
+        {
+            _visibility.Blocked.Add(GuardStart);
+            SetPlayer();
+            GuardBrain brain = Guard();
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsFalse(brain.IsEngaged);
+            Assert.AreEqual("Patrol", brain.StateName);
+            Assert.IsFalse(brain.HasCover);
+        }
+
+        [Test]
+        public void Guard_PlayerInRangeInPlainSight_Engages()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsTrue(brain.IsEngaged);
+        }
+
+        [Test]
+        public void Guard_HearsThePlayerShootBehindAWall_Engages()
+        {
+            _visibility.Blocked.Add(GuardStart);
+            SetPlayer();
+            GuardBrain brain = Guard();
+            var shot = new SensorSnapshot(_grid.CellToWorld(PlayerCell), 60f, GuardBrain.PlayerNoiseSourceId, 0f);
+
+            TickAt(brain, GuardStart, 0f, shot);
+
+            Assert.IsTrue(brain.IsEngaged);
+        }
+
+        [Test]
+        public void Guard_OtherNoises_DoNotAlertIt()
+        {
+            _visibility.Blocked.Add(GuardStart);
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector3 at = _grid.CellToWorld(PlayerCell);
+
+            // A door slam (another source), a quiet player noise, and a shot that is five seconds old.
+            TickAt(brain, GuardStart, 0f, new SensorSnapshot(at, 60f, 12345, 0f));
+            Assert.IsFalse(brain.IsEngaged, "Not the player's noise.");
+
+            TickAt(brain, GuardStart, 0.1f, new SensorSnapshot(at, 20f, GuardBrain.PlayerNoiseSourceId, 0.1f));
+            Assert.IsFalse(brain.IsEngaged, "Too quiet to be a shot.");
+
+            TickAt(brain, GuardStart, 5f, new SensorSnapshot(at, 60f, GuardBrain.PlayerNoiseSourceId, 0f));
+            Assert.IsFalse(brain.IsEngaged, "Too old.");
+        }
+
+        [Test]
+        public void Guard_PlayerOutsideItsRoom_IsNotFought()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard(home: new FakeHome { MinX = 8f, MaxX = 14f });   // the player is at x 2.75
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsFalse(brain.IsEngaged);
+            Assert.AreEqual("Patrol", brain.StateName);
+        }
+
+        [Test]
+        public void Guard_PlayerJustOutsideItsDoor_IsFought()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard(home: new FakeHome { MinX = 5f, MaxX = 14f });   // within the 3 m margin
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsTrue(brain.IsEngaged);
+        }
+
+        [Test]
+        public void Guard_PlayerLeavesItsRoomMidFight_ReturnsToPatrolAndReleasesCover()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard(home: new FakeHome { MinX = 5f, MaxX = 14f });
+            Vector2Int cover = SettleInCover(brain);
+            Assert.AreEqual(GuardId, _world.Reservations.ReservedBy(cover));
+
+            SetPlayer(at: new Vector2Int(0, 5));   // x 0.25, more than 3 m outside the room
+            TickAt(brain, cover, 1f);
+
+            Assert.IsFalse(brain.IsEngaged);
+            Assert.AreEqual("Patrol", brain.StateName);
+            Assert.IsNull(_world.Reservations.ReservedBy(cover));
+        }
+
+        [Test]
+        public void Guard_PlayerStepsIntoItsRoom_IsDetectedWithoutALineOfSight()
+        {
+            _visibility.Blocked.Add(GuardStart);   // it cannot see the player
+            SetPlayer();
+            GuardBrain brain = Guard(home: new FakeHome { MinX = 1f, MaxX = 14f });   // the player is at x 2.75, inside
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsTrue(brain.IsEngaged);
+        }
+
+        [Test]
+        public void Guard_PlayerJustOutsideItsDoor_NeedsASightOrASoundToBeDetected()
+        {
+            _visibility.Blocked.Add(GuardStart);
+            SetPlayer();
+            GuardBrain brain = Guard(home: new FakeHome { MinX = 5f, MaxX = 14f });   // within the margin, not in the room
+
+            TickAt(brain, GuardStart, 0f);
+            Assert.IsFalse(brain.IsEngaged, "Not in the room, not seen, nothing heard.");
+
+            var shot = new SensorSnapshot(_grid.CellToWorld(PlayerCell), 60f, GuardBrain.PlayerNoiseSourceId, 0.1f);
+            TickAt(brain, GuardStart, 0.1f, shot);
+            Assert.IsTrue(brain.IsEngaged, "A shot gives it away.");
+        }
+
+        [Test]
+        public void Guard_IsNotHeldBackByTheChapter()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard(home: new FakeHome { MinX = 1f, MaxX = 14f });
+            _world.SetChapterIndex(1);
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsTrue(brain.IsEngaged, "The room is the Guard's from the start.");
+        }
+
+        [Test]
+        public void Guard_TakesCoverOnlyInsideItsRoom()
+        {
+            SetPlayer();
+            // The shadow cells are at world x 8.25 to 9.75. Cells up to 8.5 + 1 m of slack are on offer.
+            var home = new FakeHome { MinX = 5f, MaxX = 8.5f };
+            GuardBrain brain = Guard(home: home);
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsTrue(brain.HasCover);
+            Assert.LessOrEqual(_grid.CellToWorld(brain.CoverCell).x, home.MaxX + GuardBrain.CoverMargin + 0.01f);
+        }
+
+        [Test]
+        public void Guard_NoCoverInsideItsRoom_DoesNotLeaveToFindSome()
+        {
+            SetPlayer();
+            var home = new FakeHome { MinX = 5f, MaxX = 6f };   // every shadow cell is outside, even with the slack
+            GuardBrain brain = Guard(home: home);
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsTrue(brain.IsEngaged);
+            Assert.IsFalse(brain.HasCover);
         }
 
         [Test]
