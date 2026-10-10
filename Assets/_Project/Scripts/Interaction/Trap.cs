@@ -3,6 +3,7 @@ using UnityEngine;
 using ToyFactory.Interfaces;
 using ToyFactory.Player;
 using ToyFactory.Runtime.Effects;
+using Random = UnityEngine.Random;
 
 namespace ToyFactory.Interaction
 {
