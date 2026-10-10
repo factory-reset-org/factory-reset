@@ -107,15 +107,15 @@ namespace ToyFactory.Editor.World
         /// A capped cylinder with rounded rims, standing on y = 0 (pipes, posts, legs). Thin ones get
         /// fewer sides (8 under 5 cm, 12 under 15 cm, else 16): a rod or cord reads round with 8.
         /// </summary>
-        public static Mesh Cylinder(float radius, float height)
+        public static Mesh Cylinder(float radius, float height, int sides = 0)
         {
-            int segments = radius < 0.05f ? 8 : radius < 0.15f ? 12 : 16;
+            int segments = sides > 0 ? sides : radius < 0.05f ? 8 : radius < 0.15f ? 12 : 16;
             float edge = Mathf.Min(radius * 0.35f, height * 0.25f, 0.05f);
             var profile = new List<Vector2> { new Vector2(0f, 0f) };
             AddArc(profile, new Vector2(radius - edge, edge), edge, -90f, 0f);
             AddArc(profile, new Vector2(radius - edge, height - edge), edge, 0f, 90f);
             profile.Add(new Vector2(0f, height));
-            return Lathe($"Cyl_{F(radius)}x{F(height)}", profile.ToArray(), segments);
+            return Lathe($"Cyl_{F(radius)}x{F(height)}" + (sides > 0 ? $"_s{sides}" : ""), profile.ToArray(), segments);
         }
 
         /// <summary>A flat disc ring on y = 0 with a rounded top (floor paint rings, pads).</summary>
@@ -127,7 +127,7 @@ namespace ToyFactory.Editor.World
                 new Vector2(outer, 0f), new Vector2(outer, thickness * 0.6f), new Vector2(outer - thickness, thickness),
                 new Vector2(inner, thickness)
             };
-            return Lathe($"Ring_{F(inner)}-{F(outer)}", profile, segments);
+            return Lathe($"Ring_{F(inner)}-{F(outer)}" + (segments != 40 ? $"_s{segments}" : ""), profile, segments);
         }
 
         static void AddArc(List<Vector2> profile, Vector2 centre, float radius, float fromDegrees, float toDegrees, int steps = 3)
@@ -174,6 +174,9 @@ namespace ToyFactory.Editor.World
             profile[0].x = profile[rings].x = 0f;
             return Lathe("Sphere12x7", profile, 12);
         }
+
+        /// <summary>A mesh made by <paramref name="create"/>, saved as <c>&lt;name&gt;</c> and rebuilt on every call.</summary>
+        public static Mesh Custom(string name, System.Func<Mesh> create) => LoadOrCreate(name, create, forceRebuild: true);
 
         static Mesh LoadOrCreate(string name, System.Func<Mesh> create, bool forceRebuild = false)
         {
@@ -338,6 +341,85 @@ namespace ToyFactory.Editor.World
             blocker.transform.position = centre;
             blocker.AddComponent<BoxCollider>().size = size;
             return blocker;
+        }
+
+        /// <summary>
+        /// Merges the static parts under <paramref name="section"/> into one renderer per material,
+        /// so a room of hundreds of small parts costs a few dozen draw calls instead of one each.
+        /// Moving parts (not static), renderers a <see cref="DressingBlinker"/> switches, and
+        /// anything outside the section are left alone; colliders stay where they were. The merged
+        /// meshes are saved as <c>Merged_&lt;prefix&gt;_&lt;material&gt;</c> with fresh lightmap UVs.
+        /// Returns how many renderers were merged away.
+        /// </summary>
+        public static int MergeStatic(Transform section, string prefix)
+        {
+            var blinking = new HashSet<Renderer>();
+            foreach (DressingBlinker blinker in section.GetComponentsInChildren<DressingBlinker>(true))
+            {
+                SerializedProperty lights = new SerializedObject(blinker).FindProperty("lights");
+                for (int i = 0; i < lights.arraySize; i++)
+                    if (lights.GetArrayElementAtIndex(i).objectReferenceValue is Renderer r)
+                        blinking.Add(r);
+            }
+
+            var groups = new Dictionary<Material, List<CombineInstance>>();
+            var merged = new List<MeshRenderer>();
+            foreach (MeshRenderer renderer in section.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                var flags = GameObjectUtility.GetStaticEditorFlags(renderer.gameObject);
+                var filter = renderer.GetComponent<MeshFilter>();
+                if ((flags & StaticEditorFlags.BatchingStatic) == 0 || blinking.Contains(renderer) || filter == null || filter.sharedMesh == null)
+                    continue;
+                Mesh mesh = filter.sharedMesh;
+                Material[] materials = renderer.sharedMaterials;
+                for (int s = 0; s < mesh.subMeshCount && s < materials.Length; s++)
+                {
+                    if (!groups.TryGetValue(materials[s], out List<CombineInstance> list))
+                        groups[materials[s]] = list = new List<CombineInstance>();
+                    list.Add(new CombineInstance { mesh = mesh, subMeshIndex = s, transform = section.worldToLocalMatrix * renderer.localToWorldMatrix });
+                }
+                merged.Add(renderer);
+            }
+            if (merged.Count < 2)
+                return 0;
+
+            foreach (KeyValuePair<Material, List<CombineInstance>> group in groups)
+            {
+                string name = $"Merged_{prefix}_{group.Key.name.Replace("M_Env_", "")}";
+                List<CombineInstance> parts = group.Value;
+                Mesh mesh = Custom(name, () =>
+                {
+                    var combined = new Mesh { name = name };
+                    int vertices = 0;
+                    foreach (CombineInstance part in parts)
+                        vertices += part.mesh.vertexCount;
+                    if (vertices > 65000)
+                        combined.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+                    combined.CombineMeshes(parts.ToArray(), true, true);
+                    combined.RecalculateBounds();
+                    return combined;
+                });
+                var holder = new GameObject(name);
+                holder.transform.SetParent(section, false);
+                holder.AddComponent<MeshFilter>().sharedMesh = mesh;
+                holder.AddComponent<MeshRenderer>().sharedMaterial = group.Key;
+                GameObjectUtility.SetStaticEditorFlags(holder, StaticEditorFlags.ContributeGI | StaticEditorFlags.BatchingStatic |
+                    StaticEditorFlags.OccludeeStatic | StaticEditorFlags.ReflectionProbeStatic);
+                var serialized = new SerializedObject(holder.GetComponent<MeshRenderer>());
+                serialized.FindProperty("m_ScaleInLightmap").floatValue = 0.5f;
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            // The originals: drop their renderer and mesh, and the object itself if nothing else is left on it.
+            foreach (MeshRenderer renderer in merged)
+            {
+                GameObject owner = renderer.gameObject;
+                Object.DestroyImmediate(renderer);
+                Object.DestroyImmediate(owner.GetComponent<MeshFilter>());
+                if (owner.transform.childCount == 0 && owner.GetComponents<Component>().Length == 1)
+                    Object.DestroyImmediate(owner);
+            }
+            return merged.Count;
         }
 
         /// <summary>Total triangles under <paramref name="root"/>, for the report.</summary>
