@@ -70,7 +70,7 @@ Each room's obstacles are laid out cell for cell from the HTML prototype (`Facto
 | Assembly | Two stamping presses side by side between the two belts, on the west side | Replaced in the Assembly revamp by the Toy-O-Matic assembler on the same footprint (x 2.45-6.65, z 10.4-12.6), one 4.2 x 2.6 x 2.2 m collider: the same cover from the Tracker. See Assembly Floor below |
 | Painting | Five paint tanks; four carry a spinning bullseye on a pole; three patches of paint | Refitted in the Painting revamp (see Painting Room below). Tanks at (24.6, 17.5), (37.4, 17.5), (27.4, 11.5), (38.9, 5.5) and (23.1, 1.5): white body, coloured band, a lid that spins (`DressingSpinner`), a paint drip, and poles on the first four. The targets (S2's `SpinningTarget`) stand on the poles 3.55 m up and spin about the vertical. The tanks replace the four low cover blocks and are now the Guard Bot's cover. Puddles moved into the prototype's three patches |
 | Storage | A shelf maze: short runs of 1 to 4 cells on rows 1, 3, 5 and 7, with staggered gaps | Eight runs (2.86 to 5.72 m) on rows at z 37.5, 33.5, 29.5 and 25.5, each a shelving unit with toys. The run beside door 3 is left out (it would half block the door and Saboteur A's waypoint), and the rows sit 0.5 m south of the exact mapping so Saboteur D's patrol along the north wall stays walkable. Restocked with toys in the Storage revamp (see Storage Area below) |
-| Control | Twelve server pillars round a central console; three cores float above pillars | Twelve 1.3 x 2.8 x 1.5 m pillars with glowing LED faces and purple caps; the console moved to the room centre (10.5, 31); the cores float 3.75 m up above servers 1, 2 and 9 |
+| Control | Twelve server pillars round a central console; three cores float above pillars | Twelve 1.3 x 2.8 x 1.5 m pillars (rebuilt as detailed server racks in the Control revamp; see Control Room below); the console moved to the room centre (10.5, 31); the cores float 3.75 m up above servers 1, 2 and 9 |
 
 **Still S2's (not in this branch):** the prototype's second (westward) belt and four loose crates in Assembly; three crates, a floor trap and slippery paint in Painting. Our terminal stays at the room centre, because the prototype's spot is where S4's Guard spawns.
 
@@ -133,6 +133,24 @@ Built by `Tools > Factory Reset > Build Storage Area Dressing` (`Editor/World/St
 
 **Budget:** 121,152 triangles in 124 renderers; the shelf stock is 93,412 of them in 88 renderers (eight runs, eleven materials each), the rest of the room 27,740 in 36. Measured view costs are in `OptimisationLog.md`.
 
+## Control Room (final dressing)
+
+Built by `Tools > Factory Reset > Build Control Room Dressing` (`Editor/World/ControlRoomDressing.cs`), with the same kit as the other rooms (signs and server fronts in `T_Env_Signs_Control`). It rebuilds `Level/Dressing/Control`, replaces the old `ServerRacks`, refits the twelve server pillars in place and restyles the three screens. The room is Factory OS's home and the darkest in the factory, but not a horror room: no windows, dark violet walls, dimmed cool ceiling light, violet strips and screens, and red only on the lit cables and the racks' plinth strips. Everything stays clear of S2's console, cores, traps and pickups, the Captain's spawn (10.5, 36) and the Control cutscene cameras: the Captain's wake shot still looks through the clear gap in the middle server row.
+
+| Part | Where | What |
+| --- | --- | --- |
+| Server racks | the twelve pillars, same footprints and colliders | Rebuilt as detailed cabinets: a dark shell on a black plinth with a red strip, a crown, framed fronts of stacked server units (drive bays, storage arrays, network switches, vented blanks) on one side and fan units on the other, a chrome handle, vented side panels with the Factory OS gear emblem and a "DANGER HIGH VOLTAGE" label, and status lights that blink in four groups (`DressingBlinker`). The three racks under the cores carry a glowing violet cradle that beams up to the core |
+| Cables and floor channels | from every rack to the walls | Four cables (one lit red) leave each rack low on its side or front and drop through a rubber-lipped floor port into a grated channel in the floor, lit red along its length. The outer racks' channels run to the side walls, the corner racks' to the north and south walls, where the cables come up out of the floor into the wall cabinets; the inner racks' channels meet a trunk that runs under the console. Paint and thin meshes only, no colliders |
+| Wall cabinets | seven banks on all four walls | Built-in banks of 1.2 x 3.2 x 0.4 m server cabinets (ten on the west wall, five in each of the others' banks), alternating open fronts of server units with vented doors carrying the gear emblem, under a dark header with a violet strip, between steel pilasters, with blinking status lights (six groups per bank). One collider per bank; they stand within a metre of the wall, clear of the doors, traps and pickups |
+| Mainframe | north wall, x 8.7-12.3 | A 3.6 m mainframe: four dark tape reels with violet rims, a red core slot between racks of drives, vents and a "DO NOT UNPLUG" plate, under a header with a violet strip. 3.6 m collider |
+| Screens | north wall, 3.65-5.3 m | The three screens (the same objects, which `LightingState` dims at the shutdown) moved above the cabinets and mainframe, in black bezels: system-load graphs, "FACTORY OS / MAINFRAME ONLINE" with the gear emblem, and the three power cores |
+| Walls | all four | Dark violet cladding from the skirting to the top band, with steel seams every 2.5 m and a violet strip at 0.68 m. No windows |
+| Signs | west and south walls, door 3 | "04 CONTROL ROOM" over the west bank (seen from door 3), "STORAGE AREA" and "ASSEMBLY FLOOR" plaques pointing at their doors, "AUTHORISED UNITS ONLY" beside door 4 |
+| Doors 3 and 4 | east and south walls | Both framed on this side with a red strip under the header; their alarm beacons moved just above the headers. **S2:** the door panels need to be 5 m, as before |
+| Lighting | room | The floor turns dark with a violet glowing grid, the ceiling panels get their own dimmer material (`M_Env_CeilingPanelControl`), the nine area lights drop from 14 to 9 and turn a cooler violet (`#9C8EFF`), the fill light turns violet-grey, and a baked violet light glows over the mainframe (`Glow_Mainframe`) |
+
+**Budget:** 120,478 triangles in 180 renderers, of which 94 are the blinking light groups (5,216 triangles); the wall banks are 57,748 triangles and the racks' detail 25,008. The racks merge per row and the cabinets per bank, not per room, so occlusion culling can leave out the ones out of view. Measured view costs are in `OptimisationLog.md`.
+
 ## Room dressing
 
 Dressing from the prototype that makes each room read as its own part of the factory. None of it has a collider, so it never changes the NavMesh or the grid; the obstacles themselves are in the section above.
@@ -141,10 +159,10 @@ Dressing from the prototype that makes each room read as its own part of the fac
 | --- | --- | --- |
 | Storage | Every shelf run is a shelving unit: a thin spine, blue posts at most 3 m apart and four white boards, stocked with toys and toy boxes on the lower three boards (since the Storage revamp; see Storage Area above) | The stock stays inside the shelf's 1 m depth. It is lit by light probes, not lightmaps, to keep the lightmaps small |
 | Painting | Eight paint splats on S2's three slippery zones (were round puddles until the Painting revamp) | Purely visual; S2's `SlipperyFloor` zones make them slippery |
-| Control | Nine server racks against the walls, each with 24 status lights that blink (`DressingBlinker`) | 0.25 m deep, inside the 0.55 m wall clearance, clear of the doors, console, battery and overcharge anchors |
+| Control | Banks of server cabinets built into every wall and a mainframe, with blinking status lights (`DressingBlinker`); replaced the nine thin wall racks in the Control revamp (see Control Room above) | 0.4 m deep with a collider per bank, clear of the doors, console, traps, battery and overcharge anchors |
 | Assembly (and one pair in Painting) | Eight wall gears in meshing pairs that turn (`DressingSpinner`); a small gear turns faster than its partner, at the tooth ratio | `GearMesh` builds the toothed discs |
 
-**Surfaces:** a hazard-stripe skirting (0.6 m) runs along every room wall except across the doorways, with a dark plum band (0.3 m) under the ceiling; floors are tiled; the Control Room floor has a glowing grid; the Assembly assembler has a hazard outline on the floor, and the Assembly floor's tiles are 1 m, the size of S2's crates (the other rooms' are 0.5 m). All are thin, flat and without colliders (the skirting stands 0.04 m off the wall, inside the 0.55 m clearance). See the Art Bible.
+**Surfaces:** a hazard-stripe skirting (0.6 m) runs along every room wall except across the doorways, with a dark plum band (0.3 m) under the ceiling; floors are tiled; the Control Room floor is dark with a violet glowing grid; the Assembly assembler has a hazard outline on the floor, and the Assembly floor's tiles are 1 m, the size of S2's crates (the other rooms' are 0.5 m). All are thin, flat and without colliders (the skirting stands 0.04 m off the wall, inside the 0.55 m clearance). See the Art Bible.
 
 **At the shutdown:** the gears, paint-tank lids, the assembler's robot arm, the Assembly wall fan, clock and toy rail, and the Painting extractor fans wind down to a stop, the assembler's stamper rises and stops, its buttons go dark, and every server light goes dark on `CutsceneSignals.FactoryShutdown`, in step with `LightingState`.
 
@@ -159,10 +177,10 @@ Measured after the bake (editor build of the grid):
 
 | Check | Result |
 | --- | --- |
-| Walkable cells | 4,673 (Assembly 1,279, Painting 1,216, Storage 1,019, Control 1,159), down from 4,756 before the Storage revamp, 4,963 before the Assembly and Painting revamps and 5,318 before the prototype rooms |
+| Walkable cells | 4,545 (Assembly 1,279, Painting 1,216, Storage 1,019, Control 1,031), down from 4,673 before the Control revamp, 4,756 before the Storage revamp, 4,963 before the Assembly and Painting revamps and 5,318 before the prototype rooms |
 | Walkable cells per doorway | 4 of 6 (2 m clear after the 0.55 m clearance on each side) |
 | Reachable from `player.start`, doors 3 and 4 closed | 3,510: Assembly, Painting, Storage; Control 0 (counted with the two doorways blocked) |
-| Reachable with every door open | all 4,673 |
+| Reachable with every door open | all 4,545 |
 | Every task anchor reachable from `player.start` on the NavMesh | all 34 |
 
 ## Area volumes
