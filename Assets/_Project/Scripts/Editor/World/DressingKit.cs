@@ -190,6 +190,7 @@ namespace ToyFactory.Editor.World
             {
                 EditorUtility.CopySerialized(mesh, existing);
                 existing.name = name;
+                existing.vertices = existing.vertices;   // CopySerialized leaves the old geometry on the GPU: re-upload it
                 Object.DestroyImmediate(mesh);
                 EditorUtility.SetDirty(existing);
                 return existing;
