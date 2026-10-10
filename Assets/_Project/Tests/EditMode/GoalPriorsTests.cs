@@ -32,15 +32,28 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void CategorySharesMatchTheDesignTable()
+        public void WhileTasksRemainTheSwitchAndConsoleAreSealed()
         {
+            // Chapter 3 in the level: one task, its switch (sealed until the task is done) and
+            // the console (sealed before the final chapter): 0.60, 0.05 and 0.05 over 0.70.
             var goals = new List<CandidateGoal> { Goal(GoalCategory.Task), Goal(GoalCategory.Switch), Goal(GoalCategory.Console) };
 
             float[] priors = Priors(goals);
 
-            Assert.AreEqual(0.60f, priors[0], Tolerance);
-            Assert.AreEqual(0.25f, priors[1], Tolerance);
-            Assert.AreEqual(0.15f, priors[2], Tolerance);
+            Assert.AreEqual(0.60f / 0.70f, priors[0], Tolerance);
+            Assert.AreEqual(GoalPriors.SealedShare / 0.70f, priors[1], Tolerance);
+            Assert.AreEqual(GoalPriors.SealedShare / 0.70f, priors[2], Tolerance);
+        }
+
+        [Test]
+        public void OnceTheTasksAreDoneTheSwitchOpens()
+        {
+            var goals = new List<CandidateGoal> { Goal(GoalCategory.Switch), Goal(GoalCategory.Console) };
+
+            float[] priors = Priors(goals);
+
+            Assert.AreEqual(0.25f / 0.30f, priors[0], Tolerance, "The switch takes its full share.");
+            Assert.AreEqual(GoalPriors.SealedShare / 0.30f, priors[1], Tolerance, "The console stays sealed before the final chapter.");
         }
 
         [Test]
@@ -55,22 +68,29 @@ namespace ToyFactory.Tests.EditMode
             float[] priors = Priors(goals);
 
             for (int i = 0; i < 3; i++)
-                Assert.AreEqual(0.20f, priors[i], Tolerance, $"Task {i}");
-            Assert.AreEqual(0.25f, priors[3], Tolerance);
-            Assert.AreEqual(0.15f, priors[4], Tolerance);
+                Assert.AreEqual(0.60f / 0.70f / 3f, priors[i], Tolerance, $"Task {i}");
+            Assert.AreEqual(GoalPriors.SealedShare / 0.70f, priors[3], Tolerance);
+            Assert.AreEqual(GoalPriors.SealedShare / 0.70f, priors[4], Tolerance);
         }
 
         [Test]
-        public void FinalChapterExampleRenormalisesToFiftyFiveAndFortyFive()
+        public void FinalChapterConsoleIsSealedUntilTheCoresAreDown()
         {
-            // Final chapter: no unrestored switches, so the cores (0.60) and the console
-            // (0.50) are rescaled by 1.10 to 0.55 and 0.45, as in CaptainBot.md.
-            var goals = new List<CandidateGoal> { Goal(GoalCategory.Task), Goal(GoalCategory.Console) };
+            // Chapter 4: three cores and the console. Each core 0.60 / 0.65 / 3 = 0.31, so no
+            // goal is sure (>= 0.5) before the player moves; the console 0.08.
+            var goals = new List<CandidateGoal> { Goal(GoalCategory.Task), Goal(GoalCategory.Task), Goal(GoalCategory.Task), Goal(GoalCategory.Console) };
 
             float[] priors = Priors(goals, finalChapter: true);
 
-            Assert.AreEqual(0.60f / 1.10f, priors[0], Tolerance);
-            Assert.AreEqual(0.50f / 1.10f, priors[1], Tolerance);
+            for (int i = 0; i < 3; i++)
+                Assert.AreEqual(0.60f / 0.65f / 3f, priors[i], Tolerance, $"Core {i}");
+            Assert.AreEqual(GoalPriors.SealedShare / 0.65f, priors[3], Tolerance);
+
+            // Cores down: the console is open, and with low ammo it still leads a battery.
+            var last = new List<CandidateGoal> { Goal(GoalCategory.Console), Goal(GoalCategory.Battery) };
+            float[] open = Priors(last, finalChapter: true, ammo: LowAmmo);
+            Assert.AreEqual(0.50f / 0.70f, open[0], Tolerance);
+            Assert.AreEqual(0.20f / 0.70f, open[1], Tolerance);
         }
 
         [Test]

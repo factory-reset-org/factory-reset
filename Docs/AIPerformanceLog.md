@@ -198,3 +198,105 @@ The last three rows are from one editor session; the first is the earlier sessio
 
 - **Tested:** `AgentSchedulingTests`. Three brains costing 3 ms each no longer all tick in the same frame, none waits more than 2 frames, and light brains never wait.
 - **Not yet measured in the level:** the `Test_FourAgentsStress` run for this table needs the Unity window focused (an unfocused run gives meaningless timings, as seen before). To fill it in, run the stress test with the editor focused and compare the AI total p99 and the frames over 2 ms with the "All four" row above.
+
+## Captain prediction and intercept in the real level (S4, 2026-10-10)
+
+From `CaptainAccuracyEvidenceTests` (EditMode, category Evidence, about 5 s). The level is a snapshot of the game's grid and objective targets taken in Play mode from Bootstrap (`Tests/EditMode/Data/CaptainLevelSnapshot.txt`: 83 x 83 cells, Chapter 3 and Chapter 4 goal sets), so every run is deterministic. Seeded scripted players walk from random walkable cells (at least 12 m from their goal) straight to it, by a detour through a cell near the middle of the route (35-70% longer), or with a feint (half way towards another goal, then turning). The Captain's `GoalInference` is fed exactly as the brain feeds it: the player's cell at 2 Hz and the cell 5 s ago. Two simpler predictors are measured on the same samples: the goal nearest the player (shortest path), and the highest prior. Accuracy is the share of samples whose most likely goal is the true one. "Confidently" means P >= 0.5, the commit threshold.
+
+### In game: real priors, the player heading where the game lets them
+
+| Chapter | Route | Predictor | 1st quarter | 2nd | 3rd | 4th | All |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 3 | Direct | Captain (Bayesian) | 100% | 100% | 100% | 100% | 100% |
+| 3 | Direct | Nearest goal | 32% | 57% | 89% | 100% | 70% |
+| 3 | Direct | Prior only | 100% | 100% | 100% | 100% | 100% |
+| 3 | Detour | Captain (Bayesian) | 99% | 99% | 96% | 100% | 98% |
+| 3 | Detour | Nearest goal | 37% | 65% | 78% | 99% | 70% |
+| 3 | Detour | Prior only | 100% | 100% | 100% | 100% | 100% |
+| 3 | Feint | Captain (Bayesian) | 86% | 82% | 99% | 100% | 91% |
+| 3 | Feint | Nearest goal | 17% | 22% | 58% | 100% | 49% |
+| 3 | Feint | Prior only | 100% | 100% | 100% | 100% | 100% |
+| 4 | Direct | Captain (Bayesian) | 47% | 55% | 86% | 98% | 71% |
+| 4 | Direct | Nearest goal | 8% | 9% | 12% | 63% | 22% |
+| 4 | Direct | Prior only | 38% | 37% | 38% | 37% | 38% |
+| 4 | Detour | Captain (Bayesian) | 40% | 46% | 46% | 87% | 54% |
+| 4 | Detour | Nearest goal | 16% | 20% | 23% | 69% | 31% |
+| 4 | Detour | Prior only | 37% | 37% | 36% | 36% | 37% |
+| 4 | Feint | Captain (Bayesian) | 21% | 20% | 57% | 98% | 48% |
+| 4 | Feint | Nearest goal | 15% | 13% | 15% | 61% | 25% |
+| 4 | Feint | Prior only | 28% | 27% | 29% | 27% | 28% |
+
+| Chapter | Route | Confidently right (P >= 0.5) | Median time to it | Median share of the trip left | Confidently wrong | Feint: took the bait | Feint: switched back | Median switch delay |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 3 | Direct | 100% | 0.5 s | 94% | 0% | - | - | - |
+| 3 | Detour | 100% | 0.5 s | 94% | 12% | - | - | - |
+| 3 | Feint | 100% | 5.0 s | 47% | 5% | 23% | 100% | 0.4 s |
+| 4 | Direct | 90% | 5.0 s | 35% | 0% | - | - | - |
+| 4 | Detour | 82% | 5.0 s | 25% | 47% | - | - | - |
+| 4 | Feint | 83% | 6.0 s | 27% | 2% | 13% | 98% | 1.1 s |
+
+Chapter 3 is easy by construction: the snapshot has one open task, and its switch and the console are sealed, so the prior alone already names it. Chapter 4 (three cores) is where the predictors differ.
+
+### Before the sealed-goal priors (same runs, old `GoalPriors`)
+
+| Chapter 4, to a core | Accuracy before | After | Confidently wrong before | After | Feint: switched back before | After |
+| --- | --- | --- | --- | --- | --- | --- |
+| Straight | 30% | 71% | 53% | 0% | - | - |
+| Detour | 28% | 54% | 65% | 47% | - | - |
+| Feint | 24% | 48% | 25% | 2% | 77% | 98% |
+
+With the console at 0.45 next to three cores at 0.18 each, the Captain was sure of the console before the player had moved, although the console is sealed until the cores are down. Sealed goals now get 0.05 (see CaptainBot.md, Priors). The check `PredictionInGameInTheRealLevel` fails on the old priors.
+
+### Movement only: every goal equally likely beforehand, any goal the true one
+
+| Chapter | Route | Predictor | 1st quarter | 2nd | 3rd | 4th | All |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 3 | Direct | Captain (Bayesian) | 54% | 60% | 65% | 86% | 66% |
+| 3 | Direct | Nearest goal | 24% | 37% | 56% | 72% | 47% |
+| 3 | Direct | Prior only | 37% | 37% | 36% | 39% | 37% |
+| 3 | Detour | Captain (Bayesian) | 52% | 54% | 58% | 83% | 61% |
+| 3 | Detour | Nearest goal | 33% | 49% | 65% | 83% | 57% |
+| 3 | Detour | Prior only | 42% | 41% | 42% | 41% | 42% |
+| 3 | Feint | Captain (Bayesian) | 18% | 16% | 44% | 80% | 39% |
+| 3 | Feint | Nearest goal | 21% | 18% | 39% | 69% | 36% |
+| 3 | Feint | Prior only | 32% | 33% | 32% | 32% | 32% |
+| 4 | Direct | Captain (Bayesian) | 40% | 46% | 72% | 91% | 62% |
+| 4 | Direct | Nearest goal | 23% | 23% | 25% | 68% | 34% |
+| 4 | Direct | Prior only | 37% | 36% | 37% | 35% | 36% |
+| 4 | Detour | Captain (Bayesian) | 33% | 27% | 23% | 69% | 37% |
+| 4 | Detour | Nearest goal | 33% | 33% | 32% | 64% | 40% |
+| 4 | Detour | Prior only | 24% | 24% | 24% | 23% | 24% |
+| 4 | Feint | Captain (Bayesian) | 11% | 11% | 39% | 86% | 36% |
+| 4 | Feint | Nearest goal | 27% | 29% | 29% | 64% | 37% |
+| 4 | Feint | Prior only | 19% | 18% | 19% | 18% | 19% |
+
+| Chapter | Route | Confidently right (P >= 0.5) | Median time to it | Median share of the trip left | Confidently wrong | Feint: took the bait | Feint: switched back | Median switch delay |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 3 | Direct | 80% | 5.0 s | 32% | 3% | - | - | - |
+| 3 | Detour | 75% | 4.0 s | 50% | 37% | - | - | - |
+| 3 | Feint | 87% | 7.5 s | 26% | 15% | 28% | 98% | 2.0 s |
+| 4 | Direct | 68% | 5.5 s | 22% | 0% | - | - | - |
+| 4 | Detour | 53% | 6.5 s | 17% | 37% | - | - | - |
+| 4 | Feint | 48% | 6.5 s | 31% | 0% | 12% | 92% | 1.4 s |
+
+Overall the inference beats the nearest goal; it ties or loses slightly on Chapter 4 detours and feints, where every goal lies behind the same two Control Room doorways, so a route there fits all of them until the player is inside.
+
+### Intercepting against chasing
+
+Chapter 3, the Captain starting at its spawn by the console and the player heading for the open task; 40 seeded trips per row, each starting at least 20 m away and out of its sight.
+Contact = the Captain within 10 m of the player with line of sight, before the player reaches their goal.
+
+| Player | Route | Captain | Contact before the goal | Median seconds to spare |
+| --- | --- | --- | --- | --- |
+| Walking 4 m/s | Direct | Predicts and intercepts | 85% | 3.2 s |
+| Walking 4 m/s | Direct | Chases | 50% | 4.6 s |
+| Walking 4 m/s | Detour | Predicts and intercepts | 70% | 3.9 s |
+| Walking 4 m/s | Detour | Chases | 78% | 3.8 s |
+| Sprinting 7 m/s | Direct | Predicts and intercepts | 50% | 1.1 s |
+| Sprinting 7 m/s | Direct | Chases | 10% | 5.2 s |
+| Sprinting 7 m/s | Detour | Predicts and intercepts | 63% | 1.5 s |
+| Sprinting 7 m/s | Detour | Chases | 38% | 2.1 s |
+
+"Chases" is the same body re-planning the shortest route to the player every 0.5 s at the Captain's 4.6 m/s. Overall: 67% contact for the Captain against 44% for chasing. Against a sprinting player (7 m/s) chasing almost never works on a straight route (10%), which is why the Captain predicts and waits. The one loss is a walking player on a detour, who stays close enough to be caught from behind.
+
+**Limits:** scripted players on the level's grid, not people; detours are random rather than tactical; Chapter 3 had one open task when the snapshot was taken. Re-take the snapshot if the level changes.
