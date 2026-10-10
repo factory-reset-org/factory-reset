@@ -20,6 +20,7 @@ GameObject:
   - component: {fileID: 6381462699090212895}
   - component: {fileID: 2045013324036941734}
   - component: {fileID: 4730924927841941763}
+  - component: {fileID: 4562163883646627793}
   m_Layer: 11
   m_Name: Agent_CaptainBot
   m_TagString: Untagged
@@ -83,6 +84,7 @@ MonoBehaviour:
   arrivalRadius: 0.3
   groundedStickSpeed: -2
   turnSpeed: 360
+  acceleration: 12
 --- !u!114 &7075240395378938352
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -101,6 +103,7 @@ MonoBehaviour:
   scrapWhenDown: 0
   sabotageReach: 2.5
   sabotageGiveUpSeconds: 2
+  blendReplans: 1
 --- !u!114 &6658538843940112905
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -299,6 +302,48 @@ MonoBehaviour:
   backArm: {fileID: 5360294489629131018}
   downSeconds: 0.55
   standSeconds: 1.2
+--- !u!114 &4562163883646627793
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2423681692945176304}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 37618bc1d43b23f4ebd978d1dbc1c157, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.CaptainCallout
+  bubbles:
+  - {fileID: 21300000, guid: af3640bf58a1b7f499335807ee38a791, type: 3}
+  - {fileID: 21300000, guid: a113854fb4fdab646b9f3e515b9b3cee, type: 3}
+  - {fileID: 21300000, guid: d1e17bc40febd0c439edfa7761b59145, type: 3}
+  - {fileID: 21300000, guid: 3599b62dbaad2ff45957570fdbfdfee3, type: 3}
+  - {fileID: 21300000, guid: f16dd7a78d356334e905a8276f0c22d6, type: 3}
+  - {fileID: 21300000, guid: f07591cfab61e8e41a0294aaa6223788, type: 3}
+  - {fileID: 21300000, guid: fa70af75a1cb25143bc4a6d56df68a9a, type: 3}
+  - {fileID: 21300000, guid: e4f8d0f8ff1f05e4a9aa2c6567c27564, type: 3}
+  - {fileID: 21300000, guid: 4d20a96cd09079140aabe5ef5fa1b453, type: 3}
+  - {fileID: 21300000, guid: 26c5187b7f1f9d242ab4e1019abbcee1, type: 3}
+  - {fileID: 21300000, guid: cad962e45e98b5e4f92090c266f66a55, type: 3}
+  - {fileID: 21300000, guid: e81ab23691dbd3640920d682fd7fde69, type: 3}
+  - {fileID: 21300000, guid: 6b490ac0ec235084f98c4587fcd393fe, type: 3}
+  - {fileID: 21300000, guid: 8a58d77360068704fa07dd3777b3f6c1, type: 3}
+  - {fileID: 21300000, guid: 4df3a1259624f1b499cbb1955b9c6a50, type: 3}
+  lineHeight: 4.3
+  bubbleScale: 1.25
+  lineSeconds: 2.8
+  growFrom: 7
+  maxGrow: 3
+  sightBlockers:
+    serializedVersion: 2
+    m_Bits: 129
+  ringMesh: {fileID: 4300000, guid: 3072fa1966d6b194cb75e1c3982a9d4a, type: 2}
+  beamMesh: {fileID: 4300000, guid: b410b0d7897dc3a47a18fece03f19a7d, type: 2}
+  ringMaterial: {fileID: 2100000, guid: fb37c50df71c90745b0252487da00c94, type: 2}
+  beamMaterial: {fileID: 2100000, guid: eefa8f9de227cf04f8ecdf06e45958f2, type: 2}
+  markSeconds: 2
+  beamScale: 0.6
 --- !u!1 &6231920233453024729
 GameObject:
   m_ObjectHideFlags: 0

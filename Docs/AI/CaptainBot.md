@@ -119,6 +119,14 @@ Higher priority wins when several conditions are true on the same tick.
 
 **Seeing over props.** Since solid props (the Console, the switch cages, the pressure-plate stop) block their footprint in the grid, the Captain walks round them. Its line of sight uses `GridLineCheck.IsSightClear`, the same cell-by-cell trace as walking, but only walls and closed doors block it, not props and boxes. At 3.25 m it sees over a 1 m console, and its shots pass over it. With the walking check instead, a player holding the Console on the far side was "hidden" from 2 m away. The Captain closed in, the stand-off held it there, it never saw the player and gave up. Closing in also no longer counts being held by the stand-off, within 3 m of the player, as stuck. Test: `CaptainRobustnessTests.APropBetweenItAndThePlayerAtTheConsoleDoesNotStopTheFight` (it fails with the walking check).
 
+**Call-outs: making the prediction visible.** The prediction is the Captain's whole idea, but in play it was invisible: the player only saw a robot that was somehow ahead of them, which reads as luck or cheating. Now every new commitment (a goal it starts cutting off or guarding, or a switch to another) is shown:
+- **A red flash on that goal** for 2 s: S1's beacon ring and beam with red materials. It shows wherever the Captain is, so the player always learns it has been read.
+- **A comic speech bubble above its head,** in the cutscene pop-ups' style and the Captain's orange, chosen by the kind of goal ("THE CONSOLE. OF COURSE."), only while the player can see the Captain. Out of sight there is only the flash.
+- **Rate limits:** a line at most every 8 s, the same goal again only after 20 s, a flash at most every 2 s. A taunt, not a commentary.
+- **The feint:** a switch to another goal within 6 s of the last commitment gets its own lines ("A feint? I saw it."). The Captain switches only when another goal leads by 0.15, so a player who turns towards a second goal can pull it off the first, and the line shows that it worked.
+
+`CaptainCallouts` (pure C#, beside the brain) decides when and what; `CaptainCallout` on the body only shows it. It reads the brain through `TryGetCommitment`, so the brain still outputs nothing visual. The lines are listed in Story.md (Captain call-outs). Tests: `CaptainCalloutsTests` (9, including one that checks every line has its bubble), `CaptainCalloutTests` (2, PlayMode: a line in view, only the flash behind a wall).
+
 **Known limit:** the player's distance fields still treat a closed door as a wall, so a goal behind a closed door counts as unreachable for the player until the door opens. In the level the task doors are open while their chapter is played, so this only matters briefly.
 
 Locking on until the player leaves the room was considered and not used. The brain has no room data; it would turn the Captain into a plain chaser and give up its prediction; and standing in a doorway would beat it. Pursue ends in Reassess, so the Captain goes back to predicting.
@@ -356,6 +364,7 @@ Implemented: `CaptainBrainTests` (16 tests), on a three-room level with two goal
 | `WalkingTowardsAGoalCommitsToTheFirstChokepointItCanBeat` | Observe → Intercept at confidence ≥ 0.5; the first doorway is skipped because the player would beat it, the second qualifies, and `t_captain + 1 s ≤ t_player` holds; A* walks to it |
 | `ReachingTheCellTurnsToAmbushFacingTheWayThePlayerComes` | Intercept → Ambush, facing the approach |
 | `StoppedShortOnThePlayersSideItStillFacesThePlayersWay` | Standing 0.55 m short on the player's side, it still faces the player's route |
+| `TheCommitmentIsOfferedForTheCallouts` | No commitment while watching; committed, it reports the goal itself (not the intercept cell) for the call-outs |
 | `AmbushHoldsWhileTheCellIsStillAheadOfThePlayer` | No creeping towards the player while waiting |
 | `TaskCompletedMidInterceptDropsThePlanAndRepredicts` | A goal leaving the objectives sends the Captain to Reassess and onto the other goal |
 | `PlayerInViewWithinTenMetresIsEngagedOneShotPerInterval` | Engage asks for a shot at once (the body adds the 0.3 s telegraph), then one per 1.2 s |

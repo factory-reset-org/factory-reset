@@ -403,6 +403,27 @@ namespace ToyFactory.AI.Agents.Captain
         /// <summary>The cell the Captain is heading for or holding, when <see cref="HasTarget"/>.</summary>
         public Vector2Int TargetCell => _targetCell;
 
+        /// <summary>
+        /// The goal the Captain is committed to (cutting the player off on the way there, or
+        /// guarding it), with its world position and whether it is a guard. False while it
+        /// watches, fights or has no plan. For the body's call-outs and the prediction marker.
+        /// </summary>
+        public bool TryGetCommitment(out CandidateGoal goal, out Vector3 position, out bool guarding)
+        {
+            int index = HasTarget ? IndexOfGoal(_targetGoalId) : -1;
+            if (index < 0)
+            {
+                goal = default;
+                position = default;
+                guarding = false;
+                return false;
+            }
+            goal = _goals[index];
+            position = _grid.CellToWorld(goal.Cell);
+            guarding = _plan.Kind == InterceptKind.Guard;
+            return true;
+        }
+
         /// <summary>The full transition table, highest priority first: for the debug overlay and the viva.</summary>
         public string DescribeTransitions()
         {

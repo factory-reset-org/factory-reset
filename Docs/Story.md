@@ -24,7 +24,7 @@ The theme is in the last line: the quality check is run again, and 047 passes.
 | Unit 047 | Player, hero | UNIT 047 | `#62D8FF` | sine | First person in play. The full model (S3) appears only in cutscenes: 047 chest tag, DEFECTIVE sticker, blaster, spinning wind-up key. Says very little. |
 | Pip | Guide, narrator | PIP, maintenance radio | Mint `#3DDBB0` | high triangle | Radio voice only, never seen. Warm and a little nervous. Explains every chapter's tasks before the player needs them. |
 | Factory OS | Antagonist | FACTORY OS | Tomato `#FF5A4E` | low square | The voice of the building. Short, flat announcements. Raises alarms, wakes the Captain, shuts down in the ending. |
-| Captain Bot | Boss (S4's agent) | CAPTAIN BOT | Orange `#FF9F1C` | sawtooth | Speaks once, when it wakes in the Chapter 3 cutscene. |
+| Captain Bot | Boss (S4's agent) | CAPTAIN BOT | Orange `#FF9F1C` | sawtooth | Speaks in the Chapter 3 cutscene when it wakes. In play it taunts the player with comic speech bubbles above its head when it predicts their goal (see Captain call-outs). |
 | Tracker, Guard, Saboteur squad | Enemies | none | none | none | Never speak. Introduced in the intro as Factory OS powers them on. |
 
 Dialogue display (S4's `DialogueRunner`, plan 10.3):
@@ -120,6 +120,24 @@ The card text is set in `Data/Chapters/ChapterN.asset`; the moods come from `Art
 | A locked Control Room door | Locked. Factory OS sealed the Control Room. |
 | A Saboteur is destroyed (toast) | Saboteur {letter} scrapped for good. {n} left |
 | The last Saboteur is destroyed (toast) | All 4 saboteurs scrapped! +1000 |
+
+### Captain call-outs (in play, S4)
+
+From Chapter 3, when the Captain predicts where the player is going and commits to it, the player is told:
+- **A red flash on that goal:** a ring and a short beam, like the objective beacon but red, for 2 s. It shows wherever the Captain is.
+- **One line in a comic speech bubble above the Captain's head,** for 2.8 s: the cutscene pop-ups' style (dark outline, white capitals) in the Captain's orange, with the tail pointing at it. Only while the player can see the Captain: on screen and not behind a wall. Not a cutscene: play carries on.
+
+At most one line every 8 s, the same goal called out again only after 20 s, and a flash at most every 2 s. Lines in a group take turns.
+
+| When it commits to | Lines |
+| --- | --- |
+| A task (Chapter 3) | That task, 047? I am already there. / I know where you are going. / Predictable. I will be waiting. |
+| A core (Chapter 4) | The core? Not while I stand. / You want the core. I will be there. / I have computed your path to the core. |
+| A switch | The switch, 047? I will be there first. / You will not reach that switch before me. |
+| The console | The console. Of course. / You must reach the console. So I wait. |
+| A battery | Low on power? I know where you are going. |
+| Guarding a goal (unsure, the player out of sight) | Hide if you like. You must come here. / I do not need to find you. I only wait. |
+| Another goal within 6 s (the player's feint) | Changing your mind will not help. / A feint? I saw it. |
 
 ## Cutscenes
 
