@@ -192,12 +192,25 @@ The last three rows are from one editor session; the first is the earlier sessio
 - **Limits:** editor timings with Mono, one session.
 
 
-### Path request scheduler (2026-10-09, not yet measured)
+### Path request scheduler (2026-10-09, measured 2026-10-10)
 
 `BrainTickScheduler` now gives brain decisions a per-frame budget of 2 ms: once a frame's brains have used it, the remaining agents tick in the next frame, at most 2 frames late (see the DesignDoc's path follower section). It cannot split one decision, so the Guard's single 2.6 to 9.2 ms route searches still take their frame; what it removes is two heavy decisions landing in the same frame, which is what pushes the AI total over its budget.
 
 - **Tested:** `AgentSchedulingTests`. Three brains costing 3 ms each no longer all tick in the same frame, none waits more than 2 frames, and light brains never wait.
-- **Not yet measured in the level:** the `Test_FourAgentsStress` run for this table needs the Unity window focused (an unfocused run gives meaningless timings, as seen before). To fill it in, run the stress test with the editor focused and compare the AI total p99 and the frames over 2 ms with the "All four" row above.
+- **Measured in the level:** `Test_FourAgentsStress` (budget 2 ms) and `Test_FourAgentsStress_NoScheduler` (the same run with an unlimited budget, so nothing ever waits), run back to back twice in one editor session with Unity focused. Chapter 4, all 7 agents, 30 s each, about 3,000 frames per run.
+
+| Run | Scheduler | AI p99 | AI worst | AI frames over 2 ms | Decisions deferred | Avg FPS |
+| --- | --- | --- | --- | --- | --- | --- |
+| Pair 1 | On (2 ms) | 1.519 ms | 3.584 ms | 19 | 85 | 99.5 |
+| Pair 1 | Off | 2.030 ms | 7.807 ms | 33 | 0 | 100.3 |
+| Pair 2 | On (2 ms) | 1.978 ms | 7.522 ms | 24 | 121 | 102.8 |
+| Pair 2 | Off | 2.036 ms | 6.727 ms | 32 | 0 | 102.8 |
+
+**What it shows:**
+- **About a third fewer frames over the AI budget** (19 and 24 against 33 and 32), and p99 kept just under 2 ms where it is just over without the scheduler.
+- **The worst frames are unchanged, as predicted:** they are single Guard route searches (the Guard's worst tick was 2.9 to 7.7 ms) that are longer than the whole budget on their own. Only splitting the Guard's search over several ticks (S2's brain) would cut those.
+- **The cost is small:** 85 and 121 decisions in about 3,000 frames waited one frame (under 4%), always within the 2-frame limit, and the frame rate is the same.
+- **Variance:** a single earlier run that day with the scheduler on gave p99 2.007 ms and a worst frame of 11.3 ms (the Guard's tick). Run-to-run differences come mostly from when the Guard searches, so compare runs within one session, as here. Editor timings, one machine.
 
 ## Captain prediction and intercept in the real level (S4, 2026-10-10)
 
