@@ -148,6 +148,7 @@ namespace ToyFactory.Player
             // Title, cutscenes, pause and results all take the controls away.
             bool playing = GameClock.Current == null || GameClock.Current.State == GameState.Playing;
             HandleCursorLock(playing);
+            HandleSoundToggle();
 
             if (!playing)
             {
@@ -157,6 +158,17 @@ namespace ToyFactory.Player
 
             Look();
             Move();
+        }
+
+        // Domain reload is off, so a mute from the last session must not carry on.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetSound() => AudioListener.volume = 1f;
+
+        // M mutes and unmutes everything, as in the prototype.
+        static void HandleSoundToggle()
+        {
+            if (Keyboard.current != null && Keyboard.current.mKey.wasPressedThisFrame)
+                AudioListener.volume = AudioListener.volume > 0f ? 0f : 1f;
         }
 
         // Fires once per colliding hit during CharacterController.Move(). Pushes are
