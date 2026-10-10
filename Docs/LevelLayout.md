@@ -40,7 +40,7 @@ Four 20 x 20 m rooms in a 2 x 2 ring, 41.5 x 41.5 m including walls. The journey
 | Rule | Minimum | Used |
 | --- | --- | --- |
 | Doorway width | 2.5 m | 3.0 m |
-| Doorway height | 3.5 m (Captain is 3.23 m) | 5.0 m for doors 1 and 4 (lintel 5-6 m, framed; Assembly revamp); 4.0 m for doors 2 and 3 (lintel 4-6 m) until their rooms are redone |
+| Doorway height | 3.5 m (Captain is 3.23 m) | 5.0 m for doors 1, 2 and 4 (lintel 5-6 m, framed; Assembly and Painting revamps); 4.0 m for door 3 (lintel 4-6 m) until its rooms are redone |
 | Passage width | 2.2 m | narrowest gap 4.5 m (Storage aisles) |
 | Wall thickness | 0.5 m | 0.5 m |
 | Wall height | 4 m | 6 m, closed by the ceiling |
@@ -54,7 +54,7 @@ Only the `Level` hierarchy is Static (GI, occluder, occludee, batching, reflecti
 
 ## Ceiling
 
-Every room has a ceiling at 6 m, as in the prototype. The walls were raised from 5 m to 6 m to meet it, and the door lintels then filled 4-6 m, so the doorway openings were unchanged. Doors 1 and 4 (the Assembly Floor's) are now 5 m tall, with lintels at 5-6 m (see Assembly Floor below). S4's cutscene cameras are checked against this height (`CutsceneShotPlan.CeilingHeight`, at least 1 m under it).
+Every room has a ceiling at 6 m, as in the prototype. The walls were raised from 5 m to 6 m to meet it, and the door lintels then filled 4-6 m, so the doorway openings were unchanged. Doors 1, 2 and 4 are now 5 m tall, with lintels at 5-6 m (see Assembly Floor and Painting Room below). S4's cutscene cameras are checked against this height (`CutsceneShotPlan.CeilingHeight`, at least 1 m under it).
 
 - One slab per room (`Level/Ceilings/Ceiling_<Room>`), 20.75 x 0.2 x 20.75 m like the floors, in dark plum (`M_Env_Ceiling`).
 - **No collider.** Nothing can reach 6 m, and a collider would put the slab's top into the NavMesh bake as a walkable roof. The NavMesh and grid are unchanged: no doorway, wall foot or obstacle under 4 m moved.
@@ -68,7 +68,7 @@ Each room's obstacles are laid out cell for cell from the HTML prototype (`Facto
 | Room | Prototype layout | Built |
 | --- | --- | --- |
 | Assembly | Two stamping presses side by side between the two belts, on the west side | Replaced in the Assembly revamp by the Toy-O-Matic assembler on the same footprint (x 2.45-6.65, z 10.4-12.6), one 4.2 x 2.6 x 2.2 m collider: the same cover from the Tracker. See Assembly Floor below |
-| Painting | Five paint tanks; four carry a spinning bullseye on a pole; three patches of paint | Tanks at (24.6, 17.5), (37.4, 17.5), (27.4, 11.5), (38.9, 5.5) and (23.1, 1.5): white body, coloured band, a lid that spins (`DressingSpinner`), a paint drip, and poles on the first four. The targets (S2's `SpinningTarget`) stand on the poles 3.55 m up and spin about the vertical. The tanks replace the four low cover blocks and are now the Guard Bot's cover. Puddles moved into the prototype's three patches |
+| Painting | Five paint tanks; four carry a spinning bullseye on a pole; three patches of paint | Refitted in the Painting revamp (see Painting Room below). Tanks at (24.6, 17.5), (37.4, 17.5), (27.4, 11.5), (38.9, 5.5) and (23.1, 1.5): white body, coloured band, a lid that spins (`DressingSpinner`), a paint drip, and poles on the first four. The targets (S2's `SpinningTarget`) stand on the poles 3.55 m up and spin about the vertical. The tanks replace the four low cover blocks and are now the Guard Bot's cover. Puddles moved into the prototype's three patches |
 | Storage | A shelf maze: short runs of 1 to 4 cells on rows 1, 3, 5 and 7, with staggered gaps | Eight runs (2.86 to 5.72 m) on rows at z 37.5, 33.5, 29.5 and 25.5, each a shelving unit with toys. The run beside door 3 is left out (it would half block the door and Saboteur A's waypoint), and the rows sit 0.5 m south of the exact mapping so Saboteur D's patrol along the north wall stays walkable |
 | Control | Twelve server pillars round a central console; three cores float above pillars | Twelve 1.3 x 2.8 x 1.5 m pillars with glowing LED faces and purple caps; the console moved to the room centre (10.5, 31); the cores float 3.75 m up above servers 1, 2 and 9 |
 
@@ -92,9 +92,28 @@ Everything stays clear of S2's belts, plate, lever, dispenser, switch cage, char
 | Lockers | south wall, x 12.5-16.3 | Four blue and mint lockers with vents, handles and numbers. 1.9 m collider |
 | Pallet | south-west corner | A pallet of taped toy boxes with a teddy on top, behind the switch. 1.4 m collider |
 | Parts shelf | east wall, z 16.6-18.6 | Grey shelving with coloured bins of parts and toy boxes, the line status screen above it. 2.1 m collider. Kept clear of z 15-16, where `SaboteurDoorSceneTests` opens a second gap through the wall beside door 1 |
-| Ceiling | over the room | An overhead toy rail (x 8.5-17.5, z 10.2-15 at 5.35 m) carrying twelve hanging toys (teddies, robots, ducks) round the loop (`DressingRail`), and five pendant lamps over the belts |
+| Ceiling | over the room | An overhead toy rail (x 6-15.2, z 11.6-16 at 5.35 m) carrying twelve hanging toys (teddies, robots, ducks) round the loop (`DressingRail`). Every beam and hanger runs between the ceiling light panels, never under one. No hanging lamps: the panels light the room |
 
-**Budget:** 319 renderers and 65,872 triangles for the whole room (not all in view at once); the small spheres are 12 x 7 lathes (about 170 triangles, not Unity's 768) and thin rods have 8 sides. New materials are palette plastics (`M_Env_PlasticMint`, `Orange`, `Bubble`, `Plum`), the sign atlas (`M_Env_Signs`, `M_Env_SignsGlow`) and the window view (`M_Env_Window`). Measured view costs are in `OptimisationLog.md`.
+**Budget:** 62,872 triangles for the whole room. Static parts are merged into one renderer per material per section (`DressingKit.MergeStatic`), so the room is 121 renderers instead of about 320 (the rest are moving or blinking parts); the small spheres are 12 x 7 lathes (about 170 triangles, not Unity's 768) and thin rods have 8 sides. New materials are palette plastics (`M_Env_PlasticMint`, `Orange`, `Bubble`, `Plum`), the sign atlas (`M_Env_Signs`, `M_Env_SignsGlow`) and the window view (`M_Env_Window`). Measured view costs are in `OptimisationLog.md`.
+
+## Painting Room (final dressing)
+
+Built by `Tools > Factory Reset > Build Painting Room Dressing` (`Editor/World/PaintingRoomDressing.cs`), with the same kit as the Assembly Floor (`DressingKit`, `RoomPieces`, `SignPainter`; signs in `T_Env_Signs_Painting`). It rebuilds `Level/Dressing/Painting` and refits the five tanks in place. The middle is left to the Guard fight: new solid props stand within a metre of the walls, clear of S2's targets, terminal, switch cage, crates, trap, pickups and slippery zones, the Guard's patrol ((25, 10.5) to (37, 10.5)), Saboteur C's ((38, 3) to (24, 3)) and the three Painting cutscene cameras. It is deliberately not a copy of room 1: round windows, no corner columns, a three-colour stripe instead of a rail, paint lines from the ceiling instead of wall pipes, ceiling extractor fans, and no rail of toys.
+
+| Part | Where | What |
+| --- | --- | --- |
+| Paint tanks | the five tanks | A more detailed model on the same size and collider (the Guard's cover, the targets' poles): a footed base ring in place of the plain plinth, two steel hoops, a sight glass on the side showing the paint level, a ladder up the back, a gauge and a valve at the front, and paint runs down the sides. The round paint-drip balls are gone |
+| Mixing vat | tank 5 (23.1, 1.5) | The tank with no target: a motor on a bridge over its turning lid and a MIXER label, fed by four paint lines (pink, yellow, blue, mint) that drop from a manifold in the ceiling with a shut-off wheel each |
+| Doors 1 and 2 | west and north walls | Door 2 raised to 5 m (white lintel at 5-6 m); both openings framed on this side, with a mint "open" strip. **S2:** `Door_2`'s panel needs to be 5 m too, like doors 1 and 4 |
+| Floor | slippery zones, by the drying rack | Eight paint splats with droplets where the round puddles were, on S2's three slippery zones; a trail of red paw prints from a splat towards the drying rack |
+| Walls | all four | A pink, yellow and mint stripe at 1.5-1.7 m; paint drips running down from the top band; five round porthole windows (bolted grey frames) with the daylight view |
+| Signs | east, north, west walls | "02 PAINTING ROOM" high on the east wall (seen from door 1), "ASSEMBLY FLOOR" and "STORAGE AREA" plaques by the doors, a colour-wheel mural, posters ("WET PAINT!", "SWATCHES", "STAY IN THE LINES!"), a glowing paint-levels screen |
+| Paint tins and drums | south wall, x 25.5-28.5 and 34.1-36.5 | Eighteen stacked tins with coloured bands and lids; three drums with hoops. 1.1 m and 0.96 m colliders |
+| Drying rack | east wall, z 12.6-15.6 | Three shelves of freshly painted toys. 2 m collider |
+| Sink | west wall, z 16.5-18.3 | A cleaning sink with a tap and a pot of brushes, spray guns on hooks above. 1 m collider. Kept north of z 16, where `SaboteurDoorSceneTests` opens a second gap through this wall |
+| Ceiling | between the light panels | Two extractor fans set into the ceiling, turning (`DressingSpinner`). No hanging lamps and no moving rack |
+
+**Budget:** 89,160 triangles (the five detailed tanks are 28,484 of them), merged to 99 renderers. Measured view costs are in `OptimisationLog.md`.
 
 ## Room dressing
 
@@ -103,13 +122,13 @@ Dressing from the prototype that makes each room read as its own part of the fac
 | Room | Dressing | Notes |
 | --- | --- | --- |
 | Storage | Every shelf run is a shelving unit: a thin spine, blue posts at most 3 m apart, four white boards and 144 toys in all on the lower three boards | Toys stay inside the shelf's 1 m depth. They are lit by light probes, not lightmaps, to keep the lightmaps small |
-| Painting | Eight glossy paint puddles, flat on the floor | Purely visual: the prototype's slippery paint would be S2's player physics |
+| Painting | Eight paint splats on S2's three slippery zones (were round puddles until the Painting revamp) | Purely visual; S2's `SlipperyFloor` zones make them slippery |
 | Control | Nine server racks against the walls, each with 24 status lights that blink (`DressingBlinker`) | 0.25 m deep, inside the 0.55 m wall clearance, clear of the doors, console, battery and overcharge anchors |
 | Assembly (and one pair in Painting) | Eight wall gears in meshing pairs that turn (`DressingSpinner`); a small gear turns faster than its partner, at the tooth ratio | `GearMesh` builds the toothed discs |
 
 **Surfaces:** a hazard-stripe skirting (0.6 m) runs along every room wall except across the doorways, with a dark plum band (0.3 m) under the ceiling; floors are tiled; the Control Room floor has a glowing grid; the Assembly assembler has a hazard outline on the floor, and the Assembly floor's tiles are 1 m, the size of S2's crates (the other rooms' are 0.5 m). All are thin, flat and without colliders (the skirting stands 0.04 m off the wall, inside the 0.55 m clearance). See the Art Bible.
 
-**At the shutdown:** the gears, paint-tank lids, the assembler's robot arm, the Assembly wall fan, clock and toy rail wind down to a stop, the assembler's stamper rises and stops, its buttons go dark, and every server light goes dark on `CutsceneSignals.FactoryShutdown`, in step with `LightingState`.
+**At the shutdown:** the gears, paint-tank lids, the assembler's robot arm, the Assembly wall fan, clock and toy rail, and the Painting extractor fans wind down to a stop, the assembler's stamper rises and stops, its buttons go dark, and every server light goes dark on `CutsceneSignals.FactoryShutdown`, in step with `LightingState`.
 
 ## NavMesh and grid
 
@@ -122,10 +141,10 @@ Measured after the bake (editor build of the grid):
 
 | Check | Result |
 | --- | --- |
-| Walkable cells | 4,848 (Assembly 1,273, Painting 1,314, Storage 1,102, Control 1,159), down from 4,963 before the Assembly revamp and 5,318 before the prototype rooms |
+| Walkable cells | 4,756 (Assembly 1,279, Painting 1,212, Storage 1,102, Control 1,159), down from 4,963 before the Assembly and Painting revamps and 5,318 before the prototype rooms |
 | Walkable cells per doorway | 4 of 6 (2 m clear after the 0.55 m clearance on each side) |
 | Reachable from `player.start`, doors 3 and 4 closed | 3,800: Assembly, Painting, Storage; Control 0 |
-| Reachable with every door open | all 4,848 |
+| Reachable with every door open | all 4,756 |
 | Every task anchor reachable from `player.start` on the NavMesh | all 34 |
 
 ## Area volumes
