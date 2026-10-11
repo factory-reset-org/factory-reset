@@ -125,7 +125,29 @@ The squad stops counting a destroyed instance for saturation, and `DetourCache` 
 
 ### Flee and the keycard carrier
 
-Flee stays ineligible until the runtime reports whether the player is aiming at the Saboteur. The keycard carrier (A) gets an extra Flee preference, because losing it early would stall the chapter. The size of that bonus is a tuning value to be decided in play and recorded here.
+Flee is built (`FleeSource`, `FleePlanner`). The runtime does not report whether the player is aiming, so aiming is worked out from `PlayerSnapshot.Forward`: the player's flat facing direction must be within 40 degrees of the direction to the Saboteur. The consideration is 0 at the edge of the cone and 1 dead on, so a player who looks away stops being a reason to run.
+
+**Eligibility** (decided before scoring): the player is known and alive, less than 14 m away, can see the Saboteur (the same physics sight check as AttackPlayer) and faces it. Otherwise Flee is not a candidate.
+
+**Score.** Three considerations, compensated as for every action (three considerations, so `modFactor = 2/3`):
+
+| Consideration | Input | Curve |
+| --- | --- | --- |
+| Low health | `1 - own health` | logistic, steepness 10, midpoint 0.5: about 0.08 after one hit of four, 0.5 after two, 0.92 after three |
+| Player aims at me | 0 to 1 across the aim cone | direct |
+| Player close | `distance / 14 m` | `1 - x` |
+
+In the level the Saboteur prefab has 2 hit points (Appendix A says 4), so one hit leaves it at 50% and Flee scores about 0.5 raw when the player faces it; with the design's 4 hit points the same curve starts after the second hit.
+
+Worked example: health 0.25, player dead on at 5 m: `0.9241 x 1 x 0.6429 = 0.5941`, compensated `0.5941 + 0.4059 x 0.6667 x 0.5941 = 0.7549`. At the same spot AttackPlayer scores about 0.12 (`(1 - 5/8) x 0.25`), so a badly hurt Saboteur runs while a healthy one (Flee about 0.004) fights: Flee at full health is far below Idle (0.1).
+
+**Keycard carrier.** Saboteur A's Flee score is multiplied by 1.25 and capped at 1. A multiplier and not an addition, so A at full health, whose Flee score is near 0, still does not run from a player who has not hurt it. The 0.25 is a starting value; tune it in play and record the result here.
+
+**Where it runs** (`FleePlanner`). Candidate refuges are the cells 5, 8 and 12 m from the Saboteur in the eight compass directions, plus its patrol points. Each is snapped to a walkable cell or dropped, and kept only if it is at least 3 m farther from the player than the Saboteur is now. They are ranked by `distance from the player - 0.4 x distance to run`, and the shared A* runs for at most the best three. A route that passes closer to the player than the Saboteur stands now (down to 2.5 m) is rejected, so it never runs through the player. The brain chooses again once a second, or on arrival, because the player moves. Speed is unchanged (4.3 m/s, Appendix A).
+
+**Cornered.** If no refuge gives a route, the Saboteur fights instead (it keeps Flee selected, but the brain carries out AttackPlayer while the player is in range) and looks again after 1 s. It never freezes in place.
+
+**Ends** when the player dies or goes out of view, looks away, or the Saboteur is stunned or destroyed. Flee has no cooldown and no claim: it is not a squad target.
 
 ### Starting tuning
 
@@ -170,7 +192,9 @@ Every consideration maps an observed value into `[0, 1]`, where higher means mor
 | Door detour gain `g` | `clamp01(max(0, g))`; a 100% longer route saturates. | Door |
 | Battery arrival advantage `v` | Require `v > 0`; `clamp01(v / Vmax)`, where `v = playerArrival - saboteurArrival`. | Battery |
 | Battery distance from player route `r` | `1 - clamp01(r / Rmax)`. | Battery |
-| Player aiming at Saboteur | `1` when reported, otherwise `0`; missing aiming data makes Flee unavailable until a threat substitute is agreed. | Flee |
+| Player aiming at Saboteur | `clamp01((cos(angle) - cos 40 degrees) / (1 - cos 40 degrees))` from `PlayerSnapshot.Forward` and the direction to the Saboteur, both flattened onto the ground plane. | Flee |
+| Own health lost `1 - h` | logistic, steepness 10, midpoint 0.5 | Flee |
+| Player distance `d` | Require `d < 14 m`; `1 - d/14`. | Flee |
 
 `Dmax`, `Vmax`, `Rmax`, attack readiness, escape selection, and trap prediction confidence are integration/tuning decisions. Fix them with relevant system owners before implementation, so the same snapshot always yields the same score.
 
@@ -235,7 +259,9 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | Decision trace for the debug panel: each candidate's raw and base score, each consideration's input and score, ranking, and why a candidate lost | Implemented; filled by the brain and `ActionSelector`, no allocation per decision | `UtilityDecisionTrace`, `SaboteurBrain.LastDecision`; `UtilityDecisionTraceTests` |
 | AttackPlayer | Implemented, tested and wired into the level through `AgentSpawner.CreateBrain` (see Spawn hookup) | `AttackPlayerSource`, `IPlayerSight`, `CoverVisibilitySight`, `SaboteurBrain`; `SaboteurAttackTests` |
 | CloseDoor | Implemented, tested and wired into the level; uses `IActionFeedback`. Never offered in the level as built, because every door is a lockout (see Limits) | `CloseDoorSource`, `CompositeCandidateSource`, `DetourCache.For`, `SaboteurBrain`; `SaboteurDetourTests`, `SaboteurFeedbackTests`, `SaboteurDoorSceneTests` |
-| ArmTrap, StealBattery, Flee | Not started | Need the blackboard facts in the handoff table |
+| Flee | Implemented, tested and wired into the level through `AgentSpawner.CreateBrain` (see Spawn hookup). The keycard carrier's bonus is a starting value | `FleeSource`, `FleePlanner`, `SaboteurBrain`; `SaboteurFleeTests`, `SaboteurFleeEvidenceTests`, `SaboteurFleeSceneTests` |
+| Saboteur layer on the F3 debug overlay: each Saboteur's squad row (letter, action, health, destroyed) and its latest decision | Implemented; registers itself, no edit to the overlay. Shows each action's raw and final score and why it lost, not the individual considerations | `UtilityDecisionText`, `SaboteurOverlayLayer`; `UtilityDecisionTextTests`, `SaboteurOverlayLayerTests` |
+| ArmTrap, StealBattery | Not started | Need the blackboard facts in the handoff table |
 | Squad layer: claim on commit, "not claimed" veto, displacement check, release, attack saturation, tick stagger | Implemented in the brain: claims on commit, the veto and saturation applied to every candidate, stagger by letter, release on stun and destruction. The candidates come from an `ICandidateSource`; `AttackPlayerSource` is the first | `SquadCoordinator`, `ICandidateSource`, `SaboteurBrain`; `SquadClaimTests`, `SaboteurSquadTests` |
 | Keycard drop through `IDropsItems` | Implemented; the battery drop waits for StealBattery | `IDropsItems`, `SaboteurBrain.GetDrops`; `SaboteurDropTests` |
 | `DetourCache` and `DoorClosureCostModel` | Implemented and tested; refresh at most every 0.5 s, searches only for doors on the route, `AI.Saboteur.Detour` profiler marker | `DetourCache`, `DoorClosureCostModel`; `SaboteurDetourTests` |
@@ -283,7 +309,7 @@ Stun calls `EndPlan` and destruction calls `OnDestroyed`, so a stunned or destro
 - **Not in the score yet.** The design prefers a Saboteur with more health, but `AgentContext` carries no own-health fact; it joins as a second consideration when it exists (it is also Flee's input). There is no attack-ready cooldown beyond the 1.5 s pacing, because the runtime reports no shot result.
 - **Damage.** The Saboteur prefab has no `AgentWeapon` (S4's claw swipe plays on `Shoot`), so today an attack plays the swipe but deals no damage. Who delivers the claw's damage is an open question for S4.
 
-**Limits.** In the level the candidates are Idle, AttackPlayer and CloseDoor; ArmTrap and StealBattery wait on S2's trap and battery facts on the blackboard, and Flee is not built. **Every door in the level is the only link between its two rooms** (probed on 10 October: closing door 1 or door 2 leaves the player no route, for every player and objective position tested), so a closure is always a lockout and CloseDoor is never offered in the level as built. It needs a second route around at least one door (a loop in the level, S1's area). `SaboteurDoorSceneTests` proves the chain end to end by cutting a gap through the wall next to door 1. The claim behaviour is exercised in `SaboteurSquadTests`, `SaboteurDetourTests` and `SaboteurFeedbackTests`.
+**Limits.** In the level the candidates are Idle, AttackPlayer and CloseDoor; ArmTrap and StealBattery wait on S2's trap and battery facts on the blackboard. Flee is offered whenever the player faces a hurt Saboteur it can see, so in play it shows once the Saboteur has taken a hit. **Every door in the level is the only link between its two rooms** (probed on 10 October: closing door 1 or door 2 leaves the player no route, for every player and objective position tested), so a closure is always a lockout and CloseDoor is never offered in the level as built. It needs a second route around at least one door (a loop in the level, S1's area). `SaboteurDoorSceneTests` proves the chain end to end by cutting a gap through the wall next to door 1. The claim behaviour is exercised in `SaboteurSquadTests`, `SaboteurDetourTests` and `SaboteurFeedbackTests`.
 
 ### Spawn hookup
 
@@ -296,6 +322,7 @@ if (setup.HasGrid && setup.Identity.IsInSquad && setup.Identity.SquadIndex <= (i
         setup.Grid, setup.Pathfinder, setup.Blackboard.Claims, setup.PatrolPoints, null, 0,
         new CompositeCandidateSource(
             new AttackPlayerSource(new CoverVisibilitySight(new PhysicsCoverVisibility(setup.Grid))),
+            new FleeSource(new CoverVisibilitySight(new PhysicsCoverVisibility(setup.Grid))),
             new CloseDoorSource(detours)),
         detours);   // detours = DetourCache.For(setup.Blackboard, setup.Grid, setup.Pathfinder)
 return new MockPathProvider(setup.PatrolPoints);
@@ -305,7 +332,7 @@ return new MockPathProvider(setup.PatrolPoints);
 - All four brains get the blackboard's one `TargetClaims`, so `SquadCoordinator.For(claims)` makes them one squad. Each level load builds a new blackboard, so a new squad.
 - The grid and pathfinder are the level grid and the one `AStarSearch` the spawner shares with every brain.
 - Without a grid, or for a Saboteur spawn point with no squad slot or a slot past D, the case keeps the mock. A mis-set spawn point never becomes a second Saboteur A, and it does not stop the other agents spawning, as an exception from `SaboteurIdentity` inside `SpawnAll` would. The spawner already logs an error when two Saboteur spawn points share a slot.
-- Each Saboteur gets its own `AttackPlayerSource` over its own `PhysicsCoverVisibility` (the Guard's physics sight check) and its own `CloseDoorSource`, so the brains share no scratch buffers. All four share one `DetourCache`, found with `DetourCache.For(blackboard, grid, pathfinder)` (a weak table keyed by the level's blackboard, like `SquadCoordinator.For`), so the squad costs the searches of one Saboteur.
+- Each Saboteur gets its own `AttackPlayerSource` and `FleeSource`, each over its own `PhysicsCoverVisibility` (the Guard's physics sight check), and its own `CloseDoorSource`, so the brains share no scratch buffers. All four share one `DetourCache`, found with `DetourCache.For(blackboard, grid, pathfinder)` (a weak table keyed by the level's blackboard, like `SquadCoordinator.For`), so the squad costs the searches of one Saboteur.
 - The keycard item id stays at its default (0). S2's `KeycardDrop` places the keycard from `AgentEvents.OnDestroyed`, and nothing in the runtime calls `IDropsItems.GetDrops` yet.
 
 Checked on 9 October 2026 in batch-mode Play, in `Test_AgentSpawner` (6 s) and in `Agents.unity` loaded from Bootstrap with the intro skipped (8 s): all four Saboteurs ran `SaboteurBrain` as A-D, reported the Patrol state and logged no console errors.
@@ -326,6 +353,9 @@ EditMode tests should use deterministic snapshots and fake target/search results
 | Four `0.9` considerations | Compensated base score approximately `0.8253`. |
 | Equal scores and multiple target IDs | Stable action order and target-ID tie break are deterministic. |
 | Small score change during commitment; new base score above `0.9` | Current valid pair remains for small change; emergency candidate may interrupt. |
+| Hurt Saboteur, player within 14 m facing it, in sight | Flee is a candidate scoring about 0.75 at 5 m and health 0.25; a player looking away, out of range, out of sight, dead or unknown removes it. |
+| Keycard carrier A against B at the same health | A's score is B's x 1.25, capped at 1; an unhurt A still scores below Idle. |
+| Player 3 m east, open grid; a one-cell corridor with the player in the only way out; a sealed 3 x 3 pocket | The retreat ends 3 m or more farther from the player; no route when it leads through the player; no route when cornered, and the brain then shoots. |
 | Open route `10`, closed routes `16` and `12` | First door ranks higher with equal other considerations. |
 | Player in doorway; door already closed; zero open cost; unreachable objective; stale route | CloseDoor candidate rejected; no live grid mutation. |
 | Battery collected or trap armed during travel | Current pair invalidates immediately and fresh decision follows. |

@@ -313,3 +313,15 @@ Contact = the Captain within 10 m of the player with line of sight, before the p
 "Chases" is the same body re-planning the shortest route to the player every 0.5 s at the Captain's 4.6 m/s. Overall: 67% contact for the Captain against 44% for chasing. Against a sprinting player (7 m/s) chasing almost never works on a straight route (10%), which is why the Captain predicts and waits. The one loss is a walking player on a detour, who stays close enough to be caught from behind.
 
 **Limits:** scripted players on the level's grid, not people; detours are random rather than tactical; Chapter 3 had one open task when the snapshot was taken. Re-take the snapshot if the level changes.
+
+## Saboteur Flee: choosing a retreat (S3, 2026-10-11)
+
+`FleePlanner.TryChooseRetreat` picks where a fleeing Saboteur runs (24 compass candidates plus its patrol points ranked by straight-line distance, then at most 3 shared A* searches). Measured by `SaboteurFleeEvidenceTests.RetreatCostOnALevelSizedGrid`: an 84 x 84 grid (the level is about 83 cells a side) with one cell in six blocked at random (seed 7) plus three long bars, 300 retreats with a random Saboteur and a random player within 14 m, after one warm-up call. Unity 6000.6.2f1 Editor in batch mode, AMD Ryzen 7 5800H, one session.
+
+| Measure | Result |
+| --- | --- |
+| Retreats found | 293 of 300 (98%) |
+| A* searches per retreat | 1.00 (budget 3) |
+| Time per retreat | mean 0.096 ms, median 0.058 ms, 95th percentile 0.338 ms, worst 0.567 ms |
+
+A fleeing Saboteur chooses again once a second at most, so the cost is under 0.1 ms a second per fleeing Saboteur. The first-ranked refuge was reachable almost every time (1.00 searches), so the extra searches in the budget are rarely used. **Limits:** a random grid, not the real level's rooms; Editor timings, not a build; the cost of the brain's 4 Hz decision round (Idle, Attack, Flee and the squad layer) has not been measured separately.
