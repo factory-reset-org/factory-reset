@@ -735,5 +735,41 @@ namespace ToyFactory.Tests.EditMode
             TickAt(brain, GuardStart, 0.2f);
             Assert.AreEqual("Overcharge", brain.BatteryTierName);
         }
+    
+
+        [Test]
+        public void Guard_PlayerUnreachable_HoldsCoverWithoutFreezing()
+        {
+            // The player is sealed in a walled-off pocket, so no route to it exists. The Guard
+            // keeps the cover it has and keeps its hold and peek rhythm: it never freezes in
+            // one state, never gives up its cover and never leaves for the patrol.
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                    if (dx != 0 || dy != 0)
+                        _grid.SetWalkable(PlayerCell + new Vector2Int(dx, dy), false);
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+
+            float time = 0.5f;
+            bool peeked = false;
+            bool returned = false;
+            for (int i = 0; i < 40; i++)
+            {
+                time += 0.25f;
+                TickAt(brain, cover, time);
+                Assert.IsTrue(brain.HasCover, "it keeps its cover");
+                Assert.AreEqual(cover, brain.CoverCell);
+                if (brain.StateName == "PeekAndShoot")
+                    peeked = true;
+                else if (peeked && brain.StateName == "InCover")
+                    returned = true;
+                Assert.AreNotEqual("Patrol", brain.StateName);
+                Assert.AreNotEqual("Retreat", brain.StateName);
+            }
+
+            Assert.IsTrue(peeked, "it still peeks");
+            Assert.IsTrue(returned, "and goes back behind its cover");
+        }
     }
 }

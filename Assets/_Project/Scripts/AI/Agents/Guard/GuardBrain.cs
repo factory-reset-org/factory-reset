@@ -204,9 +204,10 @@ namespace ToyFactory.AI.Agents.Guard
         /// <param name="agentId">This agent's unique id, the owner of its cover reservation.</param>
         /// <param name="patrolPoints">Points walked while no player is in range; may be null or empty.</param>
         /// <param name="home">The room this Guard holds. Null: it has no room and fights wherever the player is in range.</param>
+        /// <param name="lambda">The tactical A* exposure penalty. Defaults to <see cref="Lambda"/>; the game reads it from <see cref="GuardTuning"/>.</param>
         public GuardBrain(GridGraph grid, IPathfinder pathfinder, WorldBlackboard blackboard,
             ICoverVisibility visibility, int agentId, IReadOnlyList<Vector3> patrolPoints = null,
-            IGuardHome home = null)
+            IGuardHome home = null, float lambda = Lambda)
         {
             _grid = grid ?? throw new ArgumentNullException(nameof(grid));
             _blackboard = blackboard ?? throw new ArgumentNullException(nameof(blackboard));
@@ -218,7 +219,7 @@ namespace ToyFactory.AI.Agents.Guard
             _sight = new CachedCoverVisibility(visibility, grid);
             _evaluator = new CoverEvaluator(grid, _sight, GridGraph.CellSize);
             _isAvailable = IsAvailable;
-            _tactical = new TacticalCostModel(IsExposed, Lambda);
+            _tactical = new TacticalCostModel(IsExposed, lambda);
             _costSearch = new OneToOneCost(grid);
             _regions = GridRegions.For(grid);
 

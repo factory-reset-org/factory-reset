@@ -68,7 +68,7 @@ namespace ToyFactory.Tests
             return floor;
         }
 
-        public static AgentController Body(string model, AgentType type, StateNameBrain brain, List<Object> created,
+        public static AgentController Body(string model, AgentType type, IAgentBrain brain, List<Object> created,
             Vector3 position = default)
         {
 #if UNITY_EDITOR

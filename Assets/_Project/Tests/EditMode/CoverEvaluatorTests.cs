@@ -362,5 +362,30 @@ namespace ToyFactory.Tests.EditMode
             // Next to the second wall, which casts no shadow: not cover either.
             Assert.IsFalse(evaluator.TryEvaluate(new Vector2Int(28, 5), RoomPlayer, out _));
         }
+    
+
+        [Test]
+        public void Cover_BoxSettles_BecomesNewCandidate()
+        {
+            // An open room: nothing is cover until a pushed box comes to rest in it.
+            GridGraph grid = OpenGrid(9, 7);
+            bool boxSettled = false;
+            var evaluator = new CoverEvaluator(grid,
+                new FakeVisibility((cell, _) => boxSettled && cell.x >= 4 && cell.y == 3));
+            var results = new List<CoverCandidate>();
+            var playerCell = new Vector2Int(0, 3);
+
+            evaluator.FindCandidates(playerCell, results);
+            Assert.AreEqual(0, results.Count);
+
+            // The box comes to rest at (3, 3): the grid marks its cell blocked, as it does when
+            // a box settles, and the cell behind it is in the player's shadow.
+            boxSettled = true;
+            grid.SetWalkable(new Vector2Int(3, 3), false);
+            evaluator.FindCandidates(playerCell, results);
+
+            Assert.IsTrue(TryFind(results, new Vector2Int(4, 3), out CoverCandidate cover));
+            Assert.AreEqual(1f, cover.Protection, Tolerance);
+        }
     }
 }

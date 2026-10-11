@@ -144,7 +144,7 @@ Protection (`P`) is weighted highest because a Guard standing in the open fails 
 
 ### Tactical A* cost model
 
-`lambda = 3`, passed to the model as a constructor parameter today. The ScriptableObject that exposes it in the Inspector is planned:
+`lambda = 3`, passed to the model as a constructor parameter. `GuardTuning` (`Resources/GuardTuning.asset`) exposes it in the Inspector, and every Guard reads it when it is created; without the asset the default of 3 is used:
 
 ```text
 stepCost(n -> m) = base(n, m) * (1 + lambda * exposure(m))
@@ -211,8 +211,8 @@ All of these are in `GuardBrainTests` unless the status says otherwise.
 | Player walks out of its room mid-fight | Returns to Patrol and releases its cover | `Guard_PlayerLeavesItsRoomMidFight_ReturnsToPatrolAndReleasesCover` | Built |
 | Chapter 1 | Not held back: the room is its own from the start | `Guard_IsNotHeldBackByTheChapter` | Built |
 | Cover candidates outside its room | Never taken, and it does not leave to find some | `Guard_TakesCoverOnlyInsideItsRoom`, `Guard_NoCoverInsideItsRoom_DoesNotLeaveToFindSome` | Built |
-| Player unreachable | Hold current cover, keep peeking | `Guard_PlayerUnreachable_HoldsCoverWithoutFreezing` | Planned |
-| Cutscene or pause mid-route | Brain is not ticked; game time (`ctx.Time`) resumes from the same value. This is the controller's behaviour, so it needs a Runtime test | `Guard_CutsceneFreezesGameTime` | Planned |
+| Player unreachable | Hold current cover, keep peeking | `Guard_PlayerUnreachable_HoldsCoverWithoutFreezing` | Built |
+| Cutscene or pause mid-route | Brain is not ticked; game time (`ctx.Time`) resumes from the same value. This is the controller's behaviour, so the test is a Runtime (PlayMode) one in `GuardFreezeTests` | `Guard_CutsceneFreezesGameTime` | Built |
 
 ## Tests
 
@@ -228,14 +228,20 @@ Status says whether a test exists in the repo today (**Built**) or is still to b
 | `WalledOffGoalIsNotFound` | Built | `Found = false` rather than an infinite search |
 | `CostMatchesReferenceDijkstraOnFiftyRandomGrids` | Built | Optimality holds generally, not just on one example |
 
+**GuardTuning** (`GuardTuningTests`, built)
+
+| Test | Status | What it proves |
+| --- | --- | --- |
+| `NewTuning_StartsAtTheDefaultLambda`, `NegativeLambda_IsClampedToZero`, `CurrentLambda_ReadsTheSharedAssetOrTheDefault` | Built | The Inspector value defaults to the plan's 3, can never go negative, and the shipped asset holds 3 |
+
 **TacticalCostModel** (`TacticalCostModelTests`)
 
 | Test | Status | What it proves |
 | --- | --- | --- |
 | `HiddenStepCostsTheSameAsTheBaseModel`, `ExposedStepCostsBaseTimesOnePlusLambda`, `DefaultLambdaIsThree`, `CustomLambdaIsRespected` | Built | The cost formula matches `base · (1 + lambda · exposure)` |
 | `ExposureIsQueriedWithTheDestinationCell`, `NullExposureDelegateThrows` | Built | Exposure is read for the step's destination, and a missing exposure source is rejected |
-| `TacticalCost_HiddenRouteWithinLambdaBound_IsPreferred` | Planned | The exposure penalty actually changes route choice |
-| `TacticalCost_NeverBelowBaseOctileStep_StaysAdmissible` | Planned | The admissibility argument holds in code, not just on paper |
+| `TacticalCost_HiddenRouteWithinLambdaBound_IsPreferred` | Built | The exposure penalty actually changes route choice |
+| `TacticalCost_NeverBelowBaseOctileStep_StaysAdmissible` | Built | The admissibility argument holds in code, not just on paper |
 
 **Cover scoring** (`CoverEvaluatorTests`, built unless marked)
 
@@ -246,7 +252,7 @@ Status says whether a test exists in the repo today (**Built**) or is still to b
 | `CanPeekWhenANeighbourSeesTheChest`, `CannotPeekWhenEveryNeighbourIsHiddenAtChestHeight` | Built | Peek ability follows chest visibility from neighbouring cells |
 | `ScoreIsOneForFullCoverAtDesiredRangeWithNoTravelCostAndPeekable`, `FullCoverScoresHigherThanHalfCoverAtEqualRange`, `HigherPathCostLowersTheScore` | Built | The weights from the cover formula behave as designed |
 | `NullGridIsRejected`, `NonPositiveDesiredRangeIsRejected` | Built | Bad inputs are rejected |
-| `Cover_BoxSettles_BecomesNewCandidate` | Planned | The player-built-cover creative hook actually works |
+| `Cover_BoxSettles_BecomesNewCandidate` | Built | The player-built-cover creative hook actually works |
 
 **Brain and states** (`GuardBrainTests`, built)
 
@@ -264,5 +270,43 @@ Status says whether a test exists in the repo today (**Built**) or is still to b
 
 Edge-case tests are listed in the table above.
 
+## Tuning
+
+Every number the Guard's behaviour depends on is a named constant in `GuardBrain`, and lambda is also an Inspector value (`GuardTuning`).
+
+| Value | Setting | Why |
+| --- | --- | --- |
+| Lambda (exposure penalty) | 3, in `GuardTuning` | Accepts a hidden route up to 4x longer; see "Why lambda = 3" |
+| Ideal range | Overcharge 12 m, high battery 10 m, mid 7 m, low 4 m | See "Why these battery thresholds" |
+| Battery thresholds | High above 50%, low below 25% or reloading | Two tiers of aggression with a clear gap |
+| Fire interval, shoot range | 1.2 s, 15 m | Slower than the player's 4 shots/s, so the Guard is dangerous in the open and slow to finish a fight |
+| Hold, peek | 1.3 s hold (0.7 s when aggressive), 2 s peek | The player gets a window to answer each peek |
+| Cover reconsideration | 1 Hz, or when the player moves 2 m, new cover must beat the old by 0.1 | Stops it dithering between two similar covers |
+| Candidates costed | Top 3 by score bound, path cost capped at 60 grid units and 400 cells | Keeps one decision inside the AI budget; see `AIPerformanceLog.md` |
+| Chase and patrol re-plan | Every 0.5 s while advancing, every 1 s when a patrol point cannot be reached | Enough to follow a moving player without a search every frame |
+
 ## Measured results
-<!-- Numbers from AIPerformanceLog.md: lambda tuning notes, A* vs Dijkstra verification, replans-per-box-push counts. -->
+
+`GuardTuningEvidenceTests` (EditMode, category Evidence) prints two tables to the test output: the effect of lambda on a route across an exposed band, and the number of route searches a pushed box causes. The per-frame cost of the Guard's decisions is in `AIPerformanceLog.md` (p99 4.93 ms before the fixes, 1.69 ms after).
+
+- **A\* against Dijkstra:** `CostMatchesReferenceDijkstraOnFiftyRandomGrids` checks that A* returns the same cost as a reference Dijkstra on fifty random grids.
+- **Lambda against route** (`Evidence_LambdaAgainstDetourAndExposure`, 2026-10-11). A 41 x 15 grid with a wall at x = 20 and two gaps in it: a short one on the straight route that the player can see across 7 cells, and a long hidden one at the far edge.
+
+  | lambda | Exposed step multiplier | Route length (cells) | Exposed cells crossed | Length / shortest |
+  | --- | --- | --- | --- | --- |
+  | 0 | 1x | 40.0 | 7 | 1.00x |
+  | 0.5 | 1.5x | 40.0 | 7 | 1.00x |
+  | 1 | 2x | 40.0 | 7 | 1.00x |
+  | 3 | 4x | 51.6 | 0 | 1.29x |
+  | 6 | 7x | 51.6 | 0 | 1.29x |
+  | 10 | 11x | 51.6 | 0 | 1.29x |
+
+  The route switches from the exposed gap to the hidden one between lambda 1 and 3, at about 1.7 (the hidden route is 11.6 cells longer, the exposed one crosses 7 exposed cells: 11.6 / 7). At lambda 3 the Guard takes a route 29% longer to stay out of sight, and a larger lambda changes nothing here because the hidden route is already the cheapest. Below about 1.7 it would walk through the open to save the walk, which is the "barely a deterrent" row in the table above.
+- **Replans per box push** (`Evidence_ReplansPerBoxPush`, 2026-10-11). A Guard on a 53-cell patrol route on a 60 x 20 grid, with ten boxes pushed, alternately onto the route and well off it.
+
+  | Push | Pushes | New route searches | Per push |
+  | --- | --- | --- | --- |
+  | Onto the route | 5 | 5 | 1.0 |
+  | Off the route | 5 | 0 | 0.0 |
+
+  A box on the route costs one new search, and a box beside it costs none, because the Guard only re-plans when a changed cell is on its current route.
