@@ -62,6 +62,9 @@ namespace ToyFactory.UI
         /// <summary>The score so far.</summary>
         public int Score => _rules.Score;
 
+        /// <summary>The combo multiplier a takedown would get now: 1 once the 6 s window has run out.</summary>
+        public int ComboNow => _running ? _rules.ComboAt(Now) : 1;
+
         /// <summary>The grade for the score so far.</summary>
         public ScoreGrade Grade => _rules.Grade;
 

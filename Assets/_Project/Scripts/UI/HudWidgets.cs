@@ -12,13 +12,14 @@ namespace ToyFactory.UI
     internal static class HudWidgets
     {
         public static readonly Color Plum = new Color32(0x1E, 0x16, 0x38, 0xFF);
-        public static readonly Color PlumPanel = new Color32(0x1E, 0x16, 0x38, 0xCC);
+        public static readonly Color PlumPanel = new Color32(0x1E, 0x16, 0x38, 0xC7);
         public static readonly Color PlumLight = new Color32(0x3A, 0x2E, 0x62, 0xFF);
         public static readonly Color Ink = new Color32(0xFF, 0xF8, 0xEC, 0xFF);
         public static readonly Color InkDim = new Color32(0xFF, 0xF8, 0xEC, 0x99);
         public static readonly Color Tomato = new Color32(0xFF, 0x5A, 0x4E, 0xFF);
         public static readonly Color Sun = new Color32(0xFF, 0xC9, 0x33, 0xFF);
         public static readonly Color Mint = new Color32(0x3D, 0xDB, 0xB0, 0xFF);
+        public static readonly Color PlumEdge = new Color32(0x0E, 0x0A, 0x1C, 0xFF);
         public static readonly Color Cobalt = new Color32(0x3A, 0x6C, 0xF4, 0xFF);
 
         static Font _font;
@@ -65,6 +66,22 @@ namespace ToyFactory.UI
             image.sprite = sprite;
             image.color = colour;
             image.raycastTarget = false;
+            return image;
+        }
+
+        /// <summary>
+        /// A plum panel at 78% opacity with a dark outline and a drop shadow, as in the prototype. The
+        /// outline and shadow are UI effects on the panel's own image, so they cost no extra objects.
+        /// </summary>
+        public static Image Plate(string name, Transform parent)
+        {
+            Image image = Panel(name, parent, PlumPanel);
+            var outline = image.gameObject.AddComponent<Outline>();
+            outline.effectColor = PlumEdge;
+            outline.effectDistance = new Vector2(3f, -3f);
+            var shadow = image.gameObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.45f);
+            shadow.effectDistance = new Vector2(7f, -7f);
             return image;
         }
 

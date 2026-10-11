@@ -20,6 +20,68 @@ namespace ToyFactory.UI
         /// <summary>Peak opacity of the low-health vignette, at zero integrity.</summary>
         public const float LowHealthAlpha = 0.3f;
 
+        /// <summary>Seconds the crosshair stays yellow after a hit.</summary>
+        public const float HitMarkerSeconds = 0.18f;
+
+        /// <summary>Seconds the room name stays up, fades included.</summary>
+        public const float RoomBannerSeconds = 3f;
+
+        /// <summary>Seconds of the room name's fade in and of its fade out.</summary>
+        public const float RoomBannerFadeSeconds = 0.4f;
+
+        /// <summary>The parts of a task a progress fraction covers: "1/3" for 0.34 of 3 (rounding errors forgiven).</summary>
+        public static int PartsDone(float progress, int total)
+        {
+            if (total < 1)
+                return 0;
+            return Mathf.Clamp(Mathf.FloorToInt(Fraction(progress) * total + 1e-3f), 0, total);
+        }
+
+        /// <summary>A count such as "1/3".</summary>
+        public static string CountText(int done, int total) => $"{done}/{total}";
+
+        /// <summary>"COMBO x3", or empty when there is no combo (x1).</summary>
+        public static string ComboText(int multiplier) => multiplier > 1 ? $"COMBO x{multiplier}" : string.Empty;
+
+        /// <summary>
+        /// The line above the charge bar's panel: "OVERCHARGE 8s" while overcharged (whole seconds,
+        /// rounded up so it never reads 0 while still on), "Charging..." while the blaster reloads,
+        /// otherwise empty. Overcharge wins, because it is the better news.
+        /// </summary>
+        public static string ChargeStatus(float overchargeSecondsLeft, bool reloading)
+        {
+            if (overchargeSecondsLeft > 0f)
+                return $"OVERCHARGE {Mathf.CeilToInt(overchargeSecondsLeft)}s";
+            return reloading ? "Charging..." : string.Empty;
+        }
+
+        /// <summary>True while a hold task has progress that is not yet complete, so the hold bar shows.</summary>
+        public static bool HoldBarVisible(float progress) => progress > 0.001f && progress < 0.999f;
+
+        /// <summary>1 right after a hit and 0 once <see cref="HitMarkerSeconds"/> have passed: how yellow the crosshair is.</summary>
+        public static float HitMarkerAmount(float secondsSinceHit) =>
+            secondsSinceHit < 0f || secondsSinceHit >= HitMarkerSeconds ? 0f : 1f - secondsSinceHit / HitMarkerSeconds;
+
+        /// <summary>Opacity of the room name <paramref name="elapsed"/> seconds after it appeared.</summary>
+        public static float RoomBannerAlpha(float elapsed)
+        {
+            if (elapsed < 0f || elapsed >= RoomBannerSeconds)
+                return 0f;
+            if (elapsed < RoomBannerFadeSeconds)
+                return elapsed / RoomBannerFadeSeconds;
+            float untilEnd = RoomBannerSeconds - elapsed;
+            return untilEnd < RoomBannerFadeSeconds ? untilEnd / RoomBannerFadeSeconds : 1f;
+        }
+
+        /// <summary>The key hints along the bottom of the screen; they match the controls on the title screen.</summary>
+        public const string KeyHints = "E  Use      Q  Throw a toy      R  Reload      Esc  Pause";
+
+        /// <summary>The pulse of the glow behind the current task's box: opacity between 0.2 and 0.7 about once every 1.6 s.</summary>
+        public static float GlowAlpha(float time) => 0.45f + 0.25f * Mathf.Sin(time * 4f);
+
+        /// <summary>How see-through the "restore the switch" row is while its switch is still sealed.</summary>
+        public const float SealedRowAlpha = 0.4f;
+
         /// <summary>"CHAPTER 2 OF 4".</summary>
         public static string ChapterTag(int chapter, int chapterCount) => $"CHAPTER {chapter} OF {chapterCount}";
 
