@@ -117,8 +117,9 @@ namespace ToyFactory.Editor.Animation
         }
 
         /// <summary>
-        /// Adds or refreshes only the hit effects (knock-down, lights) on the four existing
-        /// bodies, without rebuilding their clips and controllers.
+        /// Adds or refreshes only the hit effects (knock-down pose, dizzy stars, lights) and the
+        /// Tracker's excitement on the four existing bodies, without rebuilding their clips and
+        /// controllers.
         /// </summary>
         [MenuItem("Factory Reset/Animation/Update Agent Hit Effects")]
         public static void UpdateHitEffects()
@@ -387,8 +388,8 @@ namespace ToyFactory.Editor.Animation
 
                 SetReference(GetOrAdd<AgentAnimatorBridge>(root), "animator", animator);
 
-                // Tips over (with a small explosion) when downed, its lights go out and come
-                // back, and it shows "?"/"!" above its head.
+                // Slumps (with a small explosion and dizzy stars) when downed, its lights go out
+                // and come back, and it shows "?"/"!" above its head.
                 AddHitEffects(root, model, spec.Model);
                 var icon = new SerializedObject(GetOrAdd<AlertIcon>(root));
                 icon.FindProperty("height").floatValue = height + 0.4f;
@@ -431,7 +432,7 @@ namespace ToyFactory.Editor.Animation
             }
         }
 
-        // Knock-down and lights. Replaces the old fall-apart component if a body still has it.
+        // Knock-down, its pose and lights. Replaces the old fall-apart component if a body still has it.
         static void AddHitEffects(GameObject root, Transform model, string modelName)
         {
             // The fall-apart component's script was deleted; its leftover entry is a missing script.
@@ -443,11 +444,19 @@ namespace ToyFactory.Editor.Animation
             knockdown.FindProperty("knockOutWord").objectReferenceValue = ComicSprite("Comic_KnockOut.png");
             knockdown.FindProperty("scrapWord").objectReferenceValue = ComicSprite("Comic_Scrapped.png");
             knockdown.FindProperty("dormantUntilCaptainWakes").boolValue = modelName == "CaptainBot";
+
+            // Knocked out, each body slumps like a powered-down toy (the Captain kneels) and
+            // dizzy stars circle above its head; the Guard's head smokes.
+            (string anchor, Vector3 offset) stars = AddDownPose(root, model, modelName);
+            knockdown.FindProperty("starSprite").objectReferenceValue = ComicSprite("Comic_Star.png");
+            knockdown.FindProperty("starsAnchor").objectReferenceValue = Pivot(model, modelName, stars.anchor);
+            knockdown.FindProperty("starsOffset").vector3Value = stars.offset;
+            knockdown.FindProperty("smokeFrom").objectReferenceValue =
+                modelName == "GuardBot" ? Pivot(model, modelName, "GuardBot_Root/Torso_Pivot/Head_Pivot") : null;
             knockdown.ApplyModifiedPropertiesWithoutUndo();
 
-            // The Captain kneels instead of tipping over, and steps back up.
-            if (modelName == "CaptainBot")
-                AddKneel(root, model);
+            if (modelName == "TrackerToy")
+                AddExcitement(root, model);
 
             if (!Lights.TryGetValue(modelName, out (LightPart[] parts, Color colour) light))
                 return;
@@ -467,30 +476,89 @@ namespace ToyFactory.Editor.Animation
             lights.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        static void AddKneel(GameObject root, Transform model)
+        // The body's knock-out pose and its pivots; returns where the dizzy stars circle (a
+        // pivot, and the ring's centre in its space: above the head, the goggles on the
+        // Saboteur, the top of the body on the Tracker).
+        static (string anchor, Vector3 offset) AddDownPose(GameObject root, Transform model, string modelName)
         {
-            const string rig = "CaptainBot_Root";
-            const string legL = rig + "/Leg_L_Pivot", legR = rig + "/Leg_R_Pivot";
-            const string kneeL = legL + "/Knee_L_Pivot", kneeR = legR + "/Knee_R_Pivot";
-            const string torso = rig + "/Torso_Pivot";
-            (string field, string path)[] pivots =
+            switch (modelName)
             {
-                ("root", rig),
-                ("frontHip", legL), ("frontKnee", kneeL), ("frontAnkle", kneeL + "/Ankle_L_Pivot"),
-                ("backHip", legR), ("backKnee", kneeR), ("backAnkle", kneeR + "/Ankle_R_Pivot"),
-                ("torso", torso), ("head", torso + "/Head_Pivot"),
-                ("frontArm", torso + "/CannonArm_L_Pivot"), ("backArm", torso + "/CannonArm_R_Pivot"),
-            };
-
-            var kneel = new SerializedObject(GetOrAdd<AgentKneel>(root));
-            foreach ((string field, string path) in pivots)
-            {
-                Transform pivot = model.Find(path);
-                if (pivot == null)
-                    Debug.LogError($"CaptainBot: no pivot at {path} for the kneel.");
-                kneel.FindProperty(field).objectReferenceValue = pivot;
+                case "CaptainBot":
+                {
+                    const string rig = "CaptainBot_Root";
+                    const string legL = rig + "/Leg_L_Pivot", legR = rig + "/Leg_R_Pivot";
+                    const string kneeL = legL + "/Knee_L_Pivot", kneeR = legR + "/Knee_R_Pivot";
+                    const string torso = rig + "/Torso_Pivot";
+                    SetPivots<AgentKneel>(root, model, modelName,
+                        ("root", rig),
+                        ("frontHip", legL), ("frontKnee", kneeL), ("frontAnkle", kneeL + "/Ankle_L_Pivot"),
+                        ("backHip", legR), ("backKnee", kneeR), ("backAnkle", kneeR + "/Ankle_R_Pivot"),
+                        ("torso", torso), ("head", torso + "/Head_Pivot"),
+                        ("frontArm", torso + "/CannonArm_L_Pivot"), ("backArm", torso + "/CannonArm_R_Pivot"));
+                    return (torso + "/Head_Pivot", new Vector3(0f, 1.25f, 0f));   // above the hat
+                }
+                case "TrackerToy":
+                {
+                    const string body = "TrackerToy_Root/Body_Pivot", head = body + "/Head_Pivot";
+                    SetPivots<TrackerSlump>(root, model, modelName,
+                        ("body", body), ("head", head),
+                        ("earLeft", head + "/Ear_L_Pivot"), ("earRight", head + "/Ear_R_Pivot"),
+                        ("tail", body + "/Tail_Pivot"), ("key", body + "/WindupKey_Pivot"));
+                    return (body, new Vector3(0f, 1.35f, 0.25f));
+                }
+                case "SaboteurBot":
+                {
+                    const string body = "SaboteurBot_Root/Body_Pivot";
+                    const string shL = body + "/Shoulder_L_Pivot", shR = body + "/Shoulder_R_Pivot";
+                    const string elL = shL + "/Elbow_L_Pivot", elR = shR + "/Elbow_R_Pivot";
+                    SetPivots<SaboteurSlump>(root, model, modelName,
+                        ("body", body), ("shoulderLeft", shL), ("shoulderRight", shR),
+                        ("elbowLeft", elL), ("elbowRight", elR),
+                        ("clawLeftTop", elL + "/Claw_L_Top_Pivot"), ("clawLeftBottom", elL + "/Claw_L_Bottom_Pivot"),
+                        ("clawRightTop", elR + "/Claw_R_Top_Pivot"), ("clawRightBottom", elR + "/Claw_R_Bottom_Pivot"));
+                    return (body, new Vector3(0f, 1.5f, 0.25f));   // above the goggles
+                }
+                case "GuardBot":
+                {
+                    const string torso = "GuardBot_Root/Torso_Pivot";
+                    SetPivots<GuardSlump>(root, model, modelName,
+                        ("torso", torso), ("head", torso + "/Head_Pivot"),
+                        ("cannonArm", torso + "/CannonArm_R_Pivot"), ("shieldArm", torso + "/ShieldArm_L_Pivot"));
+                    return (torso + "/Head_Pivot", new Vector3(0f, 0.8f, 0.05f));
+                }
+                default:
+                    return (null, Vector3.zero);
             }
-            kneel.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // The Tracker's happy-puppy excitement at a thrown toy.
+        static void AddExcitement(GameObject root, Transform model)
+        {
+            const string body = "TrackerToy_Root/Body_Pivot", head = body + "/Head_Pivot";
+            SetPivots<TrackerExcitement>(root, model, "TrackerToy",
+                ("root", "TrackerToy_Root"), ("head", head),
+                ("earLeft", head + "/Ear_L_Pivot"), ("earRight", head + "/Ear_R_Pivot"),
+                ("tail", body + "/Tail_Pivot"));
+        }
+
+        // Adds T to the body (once) and points its Transform fields at the model's pivots.
+        static void SetPivots<T>(GameObject root, Transform model, string modelName,
+            params (string field, string path)[] pivots) where T : Component
+        {
+            var serialized = new SerializedObject(GetOrAdd<T>(root));
+            foreach ((string field, string path) in pivots)
+                serialized.FindProperty(field).objectReferenceValue = Pivot(model, modelName, path);
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        static Transform Pivot(Transform model, string modelName, string path)
+        {
+            if (path == null)
+                return null;
+            Transform pivot = model.Find(path);
+            if (pivot == null)
+                Debug.LogError($"{modelName}: no pivot at {path}.");
+            return pivot;
         }
 
         // The renderer of an existing part, or of a lens, added under its pivot the first time

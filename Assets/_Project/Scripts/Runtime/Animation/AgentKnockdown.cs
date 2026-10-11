@@ -7,20 +7,25 @@ namespace ToyFactory.Runtime.Animation
     /// <summary>
     /// What a hit and a knock-out look like. Each hit throws a few sparks and squashes the
     /// body for a moment. When the agent goes down: a small explosion, one comic word above
-    /// it ("KRZZT!"), and it tips over onto its side and lies still; when it reboots it gets
-    /// back up. A scrapped agent (a Saboteur) goes down the same way with "SCRAPPED!", lies
-    /// there for a moment, then sinks into the floor and is switched off.
+    /// it ("KRZZT!"), it slumps like a powered-down toy (its <see cref="AgentDownPose"/>) and
+    /// three dizzy stars circle above its head; when it reboots it gets back up. A scrapped
+    /// agent (a Saboteur) goes down the same way with "SCRAPPED!" and no stars, lies there
+    /// for a moment, then sinks into the floor and is switched off.
     /// </summary>
     /// <remarks>
     /// <para><b>Kept small on purpose:</b> the prototype put a comic word on every hit, which
     /// cluttered fights. Here words only mark the two moments that matter, going down and
     /// being scrapped; ordinary hits get sparks only. <see cref="AgentLights"/> dims the eyes
     /// at the same time.</para>
-    /// <para><b>Tipping over</b> rotates the model about the body's feet and lifts it so its
-    /// side rests on the floor, and pauses the Animator so the pose holds. The model root is
-    /// not animated by any clip, so nothing fights the tilt. The capsule stays upright: a
-    /// downed agent does not move, so it does not matter. A body with an
-    /// <see cref="AgentKneel"/> (the Captain) kneels and steps back up instead.</para>
+    /// <para><b>The pose:</b> going down pauses the Animator so its pose holds, and the body's
+    /// <see cref="AgentDownPose"/> slumps it (the Captain kneels, <see cref="AgentKneel"/>)
+    /// and gets it back up at the reboot. The slumps replaced a tip-over onto the side, which
+    /// read as dead rather than switched off and pushed the body through walls; a body
+    /// without a pose still tips over.</para>
+    /// <para><b>Dizzy stars:</b> three comic stars circle above the head while the agent is
+    /// knocked out (from just after the explosion until the reboot), never while it is
+    /// scrapped, dormant or powered down. Built like the comic word: sprites that face the
+    /// camera.</para>
     /// <para><b>Particles:</b> one world-space system per agent, emitting only on demand, so
     /// sparks stay where they were thrown when the body moves or tips.</para>
     /// <para><b>Cutscene states.</b> The Captain kneels, switched off, while it is dormant
@@ -28,12 +33,12 @@ namespace ToyFactory.Runtime.Animation
     /// flickers on first and then it steps up. When the factory shuts down in the ending
     /// (<see cref="CutsceneSignals.FactoryShutdown"/>) every agent powers down for good, one
     /// after another in step with its lights: the Animator winds down to a stop and the body
-    /// sags, and the Captain sinks slowly onto its knee.</para>
+    /// sinks slowly into its pose (the Captain onto its knee), or sags if it has none.</para>
     /// </remarks>
     [RequireComponent(typeof(AgentController))]
     public sealed class AgentKnockdown : MonoBehaviour
     {
-        [Tooltip("The model to tip over (the nested S3 prefab).")]
+        [Tooltip("The model (the nested S3 prefab): squashed by hits, sunk when scrapped, tipped over if there is no pose.")]
         [SerializeField] Transform model;
 
         [Tooltip("Additive particle material for the sparks and the explosion.")]
@@ -45,6 +50,29 @@ namespace ToyFactory.Runtime.Animation
         [Tooltip("Comic word shown when the agent is scrapped for good.")]
         [SerializeField] Sprite scrapWord;
 
+        [Header("Dizzy stars")]
+        [Tooltip("Sprite of one star. None: no stars.")]
+        [SerializeField] Sprite starSprite;
+
+        [Tooltip("What the stars circle above (the head). None: the top of the capsule.")]
+        [SerializeField] Transform starsAnchor;
+
+        [Tooltip("Centre of the ring in the anchor's space (m), so it follows the slump. The ring itself stays level.")]
+        [SerializeField] Vector3 starsOffset = new Vector3(0f, 0.5f, 0f);
+
+        [Tooltip("Radius of the ring, in metres.")]
+        [SerializeField, Min(0.05f)] float starsRadius = 0.3f;
+
+        [Tooltip("Width of one star, in metres.")]
+        [SerializeField, Min(0.02f)] float starSize = 0.2f;
+
+        [Tooltip("Seconds for one turn of the ring.")]
+        [SerializeField, Min(0.1f)] float starsPeriod = 1.1f;
+
+        [Tooltip("Where smoke puffs from as it goes down (the Guard's head). None: no puff.")]
+        [SerializeField] Transform smokeFrom;
+
+        [Header("Fallback without a pose")]
         [Tooltip("Degrees the body tips over.")]
         [SerializeField, Range(0f, 90f)] float tipAngle = 78f;
 
@@ -54,6 +82,7 @@ namespace ToyFactory.Runtime.Animation
         [Tooltip("Seconds to get back up at the reboot.")]
         [SerializeField, Min(0.05f)] float standSeconds = 0.5f;
 
+        [Header("Words and scrapping")]
         [Tooltip("Scrapped agents: seconds they lie there before sinking away.")]
         [SerializeField, Min(0f)] float scrapLingerSeconds = 1.2f;
 
@@ -73,10 +102,10 @@ namespace ToyFactory.Runtime.Animation
         [Tooltip("Seconds between the wake and the stand-up: the visor flickers on first.")]
         [SerializeField, Min(0f)] float wakeStandDelay = 0.7f;
 
-        [Tooltip("Seconds the power-down takes in the ending: the Animator winds down and the body sags.")]
+        [Tooltip("Seconds the power-down takes in the ending: the Animator winds down and the body sinks into its pose.")]
         [SerializeField, Min(0.05f)] float powerDownSeconds = 1.2f;
 
-        [Tooltip("Degrees the body sags forward when it powers down (bodies without a kneel).")]
+        [Tooltip("Degrees the body sags forward when it powers down (bodies without a pose).")]
         [SerializeField, Range(0f, 20f)] float sagAngle = 5f;
 
         static readonly Color SparkColour = new Color(1f, 0.85f, 0.35f);
@@ -86,9 +115,10 @@ namespace ToyFactory.Runtime.Animation
         enum Phase { Up, Down, StandingUp, Scrapped, Dormant, Waking, PoweredDown }
 
         AgentController _agent;
-        AgentKneel _kneel;
+        AgentDownPose _pose;
         Animator _animator;
         ParticleSystem _particles;
+        ParticleSystem _smoke;
         Transform _word;
         SpriteRenderer _wordRenderer;
         float _wordTime = float.PositiveInfinity;
@@ -106,6 +136,11 @@ namespace ToyFactory.Runtime.Animation
         bool _started;
         bool _alreadyKneeling;   // powered down from the dormant kneel
         float _shutdownAt = float.PositiveInfinity;
+        Transform _stars;
+        Transform[] _starSprites;
+        float _starsAmount;      // 0 hidden, 1 fully shown
+        float _starsTime;
+        bool _smoked;
 
         /// <summary>True while the body is down or getting back up.</summary>
         public bool IsDown => _phase != Phase.Up;
@@ -125,10 +160,18 @@ namespace ToyFactory.Runtime.Animation
         /// <summary>True while a comic word is showing.</summary>
         public bool WordShowing => _word != null && _word.gameObject.activeSelf;
 
+        /// <summary>True while the dizzy stars are showing.</summary>
+        public bool StarsShowing => _stars != null && _stars.gameObject.activeSelf;
+
+        /// <summary>Where the ring of stars is centred.</summary>
+        public Vector3 StarsCentre => starsAnchor != null
+            ? starsAnchor.TransformPoint(starsOffset)
+            : transform.position + Vector3.up * (_height + 0.2f);
+
         void Awake()
         {
             _agent = GetComponent<AgentController>();
-            _kneel = GetComponent<AgentKneel>();
+            _pose = GetComponent<AgentDownPose>();
             if (model == null)
                 model = transform;
             _animator = model.GetComponentInChildren<Animator>();
@@ -142,7 +185,10 @@ namespace ToyFactory.Runtime.Animation
                 _radius = capsule.radius;
             }
             _particles = CreateParticles();
+            if (smokeFrom != null)
+                _smoke = CreateParticles("HeadSmoke", -0.04f);   // drifts up
             CreateWord();
+            CreateStars();
         }
 
         void OnEnable()
@@ -166,7 +212,7 @@ namespace ToyFactory.Runtime.Animation
 
         // The Captain before its wake. Before the agent has a blackboard it counts as awake.
         bool Dormant() =>
-            dormantUntilCaptainWakes && _kneel != null && _agent.World != null && !_agent.World.CaptainAwake;
+            dormantUntilCaptainWakes && _pose != null && _agent.World != null && !_agent.World.CaptainAwake;
 
         Vector3 Chest => transform.position + Vector3.up * (_height * 0.55f);
 
@@ -240,6 +286,8 @@ namespace ToyFactory.Runtime.Animation
             UpdateTip();
             UpdatePunch(dt);
             UpdateWord(dt);
+            UpdateStars(dt);
+            UpdateSmoke();
             if (_phase == Phase.Scrapped)
                 UpdateScrap();
         }
@@ -250,6 +298,7 @@ namespace ToyFactory.Runtime.Animation
             _phaseTime = 0f;
             _side = Random.value < 0.5f ? -1f : 1f;
             _sinking = false;
+            _smoked = false;
             if (_animator != null)
                 _animator.speed = 0f;   // hold the pose while it lies there
             Explode(Chest);
@@ -270,7 +319,7 @@ namespace ToyFactory.Runtime.Animation
         // Far enough into a kneel that it is fully down: a dormant Captain shows no drop.
         const float FullyKneeling = 10f;
 
-        float StandSeconds => _kneel != null ? _kneel.StandSeconds : standSeconds;
+        float StandSeconds => _pose != null ? _pose.StandSeconds : standSeconds;
 
         // How far the power-down has got, 0 to 1, eased; the Animator winds down with it.
         float PowerDown()
@@ -285,9 +334,9 @@ namespace ToyFactory.Runtime.Animation
         // The tip follows the phase: falls with a small overshoot, stands up smoothly.
         void UpdateTip()
         {
-            if (_kneel != null)
+            if (_pose != null)
             {
-                UpdateKneel();
+                UpdatePose();
                 return;
             }
 
@@ -326,9 +375,10 @@ namespace ToyFactory.Runtime.Animation
             model.localPosition = _restPosition + Vector3.up * lift;
         }
 
-        // The Captain: kneels where it stands instead of tipping, and steps back up. Dormant it
-        // is already on its knee; powering down in the ending it sinks onto it at half speed.
-        void UpdateKneel()
+        // The body's own pose: slumps (the Captain kneels) where it stands, and gets back up.
+        // Dormant the Captain is already on its knee; powering down in the ending a body sinks
+        // into its pose at half speed.
+        void UpdatePose()
         {
             _tip = 0f;
             model.localRotation = _restRotation;
@@ -336,22 +386,22 @@ namespace ToyFactory.Runtime.Animation
             switch (_phase)
             {
                 case Phase.Up:
-                    if (_kneel.Amount != 0f)
-                        _kneel.Release();
+                    if (_pose.Amount != 0f)
+                        _pose.Release();
                     break;
                 case Phase.StandingUp:
-                    _kneel.PoseStandUp(_phaseTime);
+                    _pose.PoseStandUp(_phaseTime);
                     break;
                 case Phase.Dormant:
                 case Phase.Waking:
-                    _kneel.PoseDown(FullyKneeling);
+                    _pose.PoseDown(FullyKneeling);
                     break;
                 case Phase.PoweredDown:
                     PowerDown();
-                    _kneel.PoseDown(_alreadyKneeling ? FullyKneeling : _phaseTime * 0.5f);
+                    _pose.PoseDown(_alreadyKneeling ? FullyKneeling : _phaseTime * 0.5f);
                     break;
                 default:
-                    _kneel.PoseDown(_phaseTime);
+                    _pose.PoseDown(_phaseTime);
                     break;
             }
         }
@@ -377,7 +427,8 @@ namespace ToyFactory.Runtime.Animation
 
         void UpdateScrap()
         {
-            float sink = Mathf.Clamp01((_phaseTime - tipSeconds - scrapLingerSeconds) / scrapSinkSeconds);
+            float downFor = _pose != null ? _pose.DownSeconds : tipSeconds;
+            float sink = Mathf.Clamp01((_phaseTime - downFor - scrapLingerSeconds) / scrapSinkSeconds);
             if (sink <= 0f)
                 return;
             if (!_sinking)
@@ -395,9 +446,9 @@ namespace ToyFactory.Runtime.Animation
 
         // ---- Particles -----------------------------------------------------------------
 
-        ParticleSystem CreateParticles()
+        ParticleSystem CreateParticles(string name = "HitEffects", float gravity = 0.6f)
         {
-            var holder = new GameObject("HitEffects");
+            var holder = new GameObject(name);
             holder.transform.SetParent(transform, false);
             var system = holder.AddComponent<ParticleSystem>();
             system.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
@@ -406,8 +457,8 @@ namespace ToyFactory.Runtime.Animation
             main.playOnAwake = false;
             main.loop = false;
             main.simulationSpace = ParticleSystemSimulationSpace.World;
-            main.maxParticles = 160;
-            main.gravityModifier = 0.6f;
+            main.maxParticles = gravity > 0f ? 160 : 40;
+            main.gravityModifier = gravity;
             main.startSpeed = 0f;
 
             ParticleSystem.EmissionModule emission = system.emission;
@@ -461,6 +512,96 @@ namespace ToyFactory.Runtime.Animation
             Sparks(at, 1, 0f, Color.white, 1.4f, 1.4f, 0.12f);
             Sparks(at, 18, 5f, FireColour, 0.08f, 0.2f, 0.5f);
             Sparks(at, 10, 1.5f, SmokeColour, 0.35f, 0.6f, 0.9f);
+        }
+
+        // A puff of smoke from the head as the slump lands, slow and drifting up: something
+        // inside burnt out. Once per knock-out (and per scrap).
+        void UpdateSmoke()
+        {
+            const float puffAt = 0.3f;
+            if (_smoke == null || _smoked || (_phase != Phase.Down && _phase != Phase.Scrapped) || _phaseTime < puffAt)
+                return;
+            _smoked = true;
+            var emit = new ParticleSystem.EmitParams { applyShapeToPosition = false };
+            const int count = 10;
+            for (int i = 0; i < count; i++)
+            {
+                Vector2 spread = Random.insideUnitCircle * 0.25f;
+                emit.position = smokeFrom.position + Vector3.up * 0.2f;
+                emit.velocity = new Vector3(spread.x, Random.Range(0.5f, 0.9f), spread.y);
+                emit.startSize = Random.Range(0.22f, 0.4f);
+                emit.startLifetime = Random.Range(0.9f, 1.4f);
+                emit.startColor = SmokeColour;
+                _smoke.Emit(emit, 1);
+            }
+            ParticlesEmitted += count;
+        }
+
+        // ---- Dizzy stars ---------------------------------------------------------------
+
+        void CreateStars()
+        {
+            if (starSprite == null)
+                return;
+            var ring = new GameObject("DizzyStars");
+            _stars = ring.transform;
+            _stars.SetParent(transform, false);
+            _starSprites = new Transform[3];
+            for (int i = 0; i < _starSprites.Length; i++)
+            {
+                var star = new GameObject("Star" + i);
+                star.transform.SetParent(_stars, false);
+                var sprite = star.AddComponent<SpriteRenderer>();
+                sprite.sprite = starSprite;
+                sprite.sortingOrder = 50;
+                _starSprites[i] = star.transform;
+            }
+            ring.SetActive(false);
+        }
+
+        // Shown while knocked out, from just after the explosion; shrink away at the reboot;
+        // gone at once in any other phase (a scrap, the dormant kneel, the power-down).
+        void UpdateStars(float dt)
+        {
+            if (_stars == null)
+                return;
+            const float delay = 0.35f, popSeconds = 0.2f, outSeconds = 0.15f;
+            bool show = _phase == Phase.Down && _phaseTime >= delay;
+            if (show)
+                _starsAmount = Mathf.Min(1f, _starsAmount + dt / popSeconds);
+            else if (_phase == Phase.StandingUp)
+                _starsAmount = Mathf.Max(0f, _starsAmount - dt / outSeconds);
+            else
+                _starsAmount = 0f;
+
+            bool active = _starsAmount > 0f;
+            if (_stars.gameObject.activeSelf != active)
+                _stars.gameObject.SetActive(active);
+            if (!active)
+            {
+                _starsTime = 0f;
+                return;
+            }
+
+            _starsTime += dt;
+            float size = show ? BackOut(_starsAmount) : _starsAmount;
+            float width = starSprite.bounds.size.x;
+            Vector3 centre = StarsCentre;
+            Camera camera = Camera.main;
+            float turn = _starsTime / starsPeriod * 2f * Mathf.PI;
+            for (int i = 0; i < _starSprites.Length; i++)
+            {
+                float angle = turn + i * (2f * Mathf.PI / _starSprites.Length);
+                Transform star = _starSprites[i];
+                star.position = centre + new Vector3(Mathf.Cos(angle) * starsRadius,
+                    0.04f * Mathf.Sin(angle * 2f), Mathf.Sin(angle) * starsRadius);
+                star.localScale = Vector3.one * (starSize / width * size);
+                // Faces the camera and spins a little on itself, like a cartoon star.
+                Quaternion facing = camera != null
+                    ? Quaternion.LookRotation(star.position - camera.transform.position, camera.transform.up)
+                    : Quaternion.identity;
+                star.rotation = facing * Quaternion.Euler(0f, 0f, _starsTime * 180f + i * 40f);
+            }
         }
 
         // ---- Comic word ----------------------------------------------------------------
