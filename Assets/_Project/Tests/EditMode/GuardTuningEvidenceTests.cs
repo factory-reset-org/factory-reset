@@ -58,21 +58,23 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void Evidence_LambdaAgainstDetourAndExposure()
         {
-            // A 41 x 15 room. A band of exposed cells, 11 wide and 9 high, sits across the
-            // straight route; going round it costs extra steps. For each lambda: the route's
-            // length in cells, how many exposed cells it crosses, and its length relative to
-            // the plain shortest route.
+            // A 41 x 15 room split by a wall at x = 20. There are two gaps in it: one at the bottom
+            // edge, on the straight route, which the player can see across 7 cells, and one at
+            // the top edge, hidden, that costs a long walk round. Each lambda shows which gap
+            // the route takes, how long the route is, and how many exposed cells it crosses.
             var grid = new GridGraph(41, 15, Vector3.zero);
+            for (int y = 1; y <= 13; y++)
+                grid.SetWalkable(new Vector2Int(20, y), false);
             var search = new AStarSearch(grid);
-            var start = new Vector2Int(0, 7);
-            var goal = new Vector2Int(40, 7);
-            Func<Vector2Int, bool> exposed = c => c.x >= 15 && c.x <= 25 && c.y >= 3 && c.y <= 11;
+            var start = new Vector2Int(0, 0);
+            var goal = new Vector2Int(40, 0);
+            Func<Vector2Int, bool> exposed = c => c.x >= 17 && c.x <= 23 && c.y <= 1;
 
             PathResult plain = search.FindPath(start, goal, BaseCostModel.Instance);
             float plainLength = Length(plain.Cells, BaseCostModel.Instance);
 
             var report = new StringBuilder();
-            report.AppendLine("Lambda against route (41 x 15 grid, exposed band 11 x 9 across the straight route)");
+            report.AppendLine("Lambda against route (41 x 15 grid, wall with a short exposed gap and a long hidden one)");
             report.AppendLine("| lambda | exposed step multiplier | route length (cells) | exposed cells crossed | length / shortest |");
             report.AppendLine("| --- | --- | --- | --- | --- |");
 
