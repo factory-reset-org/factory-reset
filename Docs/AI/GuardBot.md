@@ -290,5 +290,23 @@ Every number the Guard's behaviour depends on is a named constant in `GuardBrain
 `GuardTuningEvidenceTests` (EditMode, category Evidence) prints two tables to the test output: the effect of lambda on a route across an exposed band, and the number of route searches a pushed box causes. The per-frame cost of the Guard's decisions is in `AIPerformanceLog.md` (p99 4.93 ms before the fixes, 1.69 ms after).
 
 - **A\* against Dijkstra:** `CostMatchesReferenceDijkstraOnFiftyRandomGrids` checks that A* returns the same cost as a reference Dijkstra on fifty random grids.
-- **Lambda against route:** to be pasted from the `Evidence_LambdaAgainstDetourAndExposure` output.
-- **Replans per box push:** to be pasted from the `Evidence_ReplansPerBoxPush` output.
+- **Lambda against route** (`Evidence_LambdaAgainstDetourAndExposure`, 2026-10-11). A 41 x 15 grid with a wall at x = 20 and two gaps in it: a short one on the straight route that the player can see across 7 cells, and a long hidden one at the far edge.
+
+  | lambda | Exposed step multiplier | Route length (cells) | Exposed cells crossed | Length / shortest |
+  | --- | --- | --- | --- | --- |
+  | 0 | 1x | 40.0 | 7 | 1.00x |
+  | 0.5 | 1.5x | 40.0 | 7 | 1.00x |
+  | 1 | 2x | 40.0 | 7 | 1.00x |
+  | 3 | 4x | 51.6 | 0 | 1.29x |
+  | 6 | 7x | 51.6 | 0 | 1.29x |
+  | 10 | 11x | 51.6 | 0 | 1.29x |
+
+  The route switches from the exposed gap to the hidden one between lambda 1 and 3, at about 1.7 (the hidden route is 11.6 cells longer, the exposed one crosses 7 exposed cells: 11.6 / 7). At lambda 3 the Guard takes a route 29% longer to stay out of sight, and a larger lambda changes nothing here because the hidden route is already the cheapest. Below about 1.7 it would walk through the open to save the walk, which is the "barely a deterrent" row in the table above.
+- **Replans per box push** (`Evidence_ReplansPerBoxPush`, 2026-10-11). A Guard on a 53-cell patrol route on a 60 x 20 grid, with ten boxes pushed, alternately onto the route and well off it.
+
+  | Push | Pushes | New route searches | Per push |
+  | --- | --- | --- | --- |
+  | Onto the route | 5 | 5 | 1.0 |
+  | Off the route | 5 | 0 | 0.0 |
+
+  A box on the route costs one new search, and a box beside it costs none, because the Guard only re-plans when a changed cell is on its current route.
