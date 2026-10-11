@@ -4,9 +4,8 @@ namespace ToyFactory.Runtime.Animation
 {
     /// <summary>
     /// The Captain's knock-down: instead of tipping over it drops onto one knee, head bowed,
-    /// one cannon resting on the front knee; at the reboot it steps back up. Driven by
-    /// <see cref="AgentKnockdown"/>, which uses this in place of its tip-over when the body
-    /// has one.
+    /// one cannon resting on the front knee; at the reboot it steps back up. The Captain's
+    /// <see cref="AgentDownPose"/>, driven by <see cref="AgentKnockdown"/>.
     /// </summary>
     /// <remarks>
     /// <para><b>The kneel:</b> every pivot is a hinge on local X (negative swings a leg
@@ -26,7 +25,7 @@ namespace ToyFactory.Runtime.Animation
     /// stand-up, so there is no pop at either end. A pivot no clip writes is posed from its
     /// rest rotation instead.</para>
     /// </remarks>
-    public sealed class AgentKneel : MonoBehaviour
+    public sealed class AgentKneel : AgentDownPose
     {
         [Header("Rig (Captain pivots)")]
         [Tooltip("The model root that drops (no clip animates it).")]
@@ -51,6 +50,12 @@ namespace ToyFactory.Runtime.Animation
 
         [Tooltip("Seconds to step back up at the reboot.")]
         [SerializeField, Min(0.1f)] float standSeconds = 1.2f;
+
+        [Header("Walls (measured on the model)")]
+        [Tooltip("Metres in front of the centre the model reaches standing (the cannons).")]
+        [SerializeField] float standingReach = 0.56f;
+        [Tooltip("Metres in front of the centre it reaches kneeling (the hat, with the torso and head bowed).")]
+        [SerializeField] float kneelingReach = 1.08f;
 
         // Channels, in the order of the tables below.
         const int Drop = 0, FrontHip = 1, FrontKnee = 2, FrontAnkle = 3, BackHip = 4, BackKnee = 5,
@@ -85,12 +90,14 @@ namespace ToyFactory.Runtime.Animation
         Quaternion[] _written;
         Vector3 _rootRest;
         readonly float[] _pose = new float[Channels];
+        float _fit = 1f;   // how much of the torso's and head's bow fits in front
+        bool _down;
 
-        /// <summary>Seconds to step back up; the knock-down waits this long before it counts as up.</summary>
-        public float StandSeconds => standSeconds;
+        /// <inheritdoc/>
+        public override float DownSeconds => downSeconds;
 
-        /// <summary>How far down it is: 0 standing, 1 kneeling (the root drop over the full drop).</summary>
-        public float Amount { get; private set; }
+        /// <inheritdoc/>
+        public override float StandSeconds => standSeconds;
 
         void Awake()
         {
@@ -115,8 +122,13 @@ namespace ToyFactory.Runtime.Animation
         }
 
         /// <summary>Poses the drop onto the knee, <paramref name="seconds"/> after going down.</summary>
-        public void PoseDown(float seconds)
+        public override void PoseDown(float seconds)
         {
+            if (!_down)
+            {
+                _down = true;
+                _fit = FitForward(standingReach, kneelingReach);
+            }
             float t = Mathf.Clamp01(seconds / downSeconds);
             float joints = 1f - (1f - t) * (1f - t) * (1f - t);   // ease out: drops fast, settles
             float drop = Landing(t);                              // and lands a little heavy
@@ -127,8 +139,9 @@ namespace ToyFactory.Runtime.Animation
         }
 
         /// <summary>Poses the stand-up, <paramref name="seconds"/> after the reboot.</summary>
-        public void PoseStandUp(float seconds)
+        public override void PoseStandUp(float seconds)
         {
+            _down = false;
             float t = Mathf.Clamp01(seconds / standSeconds);
             for (int i = 0; i < Channels; i++)
                 _pose[i] = Evaluate(Standing[i], t);
@@ -137,9 +150,10 @@ namespace ToyFactory.Runtime.Animation
         }
 
         /// <summary>Standing: puts the root back; the pivots are the Animator's again.</summary>
-        public void Release()
+        public override void Release()
         {
             Amount = 0f;
+            _down = false;
             if (root != null)
                 root.localPosition = _rootRest;
         }
@@ -158,7 +172,8 @@ namespace ToyFactory.Runtime.Animation
                     continue;
                 // Unchanged since our last write: no clip drives it, so pose it from rest.
                 Quaternion from = pivot.localRotation == _written[i] ? _rest[i] : pivot.localRotation;
-                Quaternion target = _rest[i] * Quaternion.Euler(_pose[i], 0f, 0f);
+                float angle = i == Torso || i == Head ? _pose[i] * _fit : _pose[i];
+                Quaternion target = _rest[i] * Quaternion.Euler(angle, 0f, 0f);
                 pivot.localRotation = _written[i] = Quaternion.Slerp(from, target, weight);
             }
         }
@@ -170,8 +185,6 @@ namespace ToyFactory.Runtime.Animation
             float u = t - 1f;
             return 1f + (s + 1f) * u * u * u + s * u * u;
         }
-
-        static float Smooth(float t) => t * t * (3f - 2f * t);
 
         // Eased between keys: each key is a stop, like a machine moving from pose to pose.
         static float Evaluate(float[] values, float t)
