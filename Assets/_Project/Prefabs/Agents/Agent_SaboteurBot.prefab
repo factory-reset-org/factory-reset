@@ -199,6 +199,7 @@ GameObject:
   - component: {fileID: 8991962682083835519}
   - component: {fileID: 1038515747823336303}
   - component: {fileID: 5280362402737932498}
+  - component: {fileID: 3709426959675120162}
   m_Layer: 11
   m_Name: Agent_SaboteurBot
   m_TagString: Untagged
@@ -262,6 +263,7 @@ MonoBehaviour:
   arrivalRadius: 0.3
   groundedStickSpeed: -2
   turnSpeed: 360
+  acceleration: 12
 --- !u!114 &5172471769490426685
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -278,6 +280,9 @@ MonoBehaviour:
   hitPoints: 2
   knockOutSeconds: 0
   scrapWhenDown: 1
+  sabotageReach: 2.5
+  sabotageGiveUpSeconds: 2
+  blendReplans: 1
 --- !u!114 &6835292230290014988
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -356,6 +361,8 @@ MonoBehaviour:
   root: {fileID: 8653641931830487674}
   interval: 1.2
   duration: 0.6
+  contactAt: 0.5
+  reachMargin: 0.6
   body: {fileID: 9042529498539615052}
   shoulderLeft: {fileID: 1238280053909747224}
   elbowLeft: {fileID: 9197797317552357272}
@@ -365,6 +372,7 @@ MonoBehaviour:
   elbowRight: {fileID: 8393719547479576529}
   clawRightTop: {fileID: 1664436322241051680}
   clawRightBottom: {fileID: 8868601608210266104}
+  damage: 10
   roll:
     serializedVersion: 2
     m_Curve:
@@ -729,6 +737,13 @@ MonoBehaviour:
   sparkMaterial: {fileID: 2100000, guid: 239af0130747e434099e034c0659c39b, type: 2}
   knockOutWord: {fileID: 21300000, guid: a019917e8af69944fa8b4fe7d3887b49, type: 3}
   scrapWord: {fileID: 21300000, guid: 0172a0140e32580459a38ad796afe4fc, type: 3}
+  starSprite: {fileID: 21300000, guid: a59956d2dacc1b84ebf5c0bce4b6ee96, type: 3}
+  starsAnchor: {fileID: 9042529498539615052}
+  starsOffset: {x: 0, y: 1.5, z: 0.25}
+  starsRadius: 0.3
+  starSize: 0.2
+  starsPeriod: 1.1
+  smokeFrom: {fileID: 0}
   tipAngle: 78
   tipSeconds: 0.4
   standSeconds: 0.5
@@ -736,6 +751,10 @@ MonoBehaviour:
   scrapSinkSeconds: 0.7
   wordWidth: 1.1
   wordSeconds: 1
+  dormantUntilCaptainWakes: 0
+  wakeStandDelay: 0.7
+  powerDownSeconds: 1.2
+  sagAngle: 5
 --- !u!114 &5280362402737932498
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -757,6 +776,40 @@ MonoBehaviour:
   outSeconds: 0.35
   onSeconds: 0.6
   darkUntilCaptainWakes: 0
+--- !u!114 &3709426959675120162
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 99833ee2affab0546b989f3a3c092ede, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.SaboteurSlump
+  body: {fileID: 9042529498539615052}
+  shoulderLeft: {fileID: 1238280053909747224}
+  shoulderRight: {fileID: 5971700328018922715}
+  elbowLeft: {fileID: 9197797317552357272}
+  elbowRight: {fileID: 8393719547479576529}
+  clawLeftTop: {fileID: 6385822917562425992}
+  clawLeftBottom: {fileID: 2799080169345318182}
+  clawRightTop: {fileID: 1664436322241051680}
+  clawRightBottom: {fileID: 8868601608210266104}
+  wobbleRoll: 12
+  wobbleRate: 2.5
+  wobbleSeconds: 0.7
+  lean: 30
+  leanFrom: 0.45
+  leanSeconds: 0.5
+  armDrop: 30
+  elbowHang: 5
+  clawOpen: 30
+  standSeconds: 0.9
+  clawShut: 4
+  standingReach: 0.5
+  slumpedReach: 0.93
 --- !u!1001 &6993411909807918050
 PrefabInstance:
   m_ObjectHideFlags: 0

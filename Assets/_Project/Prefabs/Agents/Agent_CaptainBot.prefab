@@ -247,6 +247,13 @@ MonoBehaviour:
   sparkMaterial: {fileID: 2100000, guid: 239af0130747e434099e034c0659c39b, type: 2}
   knockOutWord: {fileID: 21300000, guid: a019917e8af69944fa8b4fe7d3887b49, type: 3}
   scrapWord: {fileID: 21300000, guid: 0172a0140e32580459a38ad796afe4fc, type: 3}
+  starSprite: {fileID: 21300000, guid: a59956d2dacc1b84ebf5c0bce4b6ee96, type: 3}
+  starsAnchor: {fileID: 8566529918625814095}
+  starsOffset: {x: 0, y: 1.25, z: 0}
+  starsRadius: 0.3
+  starSize: 0.2
+  starsPeriod: 1.1
+  smokeFrom: {fileID: 0}
   tipAngle: 78
   tipSeconds: 0.4
   standSeconds: 0.5
@@ -303,6 +310,8 @@ MonoBehaviour:
   backArm: {fileID: 5360294489629131018}
   downSeconds: 0.55
   standSeconds: 1.2
+  standingReach: 0.56
+  kneelingReach: 1.08
 --- !u!114 &4562163883646627793
 MonoBehaviour:
   m_ObjectHideFlags: 0
