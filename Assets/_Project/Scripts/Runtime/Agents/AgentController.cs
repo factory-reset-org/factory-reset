@@ -176,6 +176,13 @@ namespace ToyFactory.Runtime.Agents
         AlertLevel _alert;
 
         /// <summary>
+        /// True while the brain says it is busy with something else (<see cref="AgentIntent.IgnorePlayer"/>,
+        /// e.g. the Tracker watching a thrown toy): <see cref="PlayerStandOff"/> then lets the body
+        /// walk on past a player in reach, and so it does not strike.
+        /// </summary>
+        public bool IgnoresPlayer { get; private set; }
+
+        /// <summary>
         /// The brain's wind-up energy, for the key animation, or null if the brain has no
         /// key. Found once in <see cref="Initialise"/>, not looked up every frame.
         /// </summary>
@@ -395,6 +402,7 @@ namespace ToyFactory.Runtime.Agents
             ApplyAction(intent);
             DebugState = intent.DebugState ?? string.Empty;
             _alert = intent.Alert != AlertLevel.None ? intent.Alert : AlertFromState.For(DebugState);
+            IgnoresPlayer = intent.IgnorePlayer;
         }
 
         void OnDestroy()

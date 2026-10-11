@@ -70,7 +70,8 @@ namespace ToyFactory.Runtime.Agents
                 if (listener == null || !listener.CanHear)
                     continue;
 
-                float level = _propagation.Level(grid.WorldToCell(listener.HearingPosition));
+                // LevelNear: an agent beside a wall or box stands in a cell the noise skips.
+                float level = _propagation.LevelNear(grid.WorldToCell(listener.HearingPosition));
                 if (level > NoisePropagation.HearingThreshold)
                     listener.Hear(new SensorSnapshot(noise.Position, level, noise.SourceId, noise.Time, noise.IsLure));
             }

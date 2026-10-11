@@ -28,6 +28,7 @@ namespace ToyFactory.Tests
             readonly Vector3? _goal;
             bool _sent;
             public bool Attack;
+            public bool Ignore;   // busy with something else: AgentIntent.IgnorePlayer
             public TestBrain(Vector3? goal) { _goal = goal; }
 
             public AgentIntent Tick(in AgentContext ctx)
@@ -35,7 +36,8 @@ namespace ToyFactory.Tests
                 var intent = new AgentIntent
                 {
                     Action = Attack ? AgentAction.Shoot : AgentAction.None,
-                    DebugState = "Chase"
+                    DebugState = "Chase",
+                    IgnorePlayer = Ignore
                 };
                 if (_goal.HasValue && !_sent)
                 {
@@ -150,6 +152,32 @@ namespace ToyFactory.Tests
             bite.GetType().GetField("damage", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(bite, 0f);
             yield return Seconds(1.5f);
             Assert.AreEqual(hitsSoFar, player.Damage.Count, "At 0 the same pounce is cosmetic.");
+        }
+
+        [UnityTest]
+        public IEnumerator ABrainIgnoringThePlayerStopsTheHoldAndThePounces()
+        {
+            Floor();
+            var player = new CountingPlayer { Position = new Vector3(0f, 0f, 3f) };
+            PlayerState.Publish(player);
+            var brain = new TestBrain(player.Position);
+            AgentBite bite = Body<AgentBite>(AgentType.Tracker, 0, brain, out AgentController agent);
+            var standOff = agent.GetComponent<PlayerStandOff>();
+
+            yield return Seconds(1.5f);
+            Assert.IsTrue(standOff.IsHolding, "Engaged: held in front of the player.");
+            Assert.GreaterOrEqual(bite.Strikes, 1, "Engaged: it pounces.");
+
+            // The Tracker watching a thrown toy: its brain says it is busy with something else.
+            brain.Ignore = true;
+            yield return null;
+            yield return null;
+            int strikes = bite.Strikes;
+            yield return Seconds(2f);
+
+            Assert.IsTrue(agent.IgnoresPlayer);
+            Assert.IsFalse(standOff.IsHolding, "No longer held facing the player.");
+            Assert.AreEqual(strikes, bite.Strikes, "No new pounce while it ignores the player.");
         }
 
         [UnityTest]

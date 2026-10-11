@@ -205,8 +205,9 @@ namespace ToyFactory.Runtime.Agents
                 case AgentType.Tracker:
                     // The Tracker plans on the grid with its own GBFS; without a grid (or a
                     // patrol route) it falls back to the mock, like the unfinished types.
+                    // In the game it leaves a player who has not moved since spawning unseen.
                     if (setup.HasGrid && setup.PatrolPoints != null && setup.PatrolPoints.Count > 0)
-                        return new TrackerBrain(setup.Grid, setup.Blackboard, setup.PatrolPoints);
+                        return new TrackerBrain(setup.Grid, setup.Blackboard, setup.PatrolPoints, spawnGrace: true);
                     return new MockPathProvider(setup.PatrolPoints);
                 case AgentType.Captain:
                     // The Captain predicts and intercepts on the grid; without one it has

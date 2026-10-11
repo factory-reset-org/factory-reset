@@ -179,6 +179,24 @@ namespace ToyFactory.AI.Core.Perception
             return _closedStamp[index] == _stamp ? SourceLevel - _loss[index] : 0f;
         }
 
+        /// <summary>
+        /// Level of the last noise for a listener at <paramref name="cell"/>: the cell's own level,
+        /// or, where the noise never reached that cell, the loudest of its eight neighbours. An
+        /// agent can stand in a cell the noise skips (the 0.55 m clearance cells beside a wall or
+        /// box are not walkable), and would otherwise hear nothing there.
+        /// </summary>
+        public float LevelNear(Vector2Int cell)
+        {
+            float level = Level(cell);
+            if (level > 0f)
+                return level;
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                    if (dx != 0 || dy != 0)
+                        level = Mathf.Max(level, Level(new Vector2Int(cell.x + dx, cell.y + dy)));
+            return level;
+        }
+
         /// <summary>True where the last noise is heard (level above the threshold).</summary>
         public bool IsHeard(Vector2Int cell) => Level(cell) > HearingThreshold;
 

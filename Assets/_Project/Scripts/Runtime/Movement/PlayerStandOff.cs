@@ -55,7 +55,10 @@ namespace ToyFactory.Runtime.Movement
         void Update()
         {
             IPlayerState player = PlayerState.Current;
-            if (player == null || !player.IsAlive || _agent.IsFrozen || _agent.IsDisabled || _agent.IsDead)
+            // A brain busy with something else (the Tracker watching a thrown toy) walks on past
+            // the player, so its body neither holds in front of them nor strikes.
+            if (player == null || !player.IsAlive || _agent.IsFrozen || _agent.IsDisabled || _agent.IsDead ||
+                _agent.IgnoresPlayer)
             {
                 _follower.Release();
                 return;

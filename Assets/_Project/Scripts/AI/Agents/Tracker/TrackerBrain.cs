@@ -30,7 +30,14 @@ namespace ToyFactory.AI.Agents.Tracker
     /// over everything but a player within <see cref="LureIgnoreRange"/>: while one ticks, the
     /// Tracker does not see a player farther away, and a hunt drops back to Calm, where it is
     /// Distracted by the lure. This is the prototype's toy lock, and the player's way to shake
-    /// off a chase.</para>
+    /// off a chase. A newly thrown toy (a noise marked <see cref="SensorSnapshot.NoiseIsLure"/>)
+    /// goes further: for <see cref="LureLockTime"/> after its first tick the Tracker sees no
+    /// player at all, however close, so a toy thrown at a Tracker that is attacking still pulls
+    /// it away and gives the player time to get clear.</para>
+    /// <para><b>Spawn grace.</b> With <c>spawnGrace</c> on (the game's Tracker), a player who has
+    /// not moved more than <see cref="SpawnGraceRadius"/> since appearing (at the start or after
+    /// a respawn) is not seen unless the Tracker comes within <see cref="ProximityRange"/>, so
+    /// it never spots the player the moment the level starts.</para>
     /// <para><b>Closed doors.</b> The toy cannot open doors. When only a closed door stands
     /// between it and its goal it walks to the near side of the door (a second GBFS that treats
     /// closed doors as open shows which door, and the part of that route before it is walkable).
@@ -70,6 +77,8 @@ namespace ToyFactory.AI.Agents.Tracker
         // a hunt lets go beyond 3 m, a distracted Tracker notices the player only within 2 m.
         public const float LureIgnoreRange = 3f;
         public const float LureNoticeRange = 2f;
+        public const float LureLockTime = 3f;          // after a thrown toy's first tick, no player is seen
+        public const float SpawnGraceRadius = 1.5f;    // the player is unseen until moving this far from where it appeared
         public const int NearestCellRadius = 6;     // cells searched for a walkable stand-in
 
         readonly GridGraph _grid;
@@ -100,6 +109,17 @@ namespace ToyFactory.AI.Agents.Tracker
         Vector3 _lastKnownVelocity;
         float _lastSeenTime = float.NegativeInfinity;
 
+        // The toy lock: the thrown toy that set it, and when it ends.
+        bool _hasLureLock;
+        int _lockedLureId;
+        float _lureLockUntil = float.NegativeInfinity;
+
+        // Spawn grace: where the player appeared, and whether it has moved off yet.
+        readonly bool _spawnGrace;
+        bool _playerWasAvailable;
+        bool _graceActive;
+        Vector3 _graceAnchor;
+
         // Flags the states raise for the transition table.
         bool _stunPending;
         bool _huntingWhenStunned;
@@ -128,8 +148,10 @@ namespace ToyFactory.AI.Agents.Tracker
         string _debugState = "Patrol";
         AlertLevel _alert = AlertLevel.None;
 
-        public TrackerBrain(GridGraph grid, WorldBlackboard blackboard, IReadOnlyList<Vector3> patrolPoints)
+        /// <param name="spawnGrace">Leave a player who has not moved since appearing unseen (see the remarks).</param>
+        public TrackerBrain(GridGraph grid, WorldBlackboard blackboard, IReadOnlyList<Vector3> patrolPoints, bool spawnGrace = false)
         {
+            _spawnGrace = spawnGrace;
             _grid = grid ?? throw new ArgumentNullException(nameof(grid));
             _blackboard = blackboard ?? throw new ArgumentNullException(nameof(blackboard));
             if (patrolPoints == null || patrolPoints.Count == 0)
@@ -237,7 +259,11 @@ namespace ToyFactory.AI.Agents.Tracker
                 Action = _outAction,
                 ActionTargetId = 0,
                 DebugState = _debugState,
-                Alert = _alert
+                Alert = _alert,
+                // Calm (patrolling, investigating, watching a toy): the body must not stand off
+                // from and pounce on a player in reach, or a toy thrown at an attacking Tracker
+                // would turn its brain but leave its body biting.
+                IgnorePlayer = _machine.Current == _calm
             };
         }
 
@@ -371,11 +397,23 @@ namespace ToyFactory.AI.Agents.Tracker
                 _noises.Remember(senses.NoiseSourceId, senses.NoisePosition, senses.NoiseLevel, senses.NoiseTime,
                     senses.NoiseIsLure);
 
+            // A newly thrown toy locks the Tracker onto it for a moment, whoever is near.
+            if (senses.HasNoise && senses.NoiseIsLure && (!_hasLureLock || senses.NoiseSourceId != _lockedLureId))
+            {
+                _hasLureLock = true;
+                _lockedLureId = senses.NoiseSourceId;
+                _lureLockUntil = Now + LureLockTime;
+            }
+
             // A lure blinds the Tracker to a player who is not right next to it.
             _lured = _noises.TryGetBestRepeating(Now, _ctx.Position, out _);
+            if (!_lured)
+                _hasLureLock = false;   // the toy went quiet: the next throw locks again
+            bool toyLocked = _lured && Now < _lureLockUntil;
             bool hunting = _machine.Current == _hunting || _machine.Current == _rewindFromHunting;
             float lureRange = hunting ? LureIgnoreRange : LureNoticeRange;
-            _seesPlayer = CanSeePlayer() &&
+            bool grace = InSpawnGrace();   // every tick, so it notices the player moving off
+            _seesPlayer = !toyLocked && !grace && CanSeePlayer() &&
                           !(_lured && FlatDistance(_ctx.Position, Player.Position) > lureRange);
             if (_seesPlayer)
             {
@@ -384,6 +422,31 @@ namespace ToyFactory.AI.Agents.Tracker
                 _hasLastKnown = true;
                 _lastSeenTime = Now;
             }
+        }
+
+        // True while the player has not moved off the spot where it appeared (the first tick it
+        // is known and alive: the start, or after a respawn), unless the Tracker is right next
+        // to it. Only with spawnGrace on.
+        bool InSpawnGrace()
+        {
+            if (!_spawnGrace)
+                return false;
+            if (!PlayerAvailable())
+            {
+                _playerWasAvailable = false;
+                return false;
+            }
+            Vector3 player = Player.Position;
+            if (!_playerWasAvailable)
+            {
+                _playerWasAvailable = true;
+                _graceActive = true;
+                _graceAnchor = player;
+            }
+            if (_graceActive && (FlatDistance(player, _graceAnchor) > SpawnGraceRadius ||
+                                 FlatDistance(_ctx.Position, player) <= ProximityRange))
+                _graceActive = false;
+            return _graceActive;
         }
 
         bool CanSeePlayer()

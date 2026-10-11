@@ -12,9 +12,11 @@ namespace ToyFactory.Runtime.Animation
     /// </summary>
     /// <remarks>
     /// Added in LateUpdate on top of the pose the Animator has just written (the aim or
-    /// locomotion pose). Every Guard and Captain clip keys the arms, torso and head, so the
-    /// Animator resets them next frame and nothing builds up. The kick is fastest at the
-    /// start: it peaks at 15% of the duration and eases back.
+    /// locomotion pose), after <see cref="AgentCannonAim"/> has pointed the barrel at the
+    /// target. Every Guard and Captain clip keys the arms, torso and head, so the Animator
+    /// resets them next frame and nothing builds up. The kick is fastest at the start: it
+    /// peaks at 15% of the duration and eases back. The arm's kick is 8°: at 28° the barrel
+    /// pointed 47° up while the tracer from that same shot went out level.
     /// </remarks>
     [RequireComponent(typeof(AgentWeapon))]
     public sealed class AgentShotRecoil : MonoBehaviour
@@ -28,8 +30,8 @@ namespace ToyFactory.Runtime.Animation
         [Tooltip("Seconds from the shot until the pose has settled.")]
         [SerializeField, Min(0.05f)] float duration = 0.28f;
 
-        [Tooltip("Degrees the firing arm kicks up (about its pivot's X axis).")]
-        [SerializeField] float armKick = 28f;
+        [Tooltip("Degrees the firing arm kicks up (about its pivot's X axis). Small, so the shot still leaves along the barrel.")]
+        [SerializeField] float armKick = 8f;
 
         [Tooltip("Degrees the torso jolts back.")]
         [SerializeField] float torsoKick = 6f;

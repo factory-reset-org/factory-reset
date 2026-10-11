@@ -19,6 +19,7 @@ GameObject:
   - component: {fileID: 131684296420373666}
   - component: {fileID: 1511757106553766105}
   - component: {fileID: 4725305869367810055}
+  - component: {fileID: 6386512899692487923}
   m_Layer: 11
   m_Name: Agent_GuardBot
   m_TagString: Untagged
@@ -82,6 +83,7 @@ MonoBehaviour:
   arrivalRadius: 0.3
   groundedStickSpeed: -2
   turnSpeed: 360
+  acceleration: 12
 --- !u!114 &8290627080012992370
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -98,6 +100,9 @@ MonoBehaviour:
   hitPoints: 4
   knockOutSeconds: 8
   scrapWhenDown: 0
+  sabotageReach: 2.5
+  sabotageGiveUpSeconds: 2
+  blendReplans: 1
 --- !u!114 &6738969916081812476
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -186,7 +191,7 @@ MonoBehaviour:
   torso: {fileID: 3013790117864144640}
   head: {fileID: 8281100688280567446}
   duration: 0.28
-  armKick: 28
+  armKick: 8
   torsoKick: 6
   headKick: 8
   shape:
@@ -245,6 +250,10 @@ MonoBehaviour:
   scrapSinkSeconds: 0.7
   wordWidth: 1.1
   wordSeconds: 1
+  dormantUntilCaptainWakes: 0
+  wakeStandDelay: 0.7
+  powerDownSeconds: 1.2
+  sagAngle: 5
 --- !u!114 &4725305869367810055
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -265,6 +274,22 @@ MonoBehaviour:
   outSeconds: 0.35
   onSeconds: 0.6
   darkUntilCaptainWakes: 0
+--- !u!114 &6386512899692487923
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1436568227419779139}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 09938cbc254302644996d4c49c3ec766, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentCannonAim
+  arms:
+  - {fileID: 3805432675197456698}
+  maxCorrection: 35
+  blendSeconds: 0.1
 --- !u!1 &7309682078892167016
 GameObject:
   m_ObjectHideFlags: 0
