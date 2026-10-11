@@ -70,6 +70,7 @@ namespace ToyFactory.Tests
             // Create and destroy: what firing would cost without a pool.
             GC.Collect();
             long bytes = Allocated;
+            long native = UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong();
             int collections = GC.CollectionCount(0);
             var watch = Stopwatch.StartNew();
             for (int i = 0; i < Cycles; i++)
@@ -81,6 +82,8 @@ namespace ToyFactory.Tests
             }
             watch.Stop();
             long instantiateBytes = Allocated - bytes;
+            // Destroy is deferred to the end of the frame, so every copy is still alive here.
+            long instantiateNative = UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong() - native;
             int instantiateCollections = GC.CollectionCount(0) - collections;
             double instantiateMs = watch.Elapsed.TotalMilliseconds;
             yield return null;
@@ -94,6 +97,7 @@ namespace ToyFactory.Tests
 
             GC.Collect();
             bytes = Allocated;
+            native = UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong();
             collections = GC.CollectionCount(0);
             watch.Restart();
             for (int i = 0; i < Cycles; i++)
@@ -105,20 +109,25 @@ namespace ToyFactory.Tests
             }
             watch.Stop();
             long poolBytes = Allocated - bytes;
+            long poolNative = UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong() - native;
             int poolCollections = GC.CollectionCount(0) - collections;
             double poolMs = watch.Elapsed.TotalMilliseconds;
 
             var report = new StringBuilder();
             report.AppendLine($"Pool against Instantiate/Destroy ({Cycles} bolt + burst pairs, one frame)");
-            report.AppendLine("| Method | Managed bytes allocated | Gen-0 collections | Time (ms) | Copies created |");
-            report.AppendLine("| --- | --- | --- | --- | --- |");
-            report.AppendLine($"| Instantiate and Destroy | {instantiateBytes:N0} | {instantiateCollections} | {instantiateMs:0.00} | {Cycles * 2} |");
-            report.AppendLine($"| ObjectPool Get and Release | {poolBytes:N0} | {poolCollections} | {poolMs:0.00} | {bolts.Created + bursts.Created} |");
+            report.AppendLine("| Method | Managed bytes allocated | Gen-0 collections | Native memory held at the end of the loop (bytes) | Time (ms) | Copies created |");
+            report.AppendLine("| --- | --- | --- | --- | --- | --- |");
+            report.AppendLine($"| Instantiate and Destroy | {instantiateBytes:N0} | {instantiateCollections} | {instantiateNative:N0} | {instantiateMs:0.00} | {Cycles * 2} |");
+            report.AppendLine($"| ObjectPool Get and Release | {poolBytes:N0} | {poolCollections} | {poolNative:N0} | {poolMs:0.00} | {bolts.Created + bursts.Created} |");
             Debug.Log(report.ToString());
             TestContext.Out.WriteLine(report.ToString());
 
-            Assert.Less(poolBytes, instantiateBytes, "The pool should allocate less than create and destroy.");
-            Assert.LessOrEqual(bolts.Created, 12);
+            // Instantiate allocates in native memory, not the managed heap, so the managed columns are
+            // expected to read 0 for both. What the pool saves is the copies and the time.
+            Assert.LessOrEqual(poolBytes, instantiateBytes, "The pool never allocates more than create and destroy.");
+            Assert.Less(poolMs, instantiateMs, "Get and Release is faster than Instantiate and Destroy.");
+            Assert.LessOrEqual(bolts.Created, 12, "The pool made no new copies during the run.");
+            Assert.LessOrEqual(poolNative, instantiateNative);
 #else
             yield break;
 #endif
