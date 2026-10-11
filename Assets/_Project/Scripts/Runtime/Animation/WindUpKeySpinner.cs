@@ -28,6 +28,12 @@ namespace ToyFactory.Runtime.Animation
 
         AgentController _agent;
 
+        /// <summary>
+        /// Scales the key's turning, 1 normally: the Tracker's excitement winds it at 2× while
+        /// it watches a toy (<see cref="TrackerExcitement"/>).
+        /// </summary>
+        public float SpeedMultiplier { get; set; } = 1f;
+
         void Awake() => _agent = GetComponent<AgentController>();
 
         /// <summary>
@@ -46,7 +52,7 @@ namespace ToyFactory.Runtime.Animation
             if (key == null || _agent.IsFrozen || _agent.IsDisabled || _agent.IsDead)
                 return;
 
-            key.Rotate(localAxis, RateFor(_agent.WindUp, woundSpeed, rewindSpeed) * Time.deltaTime, Space.Self);
+            key.Rotate(localAxis, RateFor(_agent.WindUp, woundSpeed, rewindSpeed) * SpeedMultiplier * Time.deltaTime, Space.Self);
         }
     }
 }
