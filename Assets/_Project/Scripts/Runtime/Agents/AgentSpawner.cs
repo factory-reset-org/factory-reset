@@ -222,7 +222,7 @@ namespace ToyFactory.Runtime.Agents
                     if (setup.HasGrid)
                         return new GuardBrain(setup.Grid, setup.Pathfinder, setup.Blackboard,
                             new PhysicsCoverVisibility(setup.Grid), setup.Identity.Id, setup.PatrolPoints,
-                            AreaGuardHome.ForPatrol(setup.PatrolPoints));
+                            AreaGuardHome.ForPatrol(setup.PatrolPoints), GuardTuning.CurrentLambda());
                     return new MockPathProvider(setup.PatrolPoints);
                 case AgentType.Saboteur:
                     // The four Saboteurs share one squad through the blackboard's claims and one
