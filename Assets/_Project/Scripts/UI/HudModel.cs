@@ -29,13 +29,35 @@ namespace ToyFactory.UI
         /// <summary>True once the task is done.</summary>
         public bool Done { get; }
 
-        /// <summary>Creates a row.</summary>
-        public HudTaskRow(string id, string text, bool done)
+        /// <summary>How many parts the task has (targets to hit, relays to press); 1 for a plain task.</summary>
+        public int Total { get; }
+
+        /// <summary>How many of the parts are done so far, 0 to <see cref="Total"/>.</summary>
+        public int Count { get; }
+
+        /// <summary>True for a task with more than one part, so a count such as "1/3" is shown.</summary>
+        public bool HasCount => Total > 1;
+
+        /// <summary>Creates a row for a task with one part.</summary>
+        public HudTaskRow(string id, string text, bool done) : this(id, text, done, 1, done ? 1 : 0)
+        {
+        }
+
+        /// <summary>Creates a row for a task with <paramref name="total"/> parts, <paramref name="count"/> of them done.</summary>
+        public HudTaskRow(string id, string text, bool done, int total, int count)
         {
             Id = id;
             Text = text;
             Done = done;
+            Total = total < 1 ? 1 : total;
+            Count = count < 0 ? 0 : count > Total ? Total : count;
         }
+
+        /// <summary>A copy with the count changed.</summary>
+        public HudTaskRow WithCount(int count) => new HudTaskRow(Id, Text, Done, Total, count);
+
+        /// <summary>A copy marked done, with every part counted.</summary>
+        public HudTaskRow AsDone() => new HudTaskRow(Id, Text, true, Total, Total);
     }
 
     /// <summary>
@@ -123,6 +145,9 @@ namespace ToyFactory.UI
                 throw new ArgumentOutOfRangeException(nameof(switchNumber));
 
             Chapter = chapter;
+            CurrentTaskId = null;
+            SequenceTaskId = null;
+            _order.Clear();
             Title = title ?? string.Empty;
             Subtitle = subtitle ?? string.Empty;
             SwitchNumber = switchNumber;
@@ -143,13 +168,85 @@ namespace ToyFactory.UI
             {
                 if (_rows[i].Id == taskId && !_rows[i].Done)
                 {
-                    _rows[i] = new HudTaskRow(_rows[i].Id, _rows[i].Text, true);
+                    _rows[i] = _rows[i].AsDone();
                     Version++;
                     return true;
                 }
             }
 
             return false;
+        }
+
+        /// <summary>The id of the task the objective arrow points at, or null.</summary>
+        public string CurrentTaskId { get; private set; }
+
+        /// <summary>The task whose parts are shown as numbered chips (the relays), or null.</summary>
+        public string SequenceTaskId { get; private set; }
+
+        /// <summary>The order the chips must be used in, 1-based item numbers; empty if there is no sequence.</summary>
+        public IReadOnlyList<int> SequenceOrder => _order;
+
+        readonly List<int> _order = new List<int>();
+
+        /// <summary>Sets the current task (null for none).</summary>
+        public void SetCurrentTask(string taskId)
+        {
+            if (CurrentTaskId == taskId)
+                return;
+
+            CurrentTaskId = taskId;
+            Version++;
+        }
+
+        /// <summary>Shows the chips for an in-order task. An empty order clears them.</summary>
+        public void SetSequence(string taskId, IReadOnlyList<int> order)
+        {
+            _order.Clear();
+            if (order != null)
+                _order.AddRange(order);
+            SequenceTaskId = _order.Count > 0 ? taskId : null;
+            Version++;
+        }
+
+        /// <summary>
+        /// A prop reported progress in [0, 1]: the row's count becomes the parts that fraction covers.
+        /// False if the chapter has no such row, the row is done, or the count did not change.
+        /// </summary>
+        public bool SetProgress(string taskId, float progress)
+        {
+            for (int i = 0; i < _rows.Count; i++)
+            {
+                if (_rows[i].Id != taskId)
+                    continue;
+
+                if (_rows[i].Done)
+                    return false;
+
+                int count = HudMath.PartsDone(progress, _rows[i].Total);
+                if (count == _rows[i].Count)
+                    return false;
+
+                _rows[i] = _rows[i].WithCount(count);
+                Version++;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>How many chips of the sequence are used so far (the row's count), 0 if there is none.</summary>
+        public int SequenceStep
+        {
+            get
+            {
+                for (int i = 0; i < _rows.Count; i++)
+                {
+                    if (_rows[i].Id == SequenceTaskId)
+                        return _rows[i].Done ? _order.Count : _rows[i].Count;
+                }
+
+                return 0;
+            }
         }
 
         /// <summary>Sets lamp <paramref name="number"/> (1 to 3). Restoring the chapter's switch also ticks its row.</summary>
