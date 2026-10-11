@@ -11,7 +11,7 @@ namespace ToyFactory.AI.Agents.Saboteur
     /// <summary>
     /// One Saboteur instance's utility brain. It runs selection at 4 Hz through
     /// <see cref="ActionSelector"/> with Idle/Patrol and, when a candidate source is given,
-    /// AttackPlayer, and handles stun, graph changes and permanent destruction. The other
+    /// AttackPlayer and Flee, and handles stun, graph changes and permanent destruction. The other
     /// sabotage and combat actions are added on top of
     /// the same selection loop as their world facts become available: an
     /// <see cref="ICandidateSource"/> supplies them, and the brain then applies the squad layer
@@ -35,6 +35,12 @@ namespace ToyFactory.AI.Agents.Saboteur
 
         /// <summary>Seconds between two shots while attacking (provisional pacing, tuned in play).</summary>
         public const float AttackIntervalSeconds = 1.5f;
+
+        /// <summary>Seconds between two choices of where to run while fleeing.</summary>
+        public const float FleeReplanSeconds = 1f;
+
+        /// <summary>Seconds a cornered Saboteur (no retreat found) fights back before it looks for a way out again.</summary>
+        public const float FleeRetryDelaySeconds = 1f;
 
         /// <summary>Starting move speed in metres per second (plan Appendix A).</summary>
         public const float MoveSpeed = 4.3f;
@@ -105,6 +111,14 @@ namespace ToyFactory.AI.Agents.Saboteur
         // may next ask for a shot.
         bool _attacking;
         float _nextShotTime;
+
+        // Flee: the route being run, when to choose again, and the pause after finding no way out. A
+        // cornered Saboteur fights (Attack) until the pause is over.
+        bool _fleeing;
+        bool _cornered;
+        List<Vector2Int> _fleeRoute;
+        float _fleeReplanAt;
+        float _fleeBlockedUntil;
 
         // The game time of the latest tick, for answers that arrive between ticks, and the Saboteur's
         // own health as the controller last reported it.
@@ -222,12 +236,18 @@ namespace ToyFactory.AI.Agents.Saboteur
                 && TryCloseDoor(ctx, out AgentIntent closeDoor))
                 return closeDoor;
 
-            if (ctx.World != null && _selector.HasCurrent && _selector.Current.Kind == SaboteurActionKind.AttackPlayer
-                && AttackPlayerSource.InRange(ctx.World.Player, ctx.Position, out _))
+            if (ctx.World != null && _selector.HasCurrent && _selector.Current.Kind == SaboteurActionKind.Flee
+                && TryFlee(ctx, out AgentIntent flee))
+                return flee;
+
+            // A Saboteur that wants to flee but has nowhere to run fights back instead.
+            bool attackSelected = _selector.HasCurrent && (_selector.Current.Kind == SaboteurActionKind.AttackPlayer
+                || (_selector.Current.Kind == SaboteurActionKind.Flee && _cornered));
+            if (ctx.World != null && attackSelected && AttackPlayerSource.InRange(ctx.World.Player, ctx.Position, out _))
                 return Attack(ctx);
 
-            // Back to patrolling after an attack or a door: the body was stopped or sent elsewhere, so route again.
-            if (_attacking || _doorActive)
+            // Back to patrolling after an attack, a flight or a door: the body was stopped or sent elsewhere, so route again.
+            if (_attacking || _doorActive || _fleeing)
             {
                 // The selection can end before TryCloseDoor sees the door shut, because a closed door
                 // stops being a candidate. A close this Saboteur had asked for still earns the cooldown.
@@ -236,6 +256,7 @@ namespace ToyFactory.AI.Agents.Saboteur
                     _selector.NotifySuccess(_doorKey, ctx.Time);
 
                 _attacking = false;
+                ResetFleePlan();
                 ResetDoorPlan();
                 _needsRoute = true;
                 _holdSent = false;
@@ -294,6 +315,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             _needsRoute = true;
             _holdSent = false;
             _attacking = false;
+            ResetFleePlan();
             ResetDoorPlan();
         }
 
@@ -458,6 +480,58 @@ namespace ToyFactory.AI.Agents.Saboteur
                 Action = action,
                 DebugState = "AttackPlayer"
             };
+        }
+
+        void ResetFleePlan()
+        {
+            _fleeing = false;
+            _cornered = false;
+            _fleeRoute = null;
+        }
+
+        // Carries out the selected Flee: run to a refuge away from the player, and choose again once a
+        // second or on arrival, since the player moves. Returns false when there is nothing to run from
+        // or nowhere to run; the caller then fights (cornered) or falls back to patrolling.
+        bool TryFlee(in AgentContext ctx, out AgentIntent intent)
+        {
+            intent = default;
+            PlayerSnapshot player = ctx.World.Player;
+            if (!player.IsKnown || !player.IsAlive)
+            {
+                ResetFleePlan();
+                _selector.CancelCurrent();
+                _squad.EndPlan(_identity.AgentId);
+                return false;
+            }
+
+            if (ctx.Time < _fleeBlockedUntil)
+            {
+                _cornered = true;
+                return false;
+            }
+
+            _cornered = false;
+            bool arrived = _fleeRoute != null && HasArrivedAt(_fleeRoute, ctx.Position);
+            if (_fleeing && !arrived && ctx.Time < _fleeReplanAt)
+            {
+                intent = Keep("Flee");
+                return true;
+            }
+
+            if (!FleePlanner.TryChooseRetreat(_grid, _pathfinder, ctx.Cell, ctx.Position, player.Position, _patrolCells, out List<Vector2Int> route))
+            {
+                ResetFleePlan();
+                _cornered = true;
+                _fleeBlockedUntil = ctx.Time + FleeRetryDelaySeconds;
+                return false;
+            }
+
+            _fleeing = true;
+            _attacking = false;
+            _fleeRoute = route;
+            _fleeReplanAt = ctx.Time + FleeReplanSeconds;
+            intent = Move(route, "Flee");
+            return true;
         }
 
         void ResetDoorPlan()
