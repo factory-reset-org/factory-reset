@@ -165,7 +165,8 @@ namespace ToyFactory.Tests
             yield return StartPlaying();
             HudPresenter hud = HudPresenter.Current;
             Assert.AreEqual(string.Empty, hud.PromptShown);
-            Assert.AreEqual(-1, hud.ToysShown, "Nothing has reported a toy count, so no dots.");
+            // The player now reports its toys itself (PlayerHudFeed), so the dots show from the start.
+            Assert.AreEqual(3, hud.ToysShown, "The player carries its three toys at the start, and reports them.");
             Assert.AreEqual(0f, hud.CrosshairHitAmount);
 
             hud.SetPrompt("Press E to pull the lever");
