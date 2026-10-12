@@ -458,6 +458,10 @@ namespace ToyFactory.Editor.Animation
             if (modelName == "TrackerToy")
                 AddExcitement(root, model);
 
+            // The ending films the Captain powering down on its spawn, facing the console.
+            if (modelName == "CaptainBot")
+                GetOrAdd<AgentCutsceneMark>(root);
+
             if (!Lights.TryGetValue(modelName, out (LightPart[] parts, Color colour) light))
                 return;
             var lights = new SerializedObject(GetOrAdd<AgentLights>(root));

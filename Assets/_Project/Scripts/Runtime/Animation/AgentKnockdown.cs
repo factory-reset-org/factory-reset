@@ -560,13 +560,15 @@ namespace ToyFactory.Runtime.Animation
         }
 
         // Shown while knocked out, from just after the explosion; shrink away at the reboot;
-        // gone at once in any other phase (a scrap, the dormant kneel, the power-down).
+        // gone at once in any other phase (a scrap, the dormant kneel, the power-down). Gone
+        // too once the factory has shut down.
         void UpdateStars(float dt)
         {
             if (_stars == null)
                 return;
             const float delay = 0.35f, popSeconds = 0.2f, outSeconds = 0.15f;
-            bool show = _phase == Phase.Down && _phaseTime >= delay;
+            // A body that was already down when the factory shut down sleeps on, without stars.
+            bool show = _phase == Phase.Down && _phaseTime >= delay && _shutdownAt > Time.time;
             if (show)
                 _starsAmount = Mathf.Min(1f, _starsAmount + dt / popSeconds);
             else if (_phase == Phase.StandingUp)
