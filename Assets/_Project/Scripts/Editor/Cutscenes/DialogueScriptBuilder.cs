@@ -69,15 +69,15 @@ namespace ToyFactory.Editor.Cutscenes
                     Pip("Then get to the console and hold on. This is it, 047."),
                 });
 
+            // One line or beat per shot: the shutdown at the console, the Captain powering down,
+            // the room going dark, the quality check (split so the stamp lands on its verdict,
+            // like the intro's), and the crane.
             Write("ending",
-                new[] { OS("Shutdown... sequence... accepted."), OS("Good... night...") },
-                new[]
-                {
-                    Pip("You did it! Every toy in the building just yawned and fell asleep."),
-                    Pip("Re-running quality check... Product status: NOT DEFECTIVE."),
-                    Unit("Not defective."),
-                    Pip("Welcome to the team, 047."),
-                });
+                new[] { OS("Shutdown... sequence... accepted.") },
+                new[] { OS("Good... night...") },
+                new[] { Pip("You did it! Every toy in the building just yawned and fell asleep.") },
+                new[] { Pip("Re-running quality check..."), Pip("Product status: NOT DEFECTIVE.") },
+                new[] { Unit("Not defective."), Pip("Welcome to the team, 047.") });
 
             AssetDatabase.SaveAssets();
             Debug.Log("Dialogue scripts built in " + Folder);

@@ -48,7 +48,7 @@ namespace ToyFactory.Tests.EditMode
             (new Vector2(6.92f, 28f), new Vector2(1.3f, 1.5f), 2.8f, "Control server 10"),
             (new Vector2(16.93f, 24f), new Vector2(1.3f, 1.5f), 2.8f, "Control server 11"),
             (new Vector2(4.06f, 24f), new Vector2(1.3f, 1.5f), 2.8f, "Control server 12"),
-            (new Vector2(10.5f, 31f), new Vector2(2f, 1.6f), 2f, "Control console"),
+            (new Vector2(10.5f, 31f), new Vector2(1.2f, 0.6f), 1f, "Control console"),   // measured in Env, 2026-10-12
         };
 
         static IEnumerable<(CutsceneShot shot, Vector3 camera, string pose)> Cameras(ShotFraming framing)
@@ -97,6 +97,67 @@ namespace ToyFactory.Tests.EditMode
                 Assert.IsFalse(over && camera.y <= obstacle.top + ObstacleMargin,
                     $"{Name(shot, pose)} at {camera} is inside {obstacle.name}.");
             }
+        }
+
+        const float ServerTop = 2.8f;
+
+        // True if the point is inside an obstacle (other than the one named), below its top.
+        static bool Inside(Vector3 point, out string obstacleName, string except = null)
+        {
+            foreach (var obstacle in Obstacles)
+            {
+                if (obstacle.name == except)
+                    continue;
+                Vector2 half = obstacle.size * 0.5f;
+                bool over = Mathf.Abs(point.x - obstacle.centre.x) <= half.x && Mathf.Abs(point.z - obstacle.centre.y) <= half.y;
+                // A core floats above its server: only the 2.8 m server is solid. The 0.8 m core
+                // is one of the subjects of the shots that see it (ch4) and too small to hide one.
+                float top = obstacle.name.Contains(" and core ") ? ServerTop : obstacle.top;
+                bool inside = over && point.y <= top;
+                if (inside)
+                {
+                    obstacleName = obstacle.name;
+                    return true;
+                }
+            }
+            obstacleName = null;
+            return false;
+        }
+
+        // The ending was filmed by follow cameras until 2026-10-12, which could land behind a
+        // server rack depending on where the player stood: this is the check those shots could not have.
+        [Test]
+        public void EveryFixedCameraSeesWhatItLooksAtPastTheObstacles()
+        {
+            const float stopShort = 0.3f;
+            foreach (CutsceneShot shot in CutsceneShotPlan.All.Where(s => s.Framing == ShotFraming.World))
+            foreach (var (camera, look, pose) in new[] { (shot.From, shot.LookFrom, "start"), (shot.To, shot.LookTo, "end") })
+            {
+                // The subject may stand on an obstacle (a target on its tank, a core on its server): not a blocker.
+                Inside(look, out string subject);
+                float length = Vector3.Distance(camera, look) - stopShort;
+                Vector3 direction = (look - camera).normalized;
+                for (float d = 0f; d <= length; d += 0.05f)
+                    Assert.IsFalse(Inside(camera + direction * d, out string blocker, subject),
+                        $"{Name(shot, pose)}: {blocker} stands between the camera and what it looks at, {d:F1} m out.");
+            }
+        }
+
+        [Test]
+        public void TheEndingPutsUnit047AtTheConsoleFacingIt()
+        {
+            Assert.IsTrue(CutsceneShotPlan.TryGetActorMark("ending", out Vector3 mark, out float yaw));
+            Rect room = CutsceneShotPlan.Interior(ShotRoom.Control);
+            Assert.IsTrue(room.Contains(new Vector2(mark.x, mark.z)), "In the Control Room.");
+            Assert.IsFalse(Inside(mark + Vector3.up * 0.5f, out string blocker), $"Not inside {blocker}.");
+
+            Vector3 facing = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
+            Vector3 toConsole = new Vector3(10.5f, 0f, 31f) - mark;
+            Assert.That(toConsole.magnitude, Is.InRange(0.8f, 1.6f), "Within reach of the console.");
+            Assert.Less(Vector3.Angle(facing, toConsole), 25f, "Facing it (at its left end).");
+
+            Assert.IsFalse(CutsceneShotPlan.TryGetActorMark("intro", out _, out _), "The other cutscenes film 047 where the player stands.");
+            Assert.IsTrue(CutsceneShotPlan.For("ending").All(s => s.Framing == ShotFraming.World), "The ending's cameras are all fixed.");
         }
 
         [Test]
