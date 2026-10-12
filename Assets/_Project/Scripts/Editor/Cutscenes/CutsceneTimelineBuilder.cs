@@ -158,7 +158,7 @@ namespace ToyFactory.Editor.Cutscenes
             CutsceneCuePlayer player = director.GetComponent<CutsceneCuePlayer>();
             if (player == null)
                 player = director.gameObject.AddComponent<CutsceneCuePlayer>();
-            string[] files = { "Comic_Alert.png", "Comic_AttenHut.png", "Comic_Defective.png", "Comic_Shutdown.png" };
+            string[] files = { "Comic_Alert.png", "Comic_AttenHut.png", "Comic_Defective.png", "Comic_Shutdown.png", "Comic_NotDefective.png" };
             var settings = new SerializedObject(player);
             SerializedProperty words = settings.FindProperty("words");
             words.arraySize = files.Length;

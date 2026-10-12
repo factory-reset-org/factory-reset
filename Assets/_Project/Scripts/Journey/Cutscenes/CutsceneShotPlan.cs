@@ -149,18 +149,49 @@ namespace ToyFactory.Journey.Cutscenes
                 new Vector3(2.2f, 4.4f, 22.3f), new Vector3(5.5f, 4.6f, 23.2f), new Vector3(10.5f, 3f, 33.5f), new Vector3(10.5f, 3f, 33.5f), 60f,
                 signals: CutsceneSignals.CoreShieldsDown),
 
-            // ---- Ending: behind Unit 047 at the console, then a crane back as the factory sleeps.
-            // The console stands in the middle of the Control Room, 10 m from every wall, so the
-            // crane ends at most 6 m behind 047 to stay inside the room.
-            new CutsceneShot("ending", 0, "Behind Unit 047, looking at the console", ShotRoom.Control, ShotFraming.FollowActor,
-                new Vector3(0.6f, 2.2f, -3f), new Vector3(0.7f, 2.5f, -3.6f), new Vector3(10.5f, 1.2f, 31f), new Vector3(10.5f, 1.2f, 31f), 55f,
+            // ---- Ending: the factory sleeps. Fixed cameras: Unit 047 is put on its mark at the
+            // console (EndingActorMark) and the Captain on its spawn facing it, so every shot is
+            // the same wherever the player finished the hold. The Control Room's open lines are
+            // the middle aisle through the gaps in the inner server rows (x 9-12) and the strip
+            // between those rows (z 29-33); every shot looks along one of them.
+            new CutsceneShot("ending", 0, "Low up the aisle: 047 at the console, the Captain powering down beyond", ShotRoom.Control, ShotFraming.World,
+                new Vector3(11.6f, 1.5f, 26.2f), new Vector3(11.5f, 1.45f, 26.7f), new Vector3(10.6f, 1.9f, 35f), new Vector3(10.6f, 1.9f, 35f), 50f,
                 signals: CutsceneSignals.FactoryShutdown),
-            new CutsceneShot("ending", 1, "Crane back and up from Unit 047", ShotRoom.Control, ShotFraming.FollowActor,
-                new Vector3(0.7f, 2.5f, -3.6f), new Vector3(1f, 4.4f, -6f), new Vector3(0f, 1.2f, 0f), new Vector3(0f, 1f, 0f), 60f,
-                looksAtActor: true),
+            new CutsceneShot("ending", 1, "Low push-in on the kneeling, dark Captain", ShotRoom.Control, ShotFraming.World,
+                new Vector3(10.9f, 1.15f, 32.3f), new Vector3(10.7f, 1.2f, 32.85f), new Vector3(10.5f, 2.3f, 36f), new Vector3(10.5f, 2.1f, 36f), 42f),
+            new CutsceneShot("ending", 2, "High from the Storage door across the sleeping room", ShotRoom.Control, ShotFraming.World,
+                new Vector3(19.6f, 4.5f, 31.6f), new Vector3(18.6f, 4.8f, 31.1f), new Vector3(10.5f, 0.9f, 31f), new Vector3(10.3f, 0.9f, 30.6f), 52f),
+            new CutsceneShot("ending", 3, "Push-in on 047's face through the server row: the quality check", ShotRoom.Control, ShotFraming.World,
+                new Vector3(10.8f, 2.3f, 34f), new Vector3(10.6f, 2.2f, 33.5f), new Vector3(10.1f, 2.2f, 29.8f), new Vector3(10.1f, 2.2f, 29.8f), 45f),
+            new CutsceneShot("ending", 4, "Crane up and back over the console as 047 looks up", ShotRoom.Control, ShotFraming.World,
+                new Vector3(11.6f, 2.3f, 32.2f), new Vector3(12.9f, 4.6f, 33.3f), new Vector3(10.1f, 1.9f, 29.8f), new Vector3(10.1f, 1.4f, 29.8f), 50f),
         };
 
-        /// <summary>Furthest a follow camera may be from Unit 047 on the ground, so a shot taken at the console stays inside the Control Room.</summary>
+        /// <summary>
+        /// Where Unit 047 stands in the ending, whatever side of the console the player finished
+        /// the hold from: at the console's south side, facing north, a little left of centre so
+        /// the first shot sees the console and the Captain past it. The cut hides the move.
+        /// </summary>
+        public static readonly Vector3 EndingActorMark = new Vector3(10.1f, 0f, 29.8f);
+
+        /// <summary>
+        /// Where the stand-in is put for a cutscene and the way it faces (degrees about Y), if
+        /// that cutscene has a mark. Without one, the stand-in is put where the player stands.
+        /// </summary>
+        public static bool TryGetActorMark(string cutsceneId, out Vector3 position, out float yaw)
+        {
+            if (cutsceneId == "ending")
+            {
+                position = EndingActorMark;
+                yaw = 0f;   // north, at the console
+                return true;
+            }
+            position = default;
+            yaw = 0f;
+            return false;
+        }
+
+        /// <summary>Furthest a follow camera may be from Unit 047 on the ground, so it stays near the stand-in.</summary>
         public const float MaxFollowDistance = 7f;
 
         /// <summary>Every shot of every cutscene.</summary>

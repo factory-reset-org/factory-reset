@@ -22,6 +22,7 @@ GameObject:
   - component: {fileID: 4730924927841941763}
   - component: {fileID: 4562163883646627793}
   - component: {fileID: 4060259561142310334}
+  - component: {fileID: 1662743342243405871}
   m_Layer: 11
   m_Name: Agent_CaptainBot
   m_TagString: Untagged
@@ -371,6 +372,21 @@ MonoBehaviour:
   - {fileID: 5360294489629131018}
   maxCorrection: 35
   blendSeconds: 0.1
+--- !u!114 &1662743342243405871
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2423681692945176304}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 219b96633bfb5fb419dd6c31c948c8d1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Agents.AgentCutsceneMark
+  cutsceneId: ending
+  position: {x: 10.5, y: 0, z: 36}
+  yaw: 180
 --- !u!1 &6231920233453024729
 GameObject:
   m_ObjectHideFlags: 0

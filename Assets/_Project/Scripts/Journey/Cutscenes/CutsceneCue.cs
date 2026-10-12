@@ -27,6 +27,9 @@ namespace ToyFactory.Journey.Cutscenes
 
         /// <summary>A mint "SHUTDOWN" as Factory OS shuts down.</summary>
         Shutdown,
+
+        /// <summary>A green "NOT DEFECTIVE!" as Unit 047 passes its quality check in the ending.</summary>
+        NotDefective,
     }
 
     /// <summary>
@@ -92,6 +95,7 @@ namespace ToyFactory.Journey.Cutscenes
             CutsceneCue.Alarm("ch3", 0),                                                            // waking the Captain
             CutsceneCue.Alarm("ch4", 0),                                                            // core defence protocol
             CutsceneCue.PopAt("ending", 0, 0, ComicWord.Shutdown, new Vector3(10.5f, 2.8f, 31f)), // over the console
+            CutsceneCue.PopOnActor("ending", 3, 1, ComicWord.NotDefective, new Vector3(0f, 2.6f, 0f)), // "Product status: NOT DEFECTIVE."
         };
 
         /// <summary>Every cue of every cutscene.</summary>
