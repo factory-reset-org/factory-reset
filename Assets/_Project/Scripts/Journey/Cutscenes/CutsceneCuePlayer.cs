@@ -1,17 +1,19 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 using ToyFactory.Interfaces;
 
 namespace ToyFactory.Journey.Cutscenes
 {
     /// <summary>
     /// Plays the cutscenes' cues: the factory alarm, and comic words ("?!", "ATTEN-HUT!",
-    /// "DEFECTIVE!", "SHUTDOWN") that pop up in the scene, face the camera, drift up and fade.
-    /// The director hands it each <see cref="CutsceneCueMarker"/> its Timeline passes.
+    /// "DEFECTIVE!", "SHUTDOWN", "NOT DEFECTIVE!") that pop up in the scene, face the camera,
+    /// drift up and fade. The director hands it each <see cref="CutsceneCueMarker"/> its Timeline passes.
     /// </summary>
     /// <remarks>
     /// <para>The words are pre-rendered sprites in the same style as the agents' knock-out
-    /// word, shown on a camera-facing sprite, so no font asset or canvas is needed. They pop
+    /// word, shown on a camera-facing sprite, so no font asset or canvas is needed. They are
+    /// turned to the camera just before it renders, after Cinemachine has placed it. They pop
     /// to 115% and settle like the knock-out word, but stay up longer (1.6 s) so they can be
     /// read in a cutscene. Every word still showing is cleared when the cutscene ends, so a
     /// skip never leaves one hanging.</para>
@@ -24,15 +26,15 @@ namespace ToyFactory.Journey.Cutscenes
     {
         const int SampleRate = 44100;
 
-        [Tooltip("One sprite per ComicWord, in its order: Alert, Attention, Defective, Shutdown.")]
-        [SerializeField] Sprite[] words = new Sprite[4];
+        [Tooltip("One sprite per ComicWord, in its order: Alert, Attention, Defective, Shutdown, NotDefective.")]
+        [SerializeField] Sprite[] words = new Sprite[5];
 
         [Tooltip("Plays the alarm. A 2D source is added if left empty.")]
         [SerializeField] AudioSource alarmSource;
 
         [SerializeField, Range(0f, 1f)] float alarmVolume = 0.45f;
 
-        [Tooltip("Width of a long word (DEFECTIVE!, SHUTDOWN), in metres.")]
+        [Tooltip("Width of a long word (DEFECTIVE!, SHUTDOWN, NOT DEFECTIVE!), in metres.")]
         [SerializeField, Min(0.1f)] float wordWidth = 1.8f;
 
         [Tooltip("Width of the short \"?!\", in metres.")]
@@ -86,11 +88,16 @@ namespace ToyFactory.Journey.Cutscenes
             _alarm = BuildAlarm();
         }
 
-        void OnEnable() => CutsceneEvents.OnCutsceneEnded += HandleEnded;
+        void OnEnable()
+        {
+            CutsceneEvents.OnCutsceneEnded += HandleEnded;
+            RenderPipelineManager.beginCameraRendering += FaceCamera;
+        }
 
         void OnDisable()
         {
             CutsceneEvents.OnCutsceneEnded -= HandleEnded;
+            RenderPipelineManager.beginCameraRendering -= FaceCamera;
             HideAll();
         }
 
@@ -143,6 +150,18 @@ namespace ToyFactory.Journey.Cutscenes
                 else
                     Animate(pop, pop.Time);
             }
+        }
+
+        // Turns every word to face the camera about to draw it. In a cutscene the Cinemachine
+        // brain moves the camera to the shot after this component's LateUpdate, so a word turned
+        // there faced the player's eyes (where 047 stands) and was seen edge-on from the shot.
+        void FaceCamera(ScriptableRenderContext context, Camera camera)
+        {
+            if (camera.cameraType != CameraType.Game)
+                return;
+            foreach (Pop pop in _pops)
+                if (pop.Active)
+                    pop.Transform.rotation = Quaternion.LookRotation(pop.Transform.position - camera.transform.position, camera.transform.up);
         }
 
         // Pops in with an overshoot, drifts up, faces the camera and fades out at the end.
