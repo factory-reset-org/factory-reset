@@ -37,6 +37,9 @@ namespace ToyFactory.Tests.EditMode
             Assert.IsTrue(defective.OnActor, "Above Unit 047, wherever the player stands.");
             Assert.AreEqual(1, defective.AtLine, "With \"Product status: DEFECTIVE.\"");
             Assert.IsTrue(HasWord("ending", 0, ComicWord.Shutdown));
+            CutsceneCue passed = CutsceneCuePlan.For("ending", 3).Single(c => c.Word == ComicWord.NotDefective);
+            Assert.IsTrue(passed.OnActor, "Above Unit 047, like the intro's DEFECTIVE!");
+            Assert.AreEqual(1, passed.AtLine, "With \"Product status: NOT DEFECTIVE.\"");
         }
 
         [Test]
