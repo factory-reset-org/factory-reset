@@ -17,14 +17,15 @@ namespace ToyFactory.Editor.World
     /// Sources (all CC0, ambientCG.com, 1K): Plastic010 (plastic), Metal032 (brushed metal),
     /// Concrete046 (walls, 2.4 m), Tiles107 (floor; 8 x 8 tiles to the metre, scaled up to the
     /// room's 1 m tiles), OfficeCeiling001 (ceiling, 3.85 m), Wood049 (wood, 0.8 m),
-    /// Cardboard004 (cardboard). The photographed smoothness drives the surface, so materials
+    /// Cardboard004 (cardboard), SheetMetal002 (perforated steel, its zinc pattern toned down and
+    /// the holes dark, 0.4 m). The photographed smoothness drives the surface, so materials
     /// using a set have their own smoothness set to 1.
     /// </remarks>
     public static class PhotoTextures
     {
         public const string Folder = TextureFolder + "/Photo";
 
-        public enum Kind { Plastic, Metal, WallPanel, FloorTile, Ceiling, Wood, Cardboard }
+        public enum Kind { Plastic, Metal, WallPanel, FloorTile, Ceiling, Wood, Cardboard, Perforated }
 
         // Metres one repeat covers, normal strength, occlusion strength.
         static (float tile, float bump, float occlusion) Settings(Kind kind)
@@ -37,6 +38,7 @@ namespace ToyFactory.Editor.World
                 case Kind.FloorTile: return (8f, 0.7f, 0.7f);       // 8 x 8 tiles in a repeat: 1 m tiles
                 case Kind.Ceiling: return (3.85f, 0.8f, 0.7f);
                 case Kind.Wood: return (0.8f, 0.7f, 0f);
+                case Kind.Perforated: return (0.4f, 0.9f, 0.9f);   // 16 holes a repeat, 2.5 cm apart
                 default: return (0.6f, 0.6f, 0f);                   // cardboard
             }
         }
@@ -66,6 +68,20 @@ namespace ToyFactory.Editor.World
                 material.EnableKeyword("_OCCLUSIONMAP");
             else
                 material.DisableKeyword("_OCCLUSIONMAP");
+            EditorUtility.SetDirty(material);
+        }
+
+        /// <summary>
+        /// Gives <paramref name="material"/> only <paramref name="kind"/>'s photographed relief (its
+        /// normal map), keeping its own colour map: for painted pictures, such as sign atlases, that
+        /// should catch the light like the surface they are painted on. The relief follows the
+        /// material's own tiling.
+        /// </summary>
+        public static void ApplyRelief(Material material, Kind kind, float strength)
+        {
+            material.SetTexture("_BumpMap", Load(kind, "N", TextureImporterType.NormalMap, false));
+            material.SetFloat("_BumpScale", strength);
+            material.EnableKeyword("_NORMALMAP");
             EditorUtility.SetDirty(material);
         }
 
