@@ -115,14 +115,16 @@ Built by `Tools > Factory Reset > Build Painting Room Dressing` (`Editor/World/P
 | Mixing vat | tank 5 (23.1, 1.5) | The tank with no target: a motor on a bridge over its turning lid and a MIXER label, fed by four paint lines (pink, yellow, blue, mint) that drop from a manifold in the ceiling with a shut-off wheel each |
 | Doors 1 and 2 | west and north walls | Door 2 raised to 5 m (white lintel at 5-6 m); both openings framed on this side, with a mint "open" strip. **S2:** `Door_2`'s panel needs to be 5 m too, like doors 1 and 4 |
 | Floor | slippery zones, by the drying rack | Eight paint splats with droplets where the round puddles were, on S2's three slippery zones; a trail of red paw prints from a splat towards the drying rack |
-| Walls | all four | A pink, yellow and mint stripe at 1.5-1.7 m; paint drips running down from the top band; five round porthole windows (bolted grey frames) with the daylight view |
+| Walls | all four | A pink, yellow and mint stripe at 1.5-1.7 m and five real round windows: two in the south wall (x 27.1 and 35.6) and three in the east wall (z 2.6, 10.5 and 16.2), 1.5 m across at 3.4 m. Each is a square opening cut through the wall (`WallCutter`; the colliders stay whole), filled back in round the circle in the wall's own concrete, with clear glass and a bolted grey frame on a steel mounting plate; the sky and the outside show through, and the sun comes in through the south ones. The scattered wall drips are gone (they ran down for no reason; the tanks keep their paint runs) |
 | Signs | east, north, west walls | "02 PAINTING ROOM" high on the east wall (seen from door 1), "ASSEMBLY FLOOR" and "STORAGE AREA" plaques by the doors, a colour-wheel mural, posters ("WET PAINT!", "SWATCHES", "STAY IN THE LINES!"), a glowing paint-levels screen |
-| Paint tins and drums | south wall, x 25.5-28.5 and 34.1-36.5 | Eighteen stacked tins with coloured bands and lids; three drums with hoops. 1.1 m and 0.96 m colliders |
+| Paint tins and drums | south wall, x 25.5-28.5 and 34.1-36.5 | Eighteen stacked steel tins with coloured bands and lids; three painted steel drums with hoops. 1.1 m and 0.96 m colliders |
 | Drying rack | east wall, z 12.6-15.6 | Three shelves of freshly painted toys. 2 m collider |
 | Sink | west wall, z 16.5-18.3 | A cleaning sink with a tap and a pot of brushes, spray guns on hooks above. 1 m collider. Kept north of z 16, where `SaboteurDoorSceneTests` opens a second gap through this wall |
 | Ceiling | between the light panels | Two extractor fans set into the ceiling, turning (`DressingSpinner`). No hanging lamps and no moving rack |
 
-**Budget:** 89,160 triangles (the five detailed tanks are 28,484 of them), merged to 99 renderers. Measured view costs are in `OptimisationLog.md`.
+Every surface has a photographic texture, as in room 1 (see the Art Bible, surface textures): 0.5 m floor tiles, the acoustic ceiling tiles in the room's dark plum, painted concrete walls. Everything that would be metal in a real paint shop is painted steel (`M_Env_Machine_*`): the tanks and their hoops, motor and valve wheels, the paint lines, tins, drums, the rack's shelves, the sink cabinet and the extractor blades; bolts, ladders, taps and hubs are brushed steel. Only the toys, splats and signs stay plastic. The last two wall gears, which turned for no reason, are gone.
+
+**Budget:** 87,808 triangles (the five detailed tanks are 28,484 of them), merged to 110 renderers. Measured view costs are in `OptimisationLog.md`.
 
 ## Storage Area (final dressing)
 
@@ -169,11 +171,11 @@ Dressing from the prototype that makes each room read as its own part of the fac
 | Storage | Every shelf run is a shelving unit: a thin spine, blue posts at most 3 m apart and four white boards, stocked with toys and toy boxes on the lower three boards (since the Storage revamp; see Storage Area above) | The stock stays inside the shelf's 1 m depth. It is lit by light probes, not lightmaps, to keep the lightmaps small |
 | Painting | Eight paint splats on S2's three slippery zones (were round puddles until the Painting revamp) | Purely visual; S2's `SlipperyFloor` zones make them slippery |
 | Control | Banks of server cabinets built into every wall and a mainframe, with blinking status lights (`DressingBlinker`); replaced the nine thin wall racks in the Control revamp (see Control Room above) | 0.4 m deep with a collider per bank, clear of the doors, console, traps, battery and overcharge anchors |
-| Painting | One pair of wall gears that turn (`DressingSpinner`); the small gear turns faster than its partner, at the tooth ratio. The Assembly Floor's six became its belt drive | `GearMesh` builds the toothed discs |
+| Assembly | The belt drive's yellow and red gears turn (`DressingSpinner`); the small gear turns faster than its partner, at the tooth ratio. The room's six wall gears became this drive, and the Painting Room's last pair was removed | `GearMesh` builds the toothed discs |
 
 **Surfaces:** a hazard-stripe skirting (0.6 m) runs along every room wall except across the doorways, with a dark plum band (0.3 m) under the ceiling; floors are tiled; the Control Room floor is dark with a violet glowing grid; the Assembly assembler has a hazard outline on the floor, and the Assembly floor's tiles are 1 m, the size of S2's crates (the other rooms' are 0.5 m). All are thin, flat and without colliders (the skirting stands 0.04 m off the wall, inside the 0.55 m clearance). See the Art Bible.
 
-**At the shutdown:** the gears (wall gears and the Assembly belt drive and its drum), paint-tank lids, the assembler's robot arm, the Assembly wall fan, clock and toy rail, and the Painting extractor fans wind down to a stop, the assembler's stamper rises and stops, its buttons go dark, and every server light goes dark on `CutsceneSignals.FactoryShutdown`, in step with `LightingState`.
+**At the shutdown:** the gears (the Assembly belt drive and its drum), paint-tank lids, the assembler's robot arm, the Assembly wall fan, clock and toy rail, and the Painting extractor fans wind down to a stop, the assembler's stamper rises and stops, its buttons go dark, and every server light goes dark on `CutsceneSignals.FactoryShutdown`, in step with `LightingState`.
 
 ## NavMesh and grid
 
