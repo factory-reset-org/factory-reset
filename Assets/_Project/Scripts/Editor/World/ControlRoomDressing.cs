@@ -18,6 +18,8 @@ namespace ToyFactory.Editor.World
     /// under a wall of screens showing Factory OS's status. There are no windows;
     /// the walls are clad dark, the ceiling lights are dimmed and cooled, and red light comes from
     /// the cables and channels, violet from the strips and screens. Re-running replaces the previous build.
+    /// Like the other rooms, every surface has a photographic texture: dark painted steel on the
+    /// cladding and the server shells, photographed floor and ceiling tiles.
     /// </summary>
     /// <remarks>
     /// Everything stays clear of S2's console, cores, traps and pickups, the Captain's spawn and
@@ -140,16 +142,34 @@ namespace ToyFactory.Editor.World
             _cable = Plastic("Cable", Hex("17141F"), 0.45f);
             _cableGlow = Plastic("CableGlow", Hex("A01628"), 0.5f, null, new Color(1.1f, 0.06f, 0.14f));
             _panel = Plastic("CeilingPanelControl", Hex("C9BDFF"), 0.9f, null, new Color(0.75f, 0.68f, 1.35f));
+            // The cladding and the server shells, trims and plinths are dark painted steel (the
+            // photographed brushed metal, tinted); the cables are rubber.
+            foreach (Material steel in new[] { _shell, _trim, _black, _wall })
+                PhotoTextures.Apply(steel, PhotoTextures.Kind.Metal);
+            PhotoTextures.Apply(_cable, PhotoTextures.Kind.Plastic);
         }
 
-        // The dark look: a dark floor whose grid glows violet, dimmed cool ceiling lights, a violet glow over the mainframe.
+        // The dark look: a dark tiled floor with a violet glow round each tile, dimmed cool ceiling
+        // lights, a violet glow over the mainframe.
         static void Mood()
         {
+            // Photographed 0.5 m floor tiles, as in every room. The floor's top face runs its UVs
+            // from x = 20.75 and z = 41.5 back; the photo holds 8 x 8 tiles, scaled to 4 m and offset
+            // 0.25 m in x to land the joins on the half metres. The glow map (which shares the
+            // tiling) traces a square inside each of the 8 x 8 tiles.
             Material floor = Mat("FloorTiled_Control");
             floor.SetColor("_BaseColor", Hex("4A4260"));
+            PhotoTextures.Apply(floor, PhotoTextures.Kind.FloorTile, new Vector2(20.75f / 4f, 20.75f / 4f));
+            floor.SetTextureOffset("_BaseMap", new Vector2(0.0625f, 0f));
+            floor.SetTexture("_EmissionMap", AssetDatabase.LoadAssetAtPath<Texture2D>(TextureFolder + "/T_Env_FloorGlowGrid8.png"));
             floor.EnableKeyword("_EMISSION");
             floor.SetColor("_EmissionColor", new Color(0.16f, 0.07f, 0.3f));
             EditorUtility.SetDirty(floor);
+
+            // The acoustic ceiling tiles every room shares.
+            GameObject ceilingTiles = GameObject.Find("Level/Ceilings/Ceiling_Control");
+            if (ceilingTiles != null)
+                ceilingTiles.GetComponent<MeshRenderer>().sharedMaterial = Mat("CeilingTiles");
 
             GameObject panels = GameObject.Find("Panels_Control");
             if (panels != null)
