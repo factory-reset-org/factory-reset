@@ -3,6 +3,7 @@ using System.Text;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using ToyFactory.Runtime.World;
 using static ToyFactory.Editor.World.DressingKit;
 using static ToyFactory.Editor.World.RoomPieces;
 
@@ -16,6 +17,10 @@ namespace ToyFactory.Editor.World
     /// forklift, yellow aisle lines and shelf-end labels, a packing table, a roll cage, and a
     /// coloured ring and plaque at each relay so its colour matches the board. Door 3 rises to
     /// 5 m and both doors are framed. Re-running replaces the previous build.
+    /// Like the first two rooms, every surface has a photographic texture, the strip windows are
+    /// real openings showing the sky, and the props are made of what they would be made of:
+    /// painted steel shelving, forklift, rail and shutter, wooden pallets and table top,
+    /// cardboard boxes; only the toys, signs and floor markings are plastic.
     /// </summary>
     /// <remarks>
     /// The board keeps its RelayBoard component, collider and three order slots (the board
@@ -44,7 +49,7 @@ namespace ToyFactory.Editor.World
             (26.70f, 32.42f, 29.5f, "C1"), (35.29f, 39.58f, 29.5f, "C2"), (23.84f, 26.70f, 25.5f, "D1"), (35.28f, 38.14f, 25.5f, "D2")
         };
 
-        static Material _signs, _screens, _green;
+        static Material _signs, _screens, _green, _wood, _card;
 
         // Atlas rectangles (pixels, bottom-left origin, 1024 x 1024).
         static readonly RectInt MainSign = new RectInt(0, 832, 1024, 192);
@@ -87,6 +92,10 @@ namespace ToyFactory.Editor.World
 
             Load();
             PaintAtlas();
+            _wood = Mat("Wood");
+            _card = Mat("Cardboard");
+            _cartons.Clear();
+            Surfaces(level.transform);
             Transform root = Group(dressing, "Storage");
 
             Doors(level.transform, root);
@@ -226,6 +235,47 @@ namespace ToyFactory.Editor.World
 
         static Material RelayMaterial(int i) => i == 0 ? M.Red : i == 1 ? _green : M.Blue;
 
+        // ---- Cartons ----------------------------------------------------------------------
+
+        // Cardboard has crisp edges, not the level's rounded-plastic ones: a box with 1 cm
+        // rounding, made once per size per build.
+        static readonly Dictionary<Vector3, Mesh> _cartons = new Dictionary<Vector3, Mesh>();
+
+        static Mesh CartonMesh(Vector3 size)
+        {
+            if (!_cartons.TryGetValue(size, out Mesh mesh))
+            {
+                const float radius = 0.01f;
+                string Metres(float v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+                mesh = Custom($"Carton_{Metres(size.x)}x{Metres(size.y)}x{Metres(size.z)}",
+                    () => RoundedBoxMesh.Create(size, radius, RoundedBoxMesh.RecommendedSegments(size, radius)));
+                _cartons[size] = mesh;
+            }
+            return mesh;
+        }
+
+        static GameObject Carton(Transform parent, string name, Vector3 size, Material material, Vector3 centre, Quaternion? rotation = null) =>
+            Part(parent, name, CartonMesh(size), material, centre, rotation ?? Quaternion.identity);
+
+        // ---- Surfaces ----------------------------------------------------------------------
+
+        // Photographed floor tiles (0.5 m, as in the Painting Room) in the room's own floor tint,
+        // and the acoustic ceiling tiles every room shares. The walls are already painted concrete
+        // (the Assembly builder gives every wall that material).
+        static void Surfaces(Transform level)
+        {
+            // The floor's top face runs its UVs from x = z = 41.5 back; the photo holds 8 x 8 tiles,
+            // scaled to 4 m, so the joins land on the half metres with no offset.
+            Material tiles = Mat("FloorTiled_Storage");
+            PhotoTextures.Apply(tiles, PhotoTextures.Kind.FloorTile, new Vector2(20.75f / 4f, 20.75f / 4f));
+            tiles.SetTextureOffset("_BaseMap", Vector2.zero);
+            EditorUtility.SetDirty(tiles);
+
+            Transform ceiling = level.Find("Ceilings/Ceiling_Storage");
+            if (ceiling != null)
+                ceiling.GetComponent<MeshRenderer>().sharedMaterial = Mat("CeilingTiles");
+        }
+
         // ---- Doors -------------------------------------------------------------------------
 
         static void Doors(Transform level, Transform root)
@@ -245,12 +295,13 @@ namespace ToyFactory.Editor.World
             Move("Lighting/ControlAlarms/AlarmDoor3/AlarmLight", new Vector3(20.75f, 4.6f, 31f));
         }
 
-        // ---- Walls: an orange band ---------------------------------------------------------
+        // ---- Walls: an orange crash rail ---------------------------------------------------
 
         static void Walls(Transform root)
         {
             Transform walls = Group(root, "Walls");
-            Material band = M.Orange;
+            // A painted steel crash rail at forklift height, not a stripe.
+            Material band = AsMachine(M.Orange);
             Box(walls, "Band_S1", new Vector3(8.1f, 0.2f, 0.04f), band, new Vector3(25.05f, 1.35f, 21.02f));
             Box(walls, "Band_S2", new Vector3(8.1f, 0.2f, 0.04f), band, new Vector3(36.95f, 1.35f, 21.02f));
             Box(walls, "Band_W1", new Vector3(0.04f, 0.2f, 8.1f), band, new Vector3(21.02f, 1.35f, 25.05f));
@@ -268,13 +319,28 @@ namespace ToyFactory.Editor.World
 
         // ---- Windows: high strips ----------------------------------------------------------
 
+        // Real windows: each strip is an opening cut through the outside wall (WallCutter; the
+        // wall keeps its collider) with clear glass, so the sky and the outside show. They face
+        // north and east, away from the sun, so they let in daylight but no sun patches.
+        const float StripY = 4.95f, StripHeight = 0.5f;
+
         static void Windows(Transform root)
         {
             Transform windows = Group(root, "Windows");
-            StripWindow(windows, new Vector3(30.9f, 4.95f, 41f), FacingNorth, 3f);
-            StripWindow(windows, new Vector3(39.2f, 4.95f, 41f), FacingNorth, 2.4f);
-            StripWindow(windows, new Vector3(41f, 4.95f, 30.8f), FacingWest, 3f);
-            StripWindow(windows, new Vector3(41f, 4.95f, 37.6f), FacingWest, 3f);
+            var north = new List<(float, float, float, float)>();
+            var east = new List<(float, float, float, float)>();
+            foreach (var (x, width) in new[] { (30.9f, 3f), (39.2f, 2.4f) })
+            {
+                StripWindow(windows, new Vector3(x, StripY, 41f), FacingNorth, width);
+                north.Add((x - width * 0.5f, x + width * 0.5f, StripY - StripHeight * 0.5f, StripY + StripHeight * 0.5f));
+            }
+            foreach (float z in new[] { 30.8f, 37.6f })
+            {
+                StripWindow(windows, new Vector3(41f, StripY, z), FacingWest, 3f);
+                east.Add((z - 1.5f, z + 1.5f, StripY - StripHeight * 0.5f, StripY + StripHeight * 0.5f));
+            }
+            WallCutter.Cut(GameObject.Find("Level/Walls/Wall_North"), "Storage", north);
+            WallCutter.Cut(GameObject.Find("Level/Walls/Wall_East"), "Storage", east);
         }
 
         // A long, low window high on the wall, with mullions every metre.
@@ -282,7 +348,10 @@ namespace ToyFactory.Editor.World
         {
             Vector3 normal = facing * Vector3.forward, right = facing * Vector3.right;
             Transform window = Group(parent, "StripWindow", face);
-            Part(window, "Pane", Quad($"Window_Strip_{width:0.#}", new Vector2(width, 0.5f), new Rect(0f, 0.3f, 1f, 0.45f)), M.Window, face + normal * 0.02f, facing);
+            // Glass in the middle of the wall's thickness; moving, so not merged or lightmapped, and casting no shadow.
+            GameObject glass = Part(window, "Glass", Quad($"Glass_Strip_{width:0.#}", new Vector2(width, StripHeight), new Rect(0f, 0f, 1f, 1f)),
+                M.Glass, face - normal * 0.25f, facing, moving: true);
+            glass.GetComponent<MeshRenderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             Quaternion along = Quaternion.LookRotation(normal, Vector3.up);
             Box(window, "Frame_Top", new Vector3(width + 0.2f, 0.1f, 0.1f), M.Grey, face + normal * 0.05f + Vector3.up * 0.3f, rotation: along);
             Box(window, "Frame_Bottom", new Vector3(width + 0.2f, 0.1f, 0.14f), M.Grey, face + normal * 0.07f - Vector3.up * 0.3f, rotation: along);
@@ -303,8 +372,8 @@ namespace ToyFactory.Editor.World
             const float x = 40.96f, z = 24.5f;
             Box(dock, "Shutter", new Vector3(0.06f, 4f, 4.6f), M.Grey, new Vector3(x, 2f, z));
             for (int i = 0; i < 20; i++)
-                Box(dock, "Shutter_Slat", new Vector3(0.03f, 0.04f, 4.5f), M.White, new Vector3(x - 0.04f, 0.12f + i * 0.2f, z));
-            Box(dock, "Shutter_Box", new Vector3(0.4f, 0.4f, 5.0f), M.Plum, new Vector3(40.8f, 4.2f, z));
+                Box(dock, "Shutter_Slat", new Vector3(0.03f, 0.04f, 4.5f), M.MachineWhite, new Vector3(x - 0.04f, 0.12f + i * 0.2f, z));
+            Box(dock, "Shutter_Box", new Vector3(0.4f, 0.4f, 5.0f), M.Grey, new Vector3(40.8f, 4.2f, z));
             Box(dock, "Frame_S", new Vector3(0.1f, 4.4f, 0.24f), M.Hazard, new Vector3(40.94f, 2.2f, z - 2.42f));
             Box(dock, "Frame_N", new Vector3(0.1f, 4.4f, 0.24f), M.Hazard, new Vector3(40.94f, 2.2f, z + 2.42f));
             Box(dock, "Handle", new Vector3(0.08f, 0.06f, 0.5f), M.Chrome, new Vector3(40.9f, 0.5f, z));
@@ -370,12 +439,12 @@ namespace ToyFactory.Editor.World
             // A toy forklift parked by the dock, forks towards the room, a boxed pallet raised on them.
             var c = new Vector3(39.4f, 0f, 22.4f);
             Blocker(props, "Forklift_Solid", c + new Vector3(-0.2f, 0.9f, 0f), new Vector3(2.6f, 1.8f, 1.2f));
-            Box(props, "Forklift_Body", new Vector3(1.4f, 0.6f, 1.1f), M.Yellow, c + new Vector3(0.2f, 0.55f, 0f));
-            Box(props, "Forklift_Weight", new Vector3(0.4f, 0.7f, 1.1f), M.Orange, c + new Vector3(0.95f, 0.6f, 0f));
+            Box(props, "Forklift_Body", new Vector3(1.4f, 0.6f, 1.1f), M.MachineYellow, c + new Vector3(0.2f, 0.55f, 0f));
+            Box(props, "Forklift_Weight", new Vector3(0.4f, 0.7f, 1.1f), AsMachine(M.Orange), c + new Vector3(0.95f, 0.6f, 0f));
             Box(props, "Forklift_Seat", new Vector3(0.4f, 0.3f, 0.5f), M.Plum, c + new Vector3(0.35f, 1.0f, 0f));
             foreach (Vector2 post in new[] { new Vector2(-0.35f, -0.48f), new Vector2(-0.35f, 0.48f), new Vector2(0.75f, -0.48f), new Vector2(0.75f, 0.48f) })
                 Box(props, "Forklift_Post", new Vector3(0.06f, 1.1f, 0.06f), M.Grey, c + new Vector3(post.x, 1.4f, post.y));
-            Box(props, "Forklift_Roof", new Vector3(1.3f, 0.08f, 1.12f), M.Yellow, c + new Vector3(0.2f, 1.98f, 0f));
+            Box(props, "Forklift_Roof", new Vector3(1.3f, 0.08f, 1.12f), M.MachineYellow, c + new Vector3(0.2f, 1.98f, 0f));
             foreach (Vector2 wheel in new[] { new Vector2(-0.3f, -0.6f), new Vector2(-0.3f, 0.6f), new Vector2(0.7f, -0.6f), new Vector2(0.7f, 0.6f) })
                 Part(props, "Forklift_Wheel", Cylinder(0.24f, 0.18f), M.Plum, c + new Vector3(wheel.x, 0.24f, wheel.y - 0.09f), AlongZ);
             foreach (float side in new[] { -0.3f, 0.3f })
@@ -383,29 +452,36 @@ namespace ToyFactory.Editor.World
                 Box(props, "Forklift_Mast", new Vector3(0.08f, 1.8f, 0.08f), M.Grey, c + new Vector3(-0.55f, 0.95f, side));
                 Box(props, "Forklift_Fork", new Vector3(0.9f, 0.05f, 0.1f), M.Chrome, c + new Vector3(-1.0f, 0.42f, side));
             }
-            Box(props, "Forklift_Pallet", new Vector3(0.9f, 0.12f, 0.9f), M.Orange, c + new Vector3(-1.0f, 0.51f, 0f));
-            Box(props, "Forklift_Load", new Vector3(0.8f, 0.6f, 0.8f), M.Yellow, c + new Vector3(-1.0f, 0.87f, 0f));
+            Box(props, "Forklift_Pallet", new Vector3(0.9f, 0.12f, 0.9f), _wood, c + new Vector3(-1.0f, 0.51f, 0f));
+            Carton(props, "Forklift_Load", new Vector3(0.8f, 0.6f, 0.8f), _card, c + new Vector3(-1.0f, 0.87f, 0f));
             Box(props, "Forklift_Load_Tape", new Vector3(0.82f, 0.08f, 0.82f), M.White, c + new Vector3(-1.0f, 0.95f, 0f));
 
-            // Wrapped pallets in the dock bay.
+            // Pallets waiting at the dock: wooden pallets, each with a strapped stack of boxes (two
+            // layers of four).
             for (int i = 0; i < 2; i++)
             {
                 var at = new Vector3(40.2f, 0f, 25.0f + i * 1.3f);
                 Blocker(props, "Pallet_Solid", at + Vector3.up * 0.7f, new Vector3(1.1f, 1.4f, 1.1f));
-                Box(props, "Pallet", new Vector3(1.1f, 0.14f, 1.1f), M.Orange, at + Vector3.up * 0.07f);
-                Box(props, "Pallet_Stack", new Vector3(1.0f, 1.1f, 1.0f), i == 0 ? M.Yellow : M.Orange, at + Vector3.up * 0.7f);
-                Box(props, "Pallet_Wrap", new Vector3(1.04f, 0.9f, 1.04f), M.White, at + Vector3.up * 0.75f);
-                Box(props, "Pallet_Strap", new Vector3(1.06f, 0.08f, 1.06f), M.Blue, at + Vector3.up * 0.95f);
+                Box(props, "Pallet", new Vector3(1.1f, 0.14f, 1.1f), _wood, at + Vector3.up * 0.07f);
+                for (int layer = 0; layer < 2; layer++)
+                    foreach (Vector2 spot in new[] { new Vector2(-0.25f, -0.25f), new Vector2(0.25f, -0.25f), new Vector2(-0.25f, 0.25f), new Vector2(0.25f, 0.25f) })
+                    {
+                        Vector3 box = at + new Vector3(spot.x, 0.14f + 0.275f + layer * 0.55f, spot.y);
+                        Carton(props, "Pallet_Box", new Vector3(0.48f, 0.53f, 0.48f), _card, box);
+                        Carton(props, "Pallet_Box_Tape", new Vector3(0.1f, 0.535f, 0.485f), M.White, box);
+                    }
+                foreach (float y in new[] { 0.5f, 1.05f })
+                    Box(props, "Pallet_Strap", new Vector3(1.0f, 0.05f, 1.0f), M.Blue, at + Vector3.up * y);
             }
 
             // Packing table on the south wall, west of relay 3.
             var t = new Vector3(24f, 0f, 21.45f);
             Blocker(props, "Table_Solid", t + Vector3.up * 0.5f, new Vector3(2.8f, 1.0f, 0.8f));
-            Box(props, "Table_Top", new Vector3(2.8f, 0.06f, 0.8f), M.White, t + Vector3.up * 0.93f);
+            Box(props, "Table_Top", new Vector3(2.8f, 0.06f, 0.8f), _wood, t + Vector3.up * 0.93f);
             foreach (float side in new[] { -1.3f, 1.3f })
                 Box(props, "Table_Leg", new Vector3(0.12f, 0.9f, 0.7f), M.Grey, t + new Vector3(side, 0.45f, 0f));
-            Box(props, "Table_Box", new Vector3(0.5f, 0.4f, 0.45f), M.Orange, t + new Vector3(-0.8f, 1.16f, 0f));
-            Box(props, "Table_Box", new Vector3(0.4f, 0.3f, 0.35f), M.Orange, t + new Vector3(-0.2f, 1.11f, 0.1f));
+            Carton(props, "Table_Box", new Vector3(0.5f, 0.4f, 0.45f), _card, t + new Vector3(-0.8f, 1.16f, 0f));
+            Carton(props, "Table_Box", new Vector3(0.4f, 0.3f, 0.35f), _card, t + new Vector3(-0.2f, 1.11f, 0.1f));
             Box(props, "Table_Tape", new Vector3(0.2f, 0.12f, 0.1f), M.Red, t + new Vector3(0.3f, 1.02f, 0f));
             Box(props, "Scale", new Vector3(0.45f, 0.08f, 0.4f), M.Grey, t + new Vector3(0.9f, 1.0f, 0f));
             Box(props, "Scale_Display", new Vector3(0.2f, 0.1f, 0.03f), M.Glow, t + new Vector3(0.9f, 1.06f, 0.21f));
@@ -425,9 +501,9 @@ namespace ToyFactory.Editor.World
                 Box(props, "Cage_Rail", new Vector3(1.26f, 0.03f, 0.03f), M.Chrome, r + new Vector3(0f, y, -0.4f));
                 Box(props, "Cage_Rail", new Vector3(1.26f, 0.03f, 0.03f), M.Chrome, r + new Vector3(0f, y, 0.4f));
             }
-            Box(props, "Cage_Box", new Vector3(0.55f, 0.5f, 0.6f), M.Orange, r + new Vector3(-0.3f, 0.47f, 0f));
-            Box(props, "Cage_Box", new Vector3(0.5f, 0.45f, 0.55f), M.Yellow, r + new Vector3(0.32f, 0.45f, 0f));
-            Box(props, "Cage_Box", new Vector3(0.5f, 0.4f, 0.5f), M.Orange, r + new Vector3(0f, 0.92f, 0f));
+            Carton(props, "Cage_Box", new Vector3(0.55f, 0.5f, 0.6f), _card, r + new Vector3(-0.3f, 0.47f, 0f));
+            Carton(props, "Cage_Box", new Vector3(0.5f, 0.45f, 0.55f), _card, r + new Vector3(0.32f, 0.45f, 0f));
+            Carton(props, "Cage_Box", new Vector3(0.5f, 0.4f, 0.5f), _card, r + new Vector3(0f, 0.92f, 0f));
         }
 
         // ---- Roof: steel beams with aisle signs --------------------------------------------
@@ -490,6 +566,15 @@ namespace ToyFactory.Editor.World
                     Object.DestroyImmediate(placeholder);
                 boards.Sort();
 
+                // The shelving itself (uprights, spine, boards): painted steel, not plastic.
+                foreach (MeshRenderer part in run.GetComponentsInChildren<MeshRenderer>(true))
+                {
+                    Material[] materials = part.sharedMaterials;
+                    for (int m = 0; m < materials.Length; m++)
+                        materials[m] = AsMachine(materials[m]);
+                    part.sharedMaterials = materials;
+                }
+
                 Bounds body = run.GetComponent<Collider>().bounds;
                 Transform shelf = Group(shelves, $"Shelf_{n}");
                 for (int b = 0; b < Mathf.Min(3, boards.Count); b++)
@@ -518,7 +603,8 @@ namespace ToyFactory.Editor.World
         static Mesh _teddy, _duck, _robot;
 
         // One item standing on a board at 'at' (the board's top), by 'kind' 0-9: a teddy (0-1),
-        // a robot (2), a duck (3-4) or a taped toy box (5-7 wide, 8-9 tall), in mixed palette colours.
+        // a robot (2), a duck (3-4) or a taped cardboard toy box (5-7 wide, 8-9 tall) with a label in
+        // a palette colour; the toys are in mixed palette colours.
         static void StockItem(Transform shelf, int kind, System.Random random, Vector3 at, Quaternion facing)
         {
             Material Pick(params Material[] options) => options[random.Next(options.Length)];
@@ -532,10 +618,10 @@ namespace ToyFactory.Editor.World
             {
                 bool tall = kind >= 8;
                 var size = tall ? new Vector3(0.3f, 0.46f, 0.28f) : new Vector3(0.42f, 0.32f, 0.3f);
-                Box(shelf, "ToyBox", size, Pick(M.Orange, M.Yellow, M.Mint, M.Bubble, M.Purple, M.Red), at + Vector3.up * size.y * 0.5f, rotation: facing);
-                Box(shelf, "ToyBox_Tape", new Vector3(size.x + 0.01f, 0.06f, size.z + 0.01f), M.White, at + Vector3.up * size.y * 0.62f, rotation: facing);
+                Carton(shelf, "ToyBox", size, _card, at + Vector3.up * size.y * 0.5f, facing);
+                Carton(shelf, "ToyBox_Tape", new Vector3(size.x + 0.01f, size.y + 0.01f, 0.06f), M.White, at + Vector3.up * size.y * 0.5f, facing);
                 Part(shelf, "ToyBox_Label", Quad($"Label_ToyBox_{(tall ? "Tall" : "Wide")}", new Vector2(size.x * 0.45f, size.y * 0.3f), new Rect(0f, 0f, 1f, 1f)),
-                    Pick(M.Plum, M.White), at + Vector3.up * size.y * 0.32f + facing * Vector3.forward * (size.z * 0.5f + 0.003f), facing);
+                    Pick(M.Orange, M.Yellow, M.Mint, M.Bubble, M.Purple, M.Red), at + Vector3.up * size.y * 0.32f + facing * Vector3.forward * (size.z * 0.5f + 0.003f), facing);
             }
         }
 
