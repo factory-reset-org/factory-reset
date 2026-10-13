@@ -133,17 +133,17 @@ namespace ToyFactory.Editor.World
 
             // Materials made of something other than plastic, with their surface textures.
             _wood = Plastic("Wood", Hex("C8894B"), 0.55f);
-            SurfaceTextures.Apply(_wood, SurfaceTextures.Kind.Wood);
+            PhotoTextures.Apply(_wood, PhotoTextures.Kind.Wood);
             _card = Plastic("Cardboard", Hex("C9A271"), 0.4f);
-            SurfaceTextures.Apply(_card, SurfaceTextures.Kind.Cardboard);
+            PhotoTextures.Apply(_card, PhotoTextures.Kind.Cardboard);
             _lockerBlue = Plastic("LockerBlue", Cobalt, 0.75f);
-            SurfaceTextures.Apply(_lockerBlue, SurfaceTextures.Kind.Metal);
+            PhotoTextures.Apply(_lockerBlue, PhotoTextures.Kind.Metal);
             _lockerMint = Plastic("LockerMint", Mint, 0.75f);
-            SurfaceTextures.Apply(_lockerMint, SurfaceTextures.Kind.Metal);
+            PhotoTextures.Apply(_lockerMint, PhotoTextures.Kind.Metal);
             _wallPanel = Plastic("WallPanel", Hex("E8ECF2"), 0.6f);
-            SurfaceTextures.Apply(_wallPanel, SurfaceTextures.Kind.WallPanel);
+            PhotoTextures.Apply(_wallPanel, PhotoTextures.Kind.WallPanel);
             _ceilingTiles = Plastic("CeilingTiles", Hex("2B2450"), 0.5f);
-            SurfaceTextures.Apply(_ceilingTiles, SurfaceTextures.Kind.Ceiling, new Vector2(20.75f / 1.2f, 20.75f / 1.2f));
+            PhotoTextures.Apply(_ceilingTiles, PhotoTextures.Kind.Ceiling, new Vector2(20.75f / 3.85f, 20.75f / 3.85f));
         }
 
         // Panelled walls everywhere (the walls run through every room), 1 m floor tiles and an
@@ -154,11 +154,11 @@ namespace ToyFactory.Editor.World
                 wall.sharedMaterial = _wallPanel;
 
             // 1 m tiles, the size of S2's crates, with the joins on whole metres. The floor's top
-            // face runs its UVs from x = z = 20.75 back to 0; the texture holds 2 x 2 tiles (2 m),
-            // so it repeats 20.75 / 2 times and is offset an eighth (0.25 m) to land the joins.
+            // face runs its UVs from x = z = 20.75 back to 0; the photo holds 8 x 8 tiles, scaled
+            // to 8 m, so it repeats 20.75 / 8 times and is offset 0.25 m (1/32) to land the joins.
             Material tiles = Mat("FloorTiled_Assembly");
-            SurfaceTextures.Apply(tiles, SurfaceTextures.Kind.FloorTile, new Vector2(20.75f / 2f, 20.75f / 2f));
-            tiles.SetTextureOffset("_BaseMap", new Vector2(0.125f, 0.125f));
+            PhotoTextures.Apply(tiles, PhotoTextures.Kind.FloorTile, new Vector2(20.75f / 8f, 20.75f / 8f));
+            tiles.SetTextureOffset("_BaseMap", new Vector2(0.03125f, 0.03125f));
             EditorUtility.SetDirty(tiles);
 
             // Three times the lightmap detail on this floor, so the sun's patches through the
