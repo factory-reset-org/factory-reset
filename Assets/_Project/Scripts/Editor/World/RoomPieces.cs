@@ -119,7 +119,7 @@ namespace ToyFactory.Editor.World
             M.Window = Plastic("Window", Color.white, 0.9f, sky, new Color(0.9f, 0.9f, 0.9f), sky);
 
             // Surface textures: moulded grain on the plastics, brushed metal on the grey.
-            SurfaceTextures.ApplyPalette();
+            PhotoTextures.ApplyPalette();
             M.Glass = Glass();
         }
 
