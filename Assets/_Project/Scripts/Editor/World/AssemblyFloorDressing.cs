@@ -153,12 +153,13 @@ namespace ToyFactory.Editor.World
             foreach (MeshRenderer wall in level.Find("Walls").GetComponentsInChildren<MeshRenderer>())
                 wall.sharedMaterial = _wallPanel;
 
-            // 1 m tiles, the size of S2's crates, with the joins on whole metres. The floor's top
-            // face runs its UVs from x = z = 20.75 back to 0; the photo holds 8 x 8 tiles, scaled
-            // to 8 m, so it repeats 20.75 / 8 times and is offset 0.25 m (1/32) to land the joins.
+            // 0.5 m tiles, the size of a grid cell, as in every room, with the joins on the half
+            // metres. The floor's top face runs its UVs from x = z = 20.75 back to 0; the photo
+            // holds 8 x 8 tiles, scaled to 4 m, so it repeats 20.75 / 4 times and is offset 0.25 m
+            // (1/16) to land the joins.
             Material tiles = Mat("FloorTiled_Assembly");
-            PhotoTextures.Apply(tiles, PhotoTextures.Kind.FloorTile, new Vector2(20.75f / 8f, 20.75f / 8f));
-            tiles.SetTextureOffset("_BaseMap", new Vector2(0.03125f, 0.03125f));
+            PhotoTextures.Apply(tiles, PhotoTextures.Kind.FloorTile, new Vector2(20.75f / 4f, 20.75f / 4f));
+            tiles.SetTextureOffset("_BaseMap", new Vector2(0.0625f, 0.0625f));
             EditorUtility.SetDirty(tiles);
 
             // Three times the lightmap detail on this floor, so the sun's patches through the
