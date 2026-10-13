@@ -7,8 +7,8 @@ using static ToyFactory.Editor.World.DressingKit;
 namespace ToyFactory.Editor.World
 {
     /// <summary>
-    /// Cuts window openings through a level wall: the wall's mesh is rebuilt as boxes around the
-    /// openings (UV-mapped in metres like the rounded box it replaces, so the wall panels stay in
+    /// Cuts window openings through a level wall: the wall's mesh is rebuilt round the openings
+    /// (UV-mapped in metres like the rounded box it replaces, so the wall panels stay in
     /// line), while its box collider stays whole. The openings are kept on the wall in a
     /// <see cref="WallOpenings"/> component, per room builder.
     /// </summary>
@@ -44,44 +44,72 @@ namespace ToyFactory.Editor.World
             EditorUtility.SetDirty(wall);
         }
 
-        // The wall as boxes around the holes: split along the wall at every hole edge, then each
-        // column into the heights no hole covers. Each box spans the wall's full thickness.
+        // The wall as one grid: split along the wall and up it at every hole edge; the front and
+        // back faces are the grid's solid cells sharing their corners (one lightmap chart each, so
+        // no seams run up the wall), and sides are added only where a solid cell meets a hole or
+        // the wall's edge.
         static Mesh Build(string name, Vector3 size, bool alongZ, List<Rect> holes)
         {
             float length = alongZ ? size.z : size.x, height = size.y, thickness = alongZ ? size.x : size.z;
-            var cuts = new List<float> { -length * 0.5f, length * 0.5f };
-            foreach (Rect hole in holes)
-            {
-                cuts.Add(Mathf.Clamp(hole.xMin, -length * 0.5f, length * 0.5f));
-                cuts.Add(Mathf.Clamp(hole.xMax, -length * 0.5f, length * 0.5f));
-            }
-            cuts.Sort();
+            List<float> xs = Cuts(-length * 0.5f, length * 0.5f, holes, h => h.xMin, h => h.xMax);
+            List<float> ys = Cuts(-height * 0.5f, height * 0.5f, holes, h => h.yMin, h => h.yMax);
+            int nx = xs.Count - 1, ny = ys.Count - 1;
+            var solid = new bool[nx, ny];
+            for (int i = 0; i < nx; i++)
+                for (int j = 0; j < ny; j++)
+                {
+                    var mid = new Vector2((xs[i] + xs[i + 1]) * 0.5f, (ys[j] + ys[j + 1]) * 0.5f);
+                    solid[i, j] = !holes.Exists(hole => hole.Contains(mid));
+                }
 
             var vertices = new List<Vector3>();
             var normals = new List<Vector3>();
             var uvs = new List<Vector2>();
             var triangles = new List<int>();
-            for (int c = 0; c < cuts.Count - 1; c++)
+            float h = thickness * 0.5f;
+            foreach (float side in new[] { 1f, -1f })
             {
-                float a0 = cuts[c], a1 = cuts[c + 1];
-                if (a1 - a0 < 0.001f)
-                    continue;
-                float mid = (a0 + a1) * 0.5f;
-                var blocked = new List<Vector2>();
-                foreach (Rect hole in holes)
-                    if (hole.xMin <= mid && mid <= hole.xMax)
-                        blocked.Add(new Vector2(Mathf.Max(hole.yMin, -height * 0.5f), Mathf.Min(hole.yMax, height * 0.5f)));
-                blocked.Sort((p, q) => p.x.CompareTo(q.x));
-                float y = -height * 0.5f;
-                foreach (Vector2 b in blocked)
+                var shared = new Dictionary<(int, int), int>();
+                Vector3 normal = alongZ ? new Vector3(side, 0f, 0f) : new Vector3(0f, 0f, side);
+                Vector3 right = Vector3.Cross(Vector3.up, normal), up = Vector3.Cross(normal, right);
+                int Corner(int gi, int gj)
                 {
-                    if (b.x > y + 0.001f)
-                        AddBox(vertices, normals, uvs, triangles, alongZ, a0, a1, y, b.x, thickness);
-                    y = Mathf.Max(y, b.y);
+                    if (shared.TryGetValue((gi, gj), out int index))
+                        return index;
+                    Vector3 p = alongZ ? new Vector3(side * h, ys[gj], xs[gi]) : new Vector3(xs[gi], ys[gj], side * h);
+                    shared[(gi, gj)] = vertices.Count;
+                    vertices.Add(p);
+                    normals.Add(normal);
+                    uvs.Add(alongZ ? new Vector2(p.z, p.y) : new Vector2(p.x, p.y));
+                    return vertices.Count - 1;
                 }
-                if (height * 0.5f > y + 0.001f)
-                    AddBox(vertices, normals, uvs, triangles, alongZ, a0, a1, y, height * 0.5f, thickness);
+                // Along the wall runs +right or -right on this face; up is always +y.
+                bool alongRight = Vector3.Dot(right, alongZ ? Vector3.forward : Vector3.right) > 0f;
+                for (int i = 0; i < nx; i++)
+                    for (int j = 0; j < ny; j++)
+                    {
+                        if (!solid[i, j])
+                            continue;
+                        int lo = alongRight ? i + 1 : i, hi = alongRight ? i : i + 1;   // +right side, -right side
+                        int c0 = Corner(lo, j), c1 = Corner(hi, j), c2 = Corner(hi, j + 1), c3 = Corner(lo, j + 1);
+                        triangles.AddRange(new[] { c0, c2, c1, c0, c3, c2 });
+                    }
             }
+
+            // Sides: the reveals round the holes, and the wall's own ends, top and bottom.
+            for (int i = 0; i < nx; i++)
+                for (int j = 0; j < ny; j++)
+                {
+                    if (!solid[i, j])
+                        continue;
+                    Vector3 min = alongZ ? new Vector3(-h, ys[j], xs[i]) : new Vector3(xs[i], ys[j], -h);
+                    Vector3 max = alongZ ? new Vector3(h, ys[j + 1], xs[i + 1]) : new Vector3(xs[i + 1], ys[j + 1], h);
+                    Vector3 alongAxis = alongZ ? Vector3.forward : Vector3.right;
+                    if (i == 0 || !solid[i - 1, j]) Face(vertices, normals, uvs, triangles, min, max, -alongAxis);
+                    if (i == nx - 1 || !solid[i + 1, j]) Face(vertices, normals, uvs, triangles, min, max, alongAxis);
+                    if (j == 0 || !solid[i, j - 1]) Face(vertices, normals, uvs, triangles, min, max, Vector3.down);
+                    if (j == ny - 1 || !solid[i, j + 1]) Face(vertices, normals, uvs, triangles, min, max, Vector3.up);
+                }
 
             var mesh = new Mesh { name = name };
             mesh.SetVertices(vertices);
@@ -93,33 +121,40 @@ namespace ToyFactory.Editor.World
             return mesh;
         }
 
-        // A box from a0 to a1 along the wall, y0 to y1 in height, the full thickness across.
-        static void AddBox(List<Vector3> v, List<Vector3> n, List<Vector2> uv, List<int> t, bool alongZ,
-            float a0, float a1, float y0, float y1, float thickness)
+        // The wall's ends and every hole edge (clamped to the wall), sorted, without repeats.
+        static List<float> Cuts(float from, float to, List<Rect> holes, System.Func<Rect, float> low, System.Func<Rect, float> high)
         {
-            float h = thickness * 0.5f;
-            Vector3 min = alongZ ? new Vector3(-h, y0, a0) : new Vector3(a0, y0, -h);
-            Vector3 max = alongZ ? new Vector3(h, y1, a1) : new Vector3(a1, y1, h);
+            var cuts = new List<float> { from, to };
+            foreach (Rect hole in holes)
+            {
+                cuts.Add(Mathf.Clamp(low(hole), from, to));
+                cuts.Add(Mathf.Clamp(high(hole), from, to));
+            }
+            cuts.Sort();
+            for (int c = cuts.Count - 1; c > 0; c--)
+                if (cuts[c] - cuts[c - 1] < 0.001f)
+                    cuts.RemoveAt(c);
+            return cuts;
+        }
+
+        // One face of the box from min to max, facing 'normal' (an axis direction), UV-mapped in metres.
+        static void Face(List<Vector3> v, List<Vector3> n, List<Vector2> uv, List<int> t, Vector3 min, Vector3 max, Vector3 normal)
+        {
             Vector3 centre = (min + max) * 0.5f, half = (max - min) * 0.5f;
-            for (int axis = 0; axis < 3; axis++)
-                foreach (float sign in new[] { -1f, 1f })
-                {
-                    var normal = new Vector3();
-                    normal[axis] = sign;
-                    Vector3 helper = axis == 1 ? Vector3.forward : Vector3.up;
-                    Vector3 right = Vector3.Cross(helper, normal), up = Vector3.Cross(normal, right);
-                    Vector3 face = centre + Vector3.Scale(normal, half);
-                    float w = Mathf.Abs(Vector3.Dot(right, half)), hh = Mathf.Abs(Vector3.Dot(up, half));
-                    int b = v.Count;
-                    Vector3[] corners = { face + right * w - up * hh, face - right * w - up * hh, face - right * w + up * hh, face + right * w + up * hh };
-                    foreach (Vector3 p in corners)
-                    {
-                        v.Add(p);
-                        n.Add(normal);
-                        uv.Add(axis == 0 ? new Vector2(p.z, p.y) : axis == 1 ? new Vector2(p.x, p.z) : new Vector2(p.x, p.y));
-                    }
-                    t.AddRange(new[] { b, b + 2, b + 1, b, b + 3, b + 2 });
-                }
+            int axis = normal.x != 0f ? 0 : normal.y != 0f ? 1 : 2;
+            Vector3 helper = axis == 1 ? Vector3.forward : Vector3.up;
+            Vector3 right = Vector3.Cross(helper, normal), up = Vector3.Cross(normal, right);
+            Vector3 face = centre + Vector3.Scale(normal, half);
+            float w = Mathf.Abs(Vector3.Dot(right, half)), hh = Mathf.Abs(Vector3.Dot(up, half));
+            int b = v.Count;
+            Vector3[] corners = { face + right * w - up * hh, face - right * w - up * hh, face - right * w + up * hh, face + right * w + up * hh };
+            foreach (Vector3 p in corners)
+            {
+                v.Add(p);
+                n.Add(normal);
+                uv.Add(axis == 0 ? new Vector2(p.z, p.y) : axis == 1 ? new Vector2(p.x, p.z) : new Vector2(p.x, p.y));
+            }
+            t.AddRange(new[] { b, b + 2, b + 1, b, b + 3, b + 2 });
         }
     }
 }

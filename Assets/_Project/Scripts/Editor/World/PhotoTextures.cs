@@ -70,7 +70,8 @@ namespace ToyFactory.Editor.World
         }
 
         /// <summary>
-        /// Gives every palette plastic the plastic set and the grey the brushed-metal set.
+        /// Gives every palette plastic the plastic set, and the grey and the chrome the brushed-metal
+        /// set (so bolts, hubs, rails and taps are brushed steel rather than a mirror).
         /// Called by <see cref="RoomPieces.Load"/>, so every room builder keeps them.
         /// </summary>
         public static void ApplyPalette()
@@ -79,8 +80,9 @@ namespace ToyFactory.Editor.World
                          RoomPieces.M.Purple, RoomPieces.M.Mint, RoomPieces.M.Orange, RoomPieces.M.Bubble, RoomPieces.M.Plum })
                 if (plastic != null)
                     Apply(plastic, Kind.Plastic);
-            if (RoomPieces.M.Grey != null)
-                Apply(RoomPieces.M.Grey, Kind.Metal);
+            foreach (Material metal in new[] { RoomPieces.M.Grey, RoomPieces.M.Chrome })
+                if (metal != null)
+                    Apply(metal, Kind.Metal);
         }
 
         // Loads one packed map, making sure it imports right (sRGB colour, normal map, linear mask with alpha).

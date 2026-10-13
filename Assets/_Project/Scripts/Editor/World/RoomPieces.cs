@@ -27,6 +27,8 @@ namespace ToyFactory.Editor.World
         {
             public static Material White, Grey, Blue, Red, Yellow, Purple, Chrome, Hazard, Glow, Amber;
             public static Material Mint, Orange, Bubble, Plum, Window, Glass;
+            /// <summary>Painted steel for machines, pipes, tanks and cabinets (the photographed brushed metal, painted).</summary>
+            public static Material MachineWhite, MachineYellow, MachineBlue, MachineRed, MachineMint;
             public static Mesh Ball;
         }
 
@@ -121,6 +123,11 @@ namespace ToyFactory.Editor.World
             // Surface textures: moulded grain on the plastics, brushed metal on the grey.
             PhotoTextures.ApplyPalette();
             M.Glass = Glass();
+            M.MachineWhite = Machine("White", Hex("E3E7EE"));
+            M.MachineYellow = Machine("Yellow", Hex("F2B82E"));
+            M.MachineBlue = Machine("Blue", Hex("3D63C9"));
+            M.MachineRed = Machine("Red", Hex("D9483C"));
+            M.MachineMint = Machine("Mint", Hex("3CC9A2"));
         }
 
         // A light probe inside a solid prop samples darkness and makes the moving parts near it
@@ -226,6 +233,18 @@ namespace ToyFactory.Editor.World
             if (target != null)
                 target.transform.position = position;
         }
+        /// <summary>
+        /// Painted steel in <paramref name="colour"/> (<c>M_Env_Machine_&lt;name&gt;</c>): the photographed
+        /// brushed metal, tinted. For machines, pipes, tanks, tins and cabinets, so they read as
+        /// real painted metal next to the photographed walls and floors rather than as toy plastic.
+        /// </summary>
+        public static Material Machine(string name, Color colour)
+        {
+            Material machine = Plastic("Machine_" + name, colour, 1f);
+            PhotoTextures.Apply(machine, PhotoTextures.Kind.Metal);
+            return machine;
+        }
+
         // Clear, faintly blue glass (URP Lit, transparent). Its panes cast no shadow, so the sun
         // and the sky shine through them, in real time and in the bake.
         static Material Glass()
