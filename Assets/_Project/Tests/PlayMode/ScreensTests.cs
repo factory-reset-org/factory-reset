@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -128,6 +129,18 @@ namespace ToyFactory.Tests
             _clock.Set(GameState.Playing);
             yield return Frame();
             Assert.IsFalse(_screens.Title.IsShowing);
+        }
+
+        [UnityTest]
+        public IEnumerator TitleShowsTheCreditsForTheCcByModels()
+        {
+            _clock.Set(GameState.Title);
+            yield return Frame();
+            Assert.IsTrue(_screens.Title.IsShowing);
+
+            string shown = string.Join("\n", _screens.Title.GetComponentsInChildren<Text>(true).Select(t => t.text));
+            foreach (ModelCredit credit in ThirdPartyCredits.Attribution)
+                StringAssert.Contains(credit.Line, shown);
         }
 
         [UnityTest]
