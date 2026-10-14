@@ -5,25 +5,25 @@ namespace ToyFactory.Runtime.Animation
 {
     /// <summary>
     /// Points the cannons at what they shoot: while the weapon aims and fires, each cannon arm
-    /// turns about its hinge until its barrel's axis points at the target's chest, so the shot
-    /// leaves straight along the barrel. Before, the Aim clip lifted the Captain's arms by a
-    /// fixed 15° (19° with the torso's brace), so the barrels pointed up while the shot went
-    /// out level and slightly down to the player.
+    /// turns at its shoulder, up or down and side to side, until its barrel points at the
+    /// target's chest, so the shot leaves straight along the barrel. The Aim clip only brings
+    /// the arm up level; the Captain's cannon is on its right forearm, 0.7 m off its centre
+    /// line, so a level arm alone would shoot past a near player and over a short one.
     /// </summary>
     /// <remarks>
     /// <para>Added in LateUpdate on top of the pose the Animator has just written, like the
     /// recoil, and before it (execution order), so a kick starts from a barrel on target. The
     /// Animator writes the arms again next frame, so nothing builds up.</para>
     /// <para>The correction is measured, not assumed: it reads where the barrel points now
-    /// (whatever the clip, the torso and the model do) and turns the arm by the angle between
-    /// that and the line to the target, twice, since turning the arm also moves the barrel.
-    /// It eases in and out over 0.1 s with the aim and never turns an arm more than 35°.</para>
+    /// (whatever the clip, the torso and the model do) and turns the arm by the smallest turn
+    /// from that to the line to the target, three times, since turning the arm also moves the
+    /// barrel's tip. It eases in and out with the aim and never turns an arm more than 35°.</para>
     /// </remarks>
     [DefaultExecutionOrder(-50)]   // before AgentShotRecoil adds its kick
     [RequireComponent(typeof(AgentWeapon))]
     public sealed class AgentCannonAim : MonoBehaviour
     {
-        [Tooltip("The arm pivot holding each barrel, in the weapon's barrel order. The arm turns about its local X axis.")]
+        [Tooltip("The arm pivot holding each barrel (the shoulder), in the weapon's barrel order.")]
         [SerializeField] Transform[] arms = new Transform[0];
 
         [Tooltip("Largest correction in degrees: a target far above or below is not chased.")]
@@ -76,21 +76,25 @@ namespace ToyFactory.Runtime.Animation
         void Correct(Transform arm, int barrel, Vector3 target)
         {
             Quaternion pose = arm.localRotation;
-            float total = 0f;
-            for (int pass = 0; pass < 2; pass++)
+            for (int pass = 0; pass < 3; pass++)
             {
                 if (!_weapon.TryGetBarrel(barrel, out Vector3 tip, out Vector3 direction))
+                {
+                    arm.localRotation = pose;
                     return;
-                Vector3 hinge = arm.right;
-                Vector3 from = Vector3.ProjectOnPlane(direction, hinge);
-                Vector3 to = Vector3.ProjectOnPlane(target - tip, hinge);
-                if (from.sqrMagnitude < 1e-6f || to.sqrMagnitude < 1e-6f)
+                }
+                Vector3 to = target - tip;
+                if (to.sqrMagnitude < 1e-6f)
                     break;
-                total += Vector3.SignedAngle(from, to, hinge);
-                arm.localRotation = pose * Quaternion.Euler(total, 0f, 0f);
+                arm.rotation = Quaternion.FromToRotation(direction, to) * arm.rotation;
             }
-            total = Mathf.Clamp(total, -maxCorrection, maxCorrection);
-            arm.localRotation = pose * Quaternion.Euler(total * _weight, 0f, 0f);
+
+            // The whole turn from the clip's pose, capped, then eased in by the aim's weight.
+            Quaternion turn = Quaternion.Inverse(pose) * arm.localRotation;
+            float angle = Quaternion.Angle(Quaternion.identity, turn);
+            if (angle > maxCorrection)
+                turn = Quaternion.Slerp(Quaternion.identity, turn, maxCorrection / angle);
+            arm.localRotation = pose * Quaternion.Slerp(Quaternion.identity, turn, _weight);
         }
     }
 }
