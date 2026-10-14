@@ -306,7 +306,7 @@ namespace ToyFactory.UI
             if (_directorCardOff)
                 return;
 
-            ChapterCard card = FindFirstObjectByType<ChapterCard>();
+            ChapterCard card = FindAnyObjectByType<ChapterCard>();
             if (card == null)
                 return;
 
@@ -373,7 +373,7 @@ namespace ToyFactory.UI
         // the start) and when a prop is spawned during play, never every frame.
         void TrackSceneTasks()
         {
-            MonoBehaviour[] behaviours = FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
+            MonoBehaviour[] behaviours = FindObjectsByType<MonoBehaviour>();
             for (int i = 0; i < behaviours.Length; i++)
             {
                 if (behaviours[i] is ITask task)

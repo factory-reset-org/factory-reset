@@ -109,6 +109,9 @@ S3 owns everything under `Assets/_Project/Models/`, the character prefab variant
 
 - `Scenes/ModelShowcase.unity` is S3's presentation scene (turntable and wireframe views). It stays out of Build Settings.
 - Add every S3 model to it, including Unit 047 once it exists. Its turntable must not depend on S4's animation clips.
+- Keys: Tab line-up or turntable, Left and Right pick the turntable model, Space spin, W wireframe, L hold a LOD level, Up and Down move the turntable camera.
+- A new model's prefab goes in the `Showcase` object's entries (`ModelShowcaseSceneTests` fails if a character or a `*_Root` prop prefab is missing).
+- A LOD level is named `<Model>_Far`, never `_LOD1`: Unity builds a LOD group by itself from a file whose nodes end in `_LOD0`, `_LOD1`, and a test fails on such a name.
 - Open it fresh in Unity at 16:9 for a clean lit check. Do not bake lighting or NavMesh from it.
 - The models keep a neutral rotation so the line-up matches DesignDoc section 8.9.
 

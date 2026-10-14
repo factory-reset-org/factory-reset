@@ -95,7 +95,7 @@ namespace ToyFactory.Tests
         {
             yield return StartPlaying();
 
-            ChapterCard directorCard = UnityEngine.Object.FindFirstObjectByType<ChapterCard>(FindObjectsInactive.Include);
+            ChapterCard directorCard = UnityEngine.Object.FindAnyObjectByType<ChapterCard>(FindObjectsInactive.Include);
             if (directorCard != null)
             {
                 Assert.IsFalse(directorCard.enabled, "The director's own card is switched off once the HUD draws one.");
@@ -158,7 +158,7 @@ namespace ToyFactory.Tests
         {
             yield return StartPlaying();
             HudPresenter hud = HudPresenter.Current;
-            PlaceholderSubtitles placeholder = UnityEngine.Object.FindFirstObjectByType<PlaceholderSubtitles>();
+            PlaceholderSubtitles placeholder = UnityEngine.Object.FindAnyObjectByType<PlaceholderSubtitles>();
 
             DialogueEvents.RaiseLineShown(new DialogueLineView("TEST", Color.white, "Hello there", 5));
             yield return null;
