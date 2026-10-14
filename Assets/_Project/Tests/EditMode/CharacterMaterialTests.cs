@@ -297,6 +297,25 @@ namespace ToyFactory.Tests.EditMode
                 Assert.That(p.x, Is.InRange(uMin, uMax), $"{plate} reads from the other decal.");
         }
 
+        [TestCase("Chest_Tag")]
+        [TestCase("Sticker")]
+        public void TheDecalsReadLeftToRightWhenSeenFromTheFront(string plate)
+        {
+            GameObject unit = Load("Assets/_Project/Prefabs/Characters/Unit047.prefab");
+            Mesh mesh = Renderers(unit).OfType<MeshRenderer>().First(r => r.name == plate).GetComponent<MeshFilter>().sharedMesh;
+            Vector3[] vertices = mesh.vertices;
+            Vector3[] normals = mesh.normals;
+            Vector2[] uv = mesh.uv;
+
+            // Seen from +Z, where the model faces, the viewer's right is -X, so U must grow as X falls:
+            // a plate mapped the other way shows its lettering back to front.
+            int[] front = Enumerable.Range(0, vertices.Length).Where(i => normals[i].z > 0.99f).ToArray();
+            Assert.IsNotEmpty(front, plate);
+            int leftmost = front.OrderBy(i => vertices[i].x).First();
+            int rightmost = front.OrderByDescending(i => vertices[i].x).First();
+            Assert.Greater(uv[leftmost].x, uv[rightmost].x, plate + " is mirrored.");
+        }
+
         [Test]
         public void DecalTextureIsPowerOfTwoAndCompressedBc7()
         {
