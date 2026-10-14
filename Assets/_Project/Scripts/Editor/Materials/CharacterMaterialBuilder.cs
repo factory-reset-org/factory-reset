@@ -169,27 +169,17 @@ namespace ToyFactory.Editor.Materials
             Add("GuardBot", "Tread_L", Key.GuardTread, Key.Grey, Key.Gold);
             Add("GuardBot", "Tread_R", Key.GuardTread, Key.Grey, Key.Gold);
 
-            // Captain: navy legs and hat band, black boots and brim, gold shoulders, steel cannons with a pink ring, blue visor.
-            Add("CaptainBot", "Boot_L", Key.Black, Key.Black, Key.Steel);
-            Add("CaptainBot", "Boot_R", Key.Black, Key.Black, Key.Steel);
-            Add("CaptainBot", "UpperLeg_L", Key.Navy, Key.Navy);
-            Add("CaptainBot", "UpperLeg_R", Key.Navy, Key.Navy);
-            Add("CaptainBot", "LowerLeg_L", Key.Navy, Key.Navy);
-            Add("CaptainBot", "LowerLeg_R", Key.Navy, Key.Navy);
-            Add("CaptainBot", "Arm_L", Key.White, Key.Black, Key.Steel);
-            Add("CaptainBot", "Arm_R", Key.White, Key.Black, Key.Steel);
-            Add("CaptainBot", "Cannon_L", Key.Steel, Key.Steel, Key.Pink);
-            Add("CaptainBot", "Cannon_R", Key.Steel, Key.Steel, Key.Pink);
-            Add("CaptainBot", "ShoulderBall_L", Key.Gold);
-            Add("CaptainBot", "ShoulderBall_R", Key.Gold);
-            Add("CaptainBot", "Epaulette_L", Key.Gold, Key.Gold);
-            Add("CaptainBot", "Epaulette_R", Key.Gold, Key.Gold);
-            Add("CaptainBot", "Hat_Band", Key.Navy, Key.Gold);
-            Add("CaptainBot", "Hat_Brim", Key.Black);
-            Add("CaptainBot", "Hat_Crown", Key.White, Key.White);
-            Add("CaptainBot", "Head", Key.White, Key.VisorBlue, Key.Black);
-            Add("CaptainBot", "Neck", Key.Black, Key.Steel);
-            Add("CaptainBot", "Visor", Key.Black, Key.VisorBlue);
+            // Captain (remake): one slot per part. White, gold and black come from the zones; these
+            // parts are navy, steel or pink. The visor and the cannon cell stay black: S4's
+            // AgentLights makes them glow.
+            foreach (string part in new[] { "UpperLeg_L", "UpperLeg_R", "Boot_L", "Boot_R", "Pelvis",
+                         "CoatFront", "FaceFrame", "Hat_Band", "Fist_L", "Thumb_L" })
+                Add("CaptainBot", part, Key.Navy);
+            foreach (string part in new[] { "KneeHinge_L", "KneeHinge_R", "Buckle", "Ear_L", "Ear_R",
+                         "ElbowHinge_L", "ElbowHinge_R", "Knuckles_L", "Cannon_Housing", "Cannon_Shroud",
+                         "Cannon_Barrel", "Cannon_Brake" })
+                Add("CaptainBot", part, Key.Steel);
+            Add("CaptainBot", "Cannon_Ring", Key.Pink);
 
             // Unit 047: cyan body (its speaker colour), gold key, the 047 tag and DEFECTIVE sticker decals,
             // glowing eyes, and the first-person blaster's colours on the blaster in its hand.
