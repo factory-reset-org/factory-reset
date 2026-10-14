@@ -121,7 +121,7 @@ The agents, Unit 047 and the keycard use 17 shared plastics in `Materials/Charac
 | Tracker Toy | Red `#FF5A4E` | Cream `#FFF1D6` | Black `#1D1A2A` | gold key, black antenna stem, pink inside the ears, cream snout with black nose |
 | Saboteur Bot | Purple `#8F6BFF`, tinted per unit | Pink `#FF5CA8` | Black | steel arms, joints and neck, pale goggle lenses |
 | Guard Bot | Blue `#3A6CF4` | Yellow `#FFC933` | Black | navy hip, steel cannon with a red ring, cyan visor, grey head vents, treads with the tread texture |
-| Captain Bot | White `#F4F1FF` | Gold `#FFC933` | Black | navy legs and hat band, steel cannons with a pink ring, blue visor, gold shoulders |
+| Captain Bot | White `#F4F1FF` | Gold `#FFC933` | Black | navy thighs, boots, pelvis, coat front, face frame, hat band and fist; steel hinges, ears, knuckles and arm cannon with a pink ring; visor and cannon cell lit red by S4 |
 | Unit 047 | Cyan `#62D8FF` (its speaker colour) | White | Navy `#22306A` | gold key, red sticker, grey legs, emissive cyan eyes |
 | Keycard | Yellow | Steel | Black | none |
 
