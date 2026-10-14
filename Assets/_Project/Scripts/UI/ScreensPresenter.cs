@@ -174,7 +174,7 @@ namespace ToyFactory.UI
         // Buttons and the name field do nothing without an event system.
         void EnsureEventSystem()
         {
-            if (EventSystem.current != null || FindFirstObjectByType<EventSystem>() != null)
+            if (EventSystem.current != null || FindAnyObjectByType<EventSystem>() != null)
                 return;
 
             var go = new GameObject("EventSystem");

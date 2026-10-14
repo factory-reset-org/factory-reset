@@ -159,12 +159,12 @@ namespace ToyFactory.Tests
         [UnityTest]
         public IEnumerator TitleCreatesAnEventSystemSoTheButtonCanBeClicked()
         {
-            Assert.IsNull(UnityEngine.Object.FindFirstObjectByType<EventSystem>(), "None in the test scene.");
+            Assert.IsNull(UnityEngine.Object.FindAnyObjectByType<EventSystem>(), "None in the test scene.");
 
             _clock.Set(GameState.Title);
             yield return Frame();
 
-            Assert.IsNotNull(UnityEngine.Object.FindFirstObjectByType<EventSystem>());
+            Assert.IsNotNull(UnityEngine.Object.FindAnyObjectByType<EventSystem>());
         }
 
         [UnityTest]
