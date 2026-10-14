@@ -153,6 +153,8 @@ Worked example: health 0.25, player dead on at 5 m: `0.9241 x 1 x 0.6429 = 0.594
 
 Plan Appendix A values: Saboteur health 4, speed 4.3 m/s, melee damage 10. Any change and its reason is recorded in this document.
 
+**Review of 15 October 2026: no change.** The squad scenario (two doors, four Saboteurs) chose as designed: each of A and B took the door beside it, C and D, with both doors claimed, fell back to Idle, a destroyed holder's door passed to another Saboteur, and a closed door was not offered again. In the live scene the Saboteur 4 m from the player attacked instead of taking a door, which is the intended order (AttackPlayer scores above CloseDoor at that range), and the other two shared the doors. Two close doors scored 0.60 and 0.58 and moving by 0.1 either way switched 232 times in two minutes without stability and 8 with momentum 0.15 and 1.5 s commitment, so those two values stay. The attack saturation factor 0.45, the door distance cap (30 m) and the 4 Hz decision interval were not exercised hard enough here to justify a change.
+
 ## Alternatives considered
 
 | Option | Why not |
@@ -261,6 +263,7 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | CloseDoor | Implemented, tested and wired into the level; uses `IActionFeedback`. Never offered in the level as built, because every door is a lockout (see Limits) | `CloseDoorSource`, `CompositeCandidateSource`, `DetourCache.For`, `SaboteurBrain`; `SaboteurDetourTests`, `SaboteurFeedbackTests`, `SaboteurDoorSceneTests` |
 | Flee | Implemented, tested and wired into the level through `AgentSpawner.CreateBrain` (see Spawn hookup). The keycard carrier's bonus is a starting value | `FleeSource`, `FleePlanner`, `SaboteurBrain`; `SaboteurFleeTests`, `SaboteurFleeEvidenceTests`, `SaboteurFleeSceneTests` |
 | Saboteur layer on the F3 debug overlay: each Saboteur's squad row (letter, action, health, destroyed) and its latest decision | Implemented; registers itself, no edit to the overlay. Shows each action's raw and final score and why it lost, not the individual considerations | `UtilityDecisionText`, `SaboteurOverlayLayer`; `UtilityDecisionTextTests`, `SaboteurOverlayLayerTests` |
+| Squad scenario: four Saboteurs, two doors, a way round each, with the real sources, cache, claims and A*; searches for one and four instances; tick cost; anti-dithering | Implemented, measured | `SaboteurSquadScenarioTests`, `Test_SquadClaims.unity`, `SquadClaimsSceneTests`, `SquadScenarioObjective`; results in `Docs/AIPerformanceLog.md` |
 | ArmTrap, StealBattery | Not started | Need the blackboard facts in the handoff table |
 | Squad layer: claim on commit, "not claimed" veto, displacement check, release, attack saturation, tick stagger | Implemented in the brain: claims on commit, the veto and saturation applied to every candidate, stagger by letter, release on stun and destruction. The candidates come from an `ICandidateSource`; `AttackPlayerSource` is the first | `SquadCoordinator`, `ICandidateSource`, `SaboteurBrain`; `SquadClaimTests`, `SaboteurSquadTests` |
 | Keycard drop through `IDropsItems` | Implemented; the battery drop waits for StealBattery | `IDropsItems`, `SaboteurBrain.GetDrops`; `SaboteurDropTests` |
