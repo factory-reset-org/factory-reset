@@ -122,8 +122,9 @@ namespace ToyFactory.Tests.EditMode
             if (kneel != null)
             {
                 var kneelSettings = new SerializedObject(kneel);
-                foreach (string field in new[] { "root", "frontHip", "frontKnee", "frontAnkle", "backHip", "backKnee",
-                             "backAnkle", "torso", "head", "frontArm", "backArm" })
+                foreach (string field in new[] { "root", "pelvis", "frontHip", "frontKnee", "frontAnkle", "backHip", "backKnee",
+                             "backAnkle", "waist", "chest", "neck", "head", "frontShoulder", "frontElbow", "frontWrist",
+                             "backClavicle", "backShoulder", "backElbow" })
                     Assert.IsNotNull(kneelSettings.FindProperty(field).objectReferenceValue, field);
             }
             var lights = body.GetComponent("AgentLights");
