@@ -325,3 +325,46 @@ Contact = the Captain within 10 m of the player with line of sight, before the p
 | Time per retreat | mean 0.096 ms, median 0.058 ms, 95th percentile 0.338 ms, worst 0.567 ms |
 
 A fleeing Saboteur chooses again once a second at most, so the cost is under 0.1 ms a second per fleeing Saboteur. The first-ranked refuge was reachable almost every time (1.00 searches), so the extra searches in the budget are rarely used. **Limits:** a random grid, not the real level's rooms; Editor timings, not a build; the cost of the brain's 4 Hz decision round (Idle, Attack, Flee and the squad layer) has not been measured separately.
+
+## Saboteur squad: two doors, four instances (S3, 2026-10-15)
+
+The scenario is `SaboteurSquadScenarioTests` (EditMode) and `Test_SquadClaims.unity` with `SquadClaimsSceneTests` (PlayMode). A 60 x 40 grid (30 x 20 m, cells of 0.5 m) has two walls, each with a doorway and a gap round one end; the player at (4, 20) walks east to the objective at (56, 20) through both doors, so closing either one lengthens the route without locking the player out. Four Saboteurs use the real `CloseDoorSource`, `DetourCache`, `TargetClaims` and A*; they tick at 64 frames a second, as the controller does. Unity 6000.6.2f1 Editor in batch mode (Mono, not a build), AMD Ryzen 7 5800H, one session. The timings are printed by the tests, not asserted; the assertions hold only what does not depend on the machine.
+
+**What the squad does.**
+
+| Check | Result |
+| --- | --- |
+| Door 1 / door 2 detour (open route 52.0) | Closed route 65.8 and 67.8: gains 27% and 30%, neither a lockout |
+| Saboteurs A and B, each beside one door | A takes door 1 and B takes door 2, each holding the claim; C and D, with no door left, take none |
+| A destroyed while holding door 1 | Its claim is released at once; one of C and D takes door 1 within 3 s, B keeps door 2, and the two never share a door |
+| A door the squad has closed | Not offered again, and its claim is released |
+| Live scene (`Test_SquadClaims`, Play Mode) | Both doors get closed by different Saboteurs, never more than two at once and no door claimed twice. A stands 4 m from the player in plain sight and attacks instead of taking a door, so B and C share the doors: the squad mixes jobs |
+
+**Searches (20 s of game time, player and objective fixed).**
+
+| Measure | One Saboteur | Four Saboteurs |
+| --- | --- | --- |
+| Detour cache searches | 120 | 120 |
+| Routes the Saboteurs planned to the door they chose | 1 | 2 |
+
+The cache does three searches (the open route and one for each of the two doors on it) every half second, and four Saboteurs asking cost exactly what one does. The extra route searches belong to the two Saboteurs that picked a door. With the player moving every frame the count stays at 120 (6.0 a second), because the cache refreshes on a timer, not on every change.
+
+**Cost of the squad's ticks (4 Saboteurs, 20 s, 5,120 ticks).**
+
+| Measure | Result |
+| --- | --- |
+| Median tick | 1.1 us |
+| Mean tick | 16.4 us |
+| 95th percentile | 3.6 us |
+| Slow ticks (over 0.5 ms) | 40, all of them cache refreshes, averaging 1.99 ms; worst tick 2.1 ms |
+| All four Saboteurs together | 4.2 ms per second of game time |
+
+**The cache's refresh on a level-sized grid.** The same two-wall layout on 84 x 84 cells (the level is about 83 a side), open route 76.0, closed routes 123.3 and 125.3: three searches per refresh, **median 7.70 ms, mean 7.71 ms, worst 8.1 ms**, once every half second. That is about 2.6 ms a search (an earlier run of the same test gave a median of 7.95 ms), and the whole refresh runs inside one Saboteur's tick, so it is a frame spike of the size of half a 60 fps frame, about one frame in thirty, and four times the 2 ms budget for search work in a frame. S4's decision queue keeps two agents' heavy decisions out of the same frame but does not split one decision. This is the one result that missed a target, so the refresh was spread (next paragraph).
+
+**Spreading the refresh (S3, 2026-10-15).** `DetourCache` now does at most `SearchesPerCall` searches in one `Refresh` call (the squad's shared cache uses 1; the constructor default stays unlimited for tests). A refresh starts when due, runs one search per call, and publishes its results together after the last, so a reader never sees half a refresh and keeps the previous results meanwhile. Same 84 x 84 grid, the squad calling the cache 16 times a second (four Saboteurs at 4 Hz) for 20 s: **worst single call 8.09 ms with the whole refresh in one call, 4.69 ms spread** (a run before gave 5.04 ms), the same searches per refresh (3.0). Results now arrive up to two ticks (about 0.12 s) after the refresh starts, and a refresh takes about 0.6 s from start to start instead of 0.5 s (32 refreshes in 20 s instead of 40). **The spike is smaller, not gone:** the worst call is now one closed-door search, which A* has to spend most of the grid on to find the way round (the open-route search is cheaper), so it is still above the 2 ms budget for search work in a frame. Cutting it further needs a search that can be paused part-way (S2's `AStarSearch`), which is not S3's code.
+
+**Anti-dithering.** Two doors scored 0.60 and 0.58, each moving by up to 0.1 either way at 4 Hz for 2 minutes (480 decisions); mean of 20 seeded runs: **232.2 switches** with no momentum and no commitment, **8.1 switches** with momentum 0.15 and 1.5 s commitment, 97% fewer.
+
+**Curve tuning.** No curve, momentum, commitment or cooldown value was changed: in the scenario every choice was the one the design predicts (nearer Saboteur first, the farther ones fall back to Idle or Attack, no door claimed twice), and the stability numbers above are already large. The reasons are recorded in `Docs/AI/SaboteurBot.md`.
+
+**Limits.** Editor timings in the Mono runtime, not an IL2CPP build, so the absolute numbers will be lower in a build, though the ratios should hold. The grids are two clean walls, not the real rooms, and the real level has no loop yet, so CloseDoor still never fires there. The Saboteurs stand still in the EditMode scenario (positions fixed per Saboteur), so travel and arrival are covered only by the PlayMode scene.
