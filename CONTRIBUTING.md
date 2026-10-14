@@ -78,6 +78,7 @@ Check your weekly count: `git shortlog -sn --since="1 week ago"`.
 | `Agents` | S4 |
 | `UI` | S3 (HUD, subtitles, chapter card, title, results; added to Build Settings and loaded by S2) |
 | `ModelShowcase` | S3 (model turntable and wireframe line-up; never in build) |
+| `Test/Test_SquadClaims` | S3 (four Saboteurs and two doors for the squad evidence; a personal test scene, never in build) |
 
 Only the owner edits a scene, including its metadata. Everyone else works in a personal test scene and hands over prefabs. Test scenes live under `Scenes/Test/` and stay out of the build.
 
