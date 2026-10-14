@@ -975,32 +975,43 @@ Final model (2026-10-04): detail was added inside the existing meshes only, usin
 
 ### 8.6 CaptainBot
 
+Remake (2026-10-14): a new model replaces the one below, with more joints for animation, one arm cannon instead of two and a square-jawed head.
+
 ```text
-CaptainBot_Root                          origin, between the boots
-├─ Leg_{L,R}_Pivot                       (∓0.285, 1.08, 0) hips
-│  ├─ UpperLeg_*
-│  └─ Knee_{L,R}_Pivot                   (∓0.285, 0.64, 0)
-│     ├─ LowerLeg_*                      includes the knee hinge
-│     └─ Ankle_{L,R}_Pivot → Boot_*      (∓0.285, 0.24, 0)
-└─ Torso_Pivot                           (0, 1.04, 0) waist
-   ├─ Torso, Epaulette_L, Epaulette_R
-   ├─ Head_Pivot                         (0, 2.12, 0) neck base
-   │  ├─ Neck, Head, Visor
-   │  └─ Hat_Pivot → Hat_Band, Hat_Brim, Hat_Crown   (0, 2.82, 0) head top
-   └─ CannonArm_{L,R}_Pivot              (∓0.72, 1.95, 0)
-      └─ ShoulderBall_*, Arm_*, Cannon_*
+CaptainBot_Root                               origin, between the boots
+└─ Pelvis_Pivot                               (0, 1.21, 0)        Pelvis, Belt, Buckle
+   ├─ Leg_{L,R}_Pivot                         (∓0.29, 1.17, 0)    HipBall_*, UpperLeg_*
+   │  └─ Knee_{L,R}_Pivot                     (∓0.29, 0.69, 0.02) KneeHinge_*, KneeCap_*, LowerLeg_*
+   │     └─ Ankle_{L,R}_Pivot                 (∓0.29, 0.24, 0)    AnkleBall_*, Boot_*, Sole_*
+   │        └─ Toe_{L,R}_Pivot                (∓0.29, 0.08, 0.22) Toe_*
+   └─ Waist_Pivot                             (0, 1.34, 0)        Waist
+      └─ Chest_Pivot                          (0, 1.56, 0)        Torso, CoatFront, Button_0..5, Badge
+         ├─ Neck_Pivot                        (0, 2.25, 0.02)     Neck
+         │  └─ Head_Pivot                     (0, 2.33, 0.02)     Head, FaceFrame, VisorFrame, Visor, Ear_L, Ear_R
+         │     └─ Hat_Pivot                   (0, 2.75, 0)        Hat_Band, Hat_Crown, Hat_Top, Hat_Brim, Brim_Trim, Hat_Badge
+         ├─ Clavicle_{L,R}_Pivot              (∓0.32, 2.07, 0)    Epaulette_*
+         │  └─ Shoulder_{L,R}_Pivot           (∓0.67, 2.08, 0)    ShoulderBall_*, UpperArm_*
+         │     └─ Elbow_{L,R}_Pivot           (∓0.71, 1.62, 0)    ElbowHinge_*
+         │        ├─ (L) Forearm_L, Cuff_L
+         │        │  └─ Wrist_L_Pivot         (-0.71, 1.19, 0)    Fist_L, Knuckles_L, Thumb_L
+         │        └─ (R) Cannon_Housing, Cannon_Sleeve, Cannon_Ring, Cannon_Cell, Cannon_Sight
+         │           └─ Barrel_Pivot          (0.71, 1.32, 0)     Cannon_Shroud, Cannon_Fin_0..2, Cannon_Barrel, Cannon_Brake, Cannon_Muzzle
+         │              └─ Muzzle_Point       (0.71, 0.58, 0)     empty, where shots leave
 ```
 
-The `UpperLeg_*` and `LowerLeg_*` names replace the earlier `Leg_L`/`Leg_R` meshes. S4 acknowledged these names on 2026-09-30. Positive local X rotation on a knee pivot bends the knee (boot moves backward).
+- **Rest pose:** standing, arms hanging straight down, the cannon pointing down along the right forearm. `Barrel_Pivot` slides along the forearm for recoil. The left hand is one solid fist turned by the wrist (no finger joints).
+- **Size:** 3.10 m to the top of the cap (inside the 3.25 m capsule), x -0.89 to +1.005, z -0.373 to +0.503.
+- **Parts:** 69 meshes, each with one Greybox slot, its origin at its own centre. Navy, steel and pink parts get their colour from `CharacterMaterialBuilder` overrides. `Visor` and `Cannon_Cell` stay black for S4's `AgentLights` to light.
+- **Checked:** 94 nodes after Unity import (with the file root), all at identity rotation and scale 1; 4,288 triangles; 69 disabled prefab-variant colliders (6 spheres on the ball joints, 63 boxes); `CharacterMaterialTests` pass. The importer keeps Preserve Hierarchy on, without which Unity drops `CaptainBot_Root`.
 
-Final model (2026-10-04): detail was added inside the existing meshes only, using the same shared parts as the other robots: `Torso` with a separate gold belt band, a star badge, two buttons and a recessed back panel, `Head` with a visor frame and ear plates, a recessed lens in `Visor`, a badge on `Hat_Band`, a recessed top on `Hat_Crown`, five fringe tassels on each `Epaulette_*`, banded arms and neck, ringed `Cannon_*` with a recessed muzzle, `Boot_*` as sole plus upper with toe and instep plates, side stripes on `UpperLeg_*`, and end caps on the knee hinge in `LowerLeg_*`. No node was added, renamed, reparented or moved, and every part stays inside its greybox bounds (the cannons and neck are slightly narrower than before), so the tree above, the pivots, the boot footprint and the 21 prefab-variant colliders are unchanged. 3,188 triangles. The chest buttons share the dark slot with the hat band, so they stay dark until the palette work gives them a colour.
+Previous model (2026-09-30 to 2026-10-14), replaced by the remake: `CaptainBot_Root` with `Leg_{L,R}_Pivot` (∓0.285, 1.08, 0), `Knee_{L,R}_Pivot` (∓0.285, 0.64, 0), `Ankle_{L,R}_Pivot` (∓0.285, 0.24, 0), `Torso_Pivot` (0, 1.04, 0), `Head_Pivot` (0, 2.12, 0), `Hat_Pivot` (0, 2.82, 0) and `CannonArm_{L,R}_Pivot` (∓0.72, 1.95, 0) with a cannon on each arm; 3,188 triangles.
 
 ### 8.7 Approximate greybox motion limits
 
 These are geometric limits to keep in mind when authoring clips, not defects:
 
 - Guard shield swung across the body (about Z) starts touching the torso beyond about 60°.
-- Captain cannon arm raised forward (about X) starts meeting the epaulette beyond about 105°.
+- Captain arms raised forward (about X) clear the epaulettes, which sit on the clavicle pivots above the shoulders.
 
 ### 8.8 Blender → FBX → Unity export
 
