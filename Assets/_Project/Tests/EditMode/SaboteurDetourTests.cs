@@ -368,6 +368,76 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void SpreadRefreshDoesOneSearchPerCallAndPublishesAfterTheLast()
+        {
+            var cache = new DetourCache(_grid, _pathfinder) { SearchesPerCall = 1 };
+
+            cache.Refresh(_world, 0f);
+            Assert.AreEqual(1, _pathfinder.Calls, "The route search only.");
+            Assert.AreEqual(0, cache.Refreshes);
+            Assert.AreEqual(0, cache.Doors.Count, "Nothing is published until the last search is done.");
+
+            // Door 1 is on the route and needs a search; door 2 is off it and costs none.
+            cache.Refresh(_world, SquadCoordinator.StaggerStep);
+            Assert.AreEqual(2, _pathfinder.Calls);
+            Assert.AreEqual(1, cache.Refreshes);
+            Assert.AreEqual(2, cache.Doors.Count);
+            Assert.IsTrue(cache.HasObjective);
+        }
+
+        [Test]
+        public void SpreadRefreshGivesTheSameResultsAsOneCall()
+        {
+            var whole = new DetourCache(_grid, new CountingPathfinder(_grid));
+            whole.Refresh(_world, 0f);
+
+            var spread = new DetourCache(_grid, _pathfinder) { SearchesPerCall = 1 };
+            for (int i = 0; i < 2; i++)
+                spread.Refresh(_world, i * SquadCoordinator.StaggerStep);
+
+            Assert.AreEqual(whole.Doors.Count, spread.Doors.Count);
+            foreach (DoorDetour expected in whole.Doors)
+            {
+                DoorDetour actual = Door(spread, expected.DoorId);
+                Assert.AreEqual(expected.OpenCost, actual.OpenCost, 1e-4f);
+                Assert.AreEqual(expected.ClosedCost, actual.ClosedCost, 1e-4f);
+            }
+            Assert.AreEqual(whole.ObjectiveCell, spread.ObjectiveCell);
+        }
+
+        [Test]
+        public void SpreadRefreshKeepsTheOldResultsWhileTheNextOneIsInProgress()
+        {
+            var cache = new DetourCache(_grid, _pathfinder) { SearchesPerCall = 1 };
+            for (int i = 0; i < 2; i++)
+                cache.Refresh(_world, i * 0.05f);
+            float before = Door(cache, 1).ClosedCost;
+
+            cache.Refresh(_world, 1f);   // due again: starts the next refresh
+            Assert.AreEqual(1, cache.Refreshes, "Still the first refresh's results.");
+            Assert.AreEqual(before, Door(cache, 1).ClosedCost);
+            Assert.AreEqual(2, cache.Doors.Count);
+        }
+
+        [Test]
+        public void SpreadRefreshCostsTheSameSearchesInTotal()
+        {
+            var whole = new CountingPathfinder(_grid);
+            var spread = new CountingPathfinder(_grid);
+            var a = new DetourCache(_grid, whole);
+            var b = new DetourCache(_grid, spread) { SearchesPerCall = 1 };
+
+            for (int i = 0; i < 80; i++)
+            {
+                a.Refresh(_world, i * 0.0625f);
+                b.Refresh(_world, i * 0.0625f);
+            }
+
+            Assert.AreEqual(a.Searches / (float)a.Refreshes, b.Searches / (float)b.Refreshes, 0.01f, "Same searches per refresh.");
+            Assert.LessOrEqual(spread.Calls, whole.Calls, "Spreading moves searches to later ticks; it adds none.");
+        }
+
+        [Test]
         public void ConfidentPredictionReplacesTheNearestObjective()
         {
             var predicted = new Vector2Int(35, 3);

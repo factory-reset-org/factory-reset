@@ -296,6 +296,49 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void SpreadingTheRefreshRemovesTheSpikeOnALevelSizedGrid()
+        {
+            // The same 84 x 84 grid, but the cache does one search per call and the squad calls it 16 times a
+            // second (four Saboteurs at 4 Hz), as in the game. Compare the worst call with the unspread refresh.
+            const int Size = 84;
+            GridGraph grid = BuildLevel(Size, Size);
+            var player = new Vector2Int(4, Size / 2);
+            var objective = new Vector2Int(Size - 4, Size / 2);
+            var world = new WorldBlackboard();
+            world.SetPlayer(new PlayerSnapshot(true, player, grid.CellToWorld(player), Vector3.zero, Vector3.right, 5f, true, 1f, 1f, false, 0f, 0f));
+            world.SetObjectiveTargets(new[] { new ObjectiveTarget(7, objective, ObjectiveTargetKind.Task) });
+
+            double Worst(int searchesPerCall, out int refreshes, out int searches)
+            {
+                var counting = new CountingPathfinder(new AStarSearch(grid));
+                var cache = new DetourCache(grid, counting) { SearchesPerCall = searchesPerCall };
+                for (int i = 0; i < 8; i++)
+                    cache.Refresh(world, i * 0.0625f);   // warm-up
+                counting.Calls = 0;
+                int before = cache.Refreshes;
+                double worst = 0;
+                for (int i = 8; i < 8 + 320; i++)   // 20 s at 16 calls a second
+                {
+                    long start = Stopwatch.GetTimestamp();
+                    cache.Refresh(world, i * 0.0625f);
+                    worst = System.Math.Max(worst, (Stopwatch.GetTimestamp() - start) * 1e6 / Stopwatch.Frequency);
+                }
+
+                refreshes = cache.Refreshes - before;
+                searches = counting.Calls;
+                return worst;
+            }
+
+            double whole = Worst(int.MaxValue, out int wholeRefreshes, out int wholeSearches);
+            double spread = Worst(1, out int spreadRefreshes, out int spreadSearches);
+            Debug.Log($"[squad evidence] worst single call of the detour cache on an {Size} x {Size} grid over 20 s: {whole:0} us with the " +
+                      $"whole refresh in one call ({wholeRefreshes} refreshes, {wholeSearches} searches), {spread:0} us spread one search per call " +
+                      $"({spreadRefreshes} refreshes, {spreadSearches} searches)");
+            Assert.AreEqual(wholeSearches / (float)wholeRefreshes, spreadSearches / (float)spreadRefreshes, 0.01f, "Same searches per refresh.");
+            Assert.Less(spread, whole * 0.85, "The worst call is one search, not all of them.");
+        }
+
+        [Test]
         public void SearchesStayFlatWhenThePlayerMovesEveryFrame()
         {
             // The worst case for the cache: the player's cell changes all the time, so every half-second refresh recomputes.

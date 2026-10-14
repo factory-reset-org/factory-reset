@@ -94,6 +94,15 @@ namespace ToyFactory.AI.Agents.Saboteur
         readonly Dictionary<int, int> _resultIndex = new Dictionary<int, int>();
         readonly HashSet<Vector2Int> _routeNeighbourhood = new HashSet<Vector2Int>();
 
+        // A refresh in progress. Its results are built here and published together when the last search
+        // is done, so a reader never sees half a refresh.
+        readonly List<DoorDetour> _staging = new List<DoorDetour>();
+        bool _inProgress;
+        int _nextEntry;
+        Vector2Int _sliceStart;
+        Vector2Int _sliceGoal;
+        float _sliceOpenCost;
+
         int _doorsVersion = -1;
         int _gridVersion = -1;
         int _objectivesVersion = -1;
@@ -110,14 +119,15 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// <summary>
         /// The one cache for a level's squad: every Saboteur built over the same blackboard gets the
         /// same instance, so four Saboteurs cost the searches of one, without the spawner passing a
-        /// cache around. The grid and pathfinder of the first call are used.
+        /// cache around. The grid and pathfinder of the first call are used. Its refresh is spread over
+        /// calls, one search each (<see cref="SearchesPerCall"/>), so no tick pays for the whole refresh.
         /// </summary>
         public static DetourCache For(WorldBlackboard blackboard, GridGraph grid, IPathfinder pathfinder)
         {
             if (blackboard == null)
                 throw new ArgumentNullException(nameof(blackboard));
 
-            return Shared.GetValue(blackboard, _ => new DetourCache(grid, pathfinder));
+            return Shared.GetValue(blackboard, _ => new DetourCache(grid, pathfinder) { SearchesPerCall = 1 });
         }
 
         /// <summary>The open doors from the latest refresh. Empty while <see cref="HasObjective"/> is false.</summary>
@@ -128,6 +138,14 @@ namespace ToyFactory.AI.Agents.Saboteur
 
         /// <summary>The cell the latest refresh measured the player's route to.</summary>
         public Vector2Int ObjectiveCell { get; private set; }
+
+        /// <summary>
+        /// How many A* searches one <see cref="Refresh"/> call may start. A refresh needs one search for the
+        /// route plus one per door on it; with a limit of 1 it is spread over that many calls, so no single
+        /// Saboteur tick pays for all of them, and the new results are published together after the last.
+        /// The default is unlimited: the whole refresh happens in one call. <see cref="For"/> sets 1.
+        /// </summary>
+        public int SearchesPerCall { get; set; } = int.MaxValue;
 
         /// <summary>Refreshes done so far, for tests and the evidence log.</summary>
         public int Refreshes { get; private set; }
@@ -144,6 +162,13 @@ namespace ToyFactory.AI.Agents.Saboteur
             if (world == null)
                 throw new ArgumentNullException(nameof(world));
 
+            if (_inProgress)
+            {
+                using (Marker.Auto())
+                    Continue(now);
+                return;
+            }
+
             bool due = !_hasComputed
                 || now < _computedAt
                 || now - _computedAt >= RefreshSeconds
@@ -154,12 +179,10 @@ namespace ToyFactory.AI.Agents.Saboteur
 
             using (Marker.Auto())
             {
-                Compute(world);
-                _computedAt = now;
                 _gridVersion = _grid.Version;
                 _objectivesVersion = world.ObjectivesVersion;
                 _hasComputed = true;
-                Refreshes++;
+                Begin(world, now);
             }
         }
 
@@ -220,41 +243,74 @@ namespace ToyFactory.AI.Agents.Saboteur
             return gain >= 1f ? 1f : gain;
         }
 
-        void Compute(WorldBlackboard world)
+        void Begin(WorldBlackboard world, float now)
         {
-            _results.Clear();
-            _resultIndex.Clear();
-            HasObjective = false;
+            _staging.Clear();
             ScanDoors();
 
-            if (!TryGetRoute(world, out Vector2Int start, out Vector2Int goal, out List<Vector2Int> route, out float openCost))
-                return;
-
-            HasObjective = true;
-            ObjectiveCell = goal;
-            MarkRouteNeighbourhood(route);
-
-            for (int i = 0; i < _entries.Count; i++)
+            if (!TryGetRoute(world, out _sliceStart, out _sliceGoal, out List<Vector2Int> route, out _sliceOpenCost))
             {
-                DoorEntry door = _entries[i];
-                if (door.Closed)
-                    continue;
+                Publish(now, false);
+                return;
+            }
 
-                float closedCost = openCost;
+            MarkRouteNeighbourhood(route);
+            _nextEntry = 0;
+            _inProgress = true;
+            Continue(now, 1);
+        }
+
+        void Continue(float now, int used = 0)
+        {
+            int budget = SearchesPerCall < 1 ? 1 : SearchesPerCall;
+            while (_nextEntry < _entries.Count)
+            {
+                DoorEntry door = _entries[_nextEntry];
+                if (door.Closed)
+                {
+                    _nextEntry++;
+                    continue;
+                }
+
+                float closedCost = _sliceOpenCost;
                 if (TouchesRoute(door))
                 {
+                    if (used >= budget)
+                        return;
+
+                    used++;
                     _closure.SetClosed(door.Cells);
                     Searches++;
-                    PathResult result = _pathfinder.FindPath(start, goal, _closure);
+                    PathResult result = _pathfinder.FindPath(_sliceStart, _sliceGoal, _closure);
                     closedCost = result.Found && result.Cells != null
                         ? DoorClosureCostModel.PathCost(result.Cells, _closure)
                         : float.PositiveInfinity;
                     _closure.Clear();
                 }
 
-                _resultIndex[door.Id] = _results.Count;
-                _results.Add(new DoorDetour(door.Id, door.Cells, openCost, closedCost));
+                _staging.Add(new DoorDetour(door.Id, door.Cells, _sliceOpenCost, closedCost));
+                _nextEntry++;
             }
+
+            Publish(now, true);
+        }
+
+        void Publish(float now, bool hasObjective)
+        {
+            _results.Clear();
+            _resultIndex.Clear();
+            for (int i = 0; i < _staging.Count; i++)
+            {
+                _resultIndex[_staging[i].DoorId] = _results.Count;
+                _results.Add(_staging[i]);
+            }
+
+            HasObjective = hasObjective;
+            if (hasObjective)
+                ObjectiveCell = _sliceGoal;
+            _inProgress = false;
+            _computedAt = now;
+            Refreshes++;
         }
 
         // The grid's doors change only with its version, so the scan is redone then and not per refresh.

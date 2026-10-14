@@ -65,6 +65,7 @@ namespace ToyFactory.Tests.EditMode
         {
             var pathfinder = new AStarSearch(_grid);
             cache = DetourCache.For(_world, _grid, pathfinder);
+            cache.SearchesPerCall = int.MaxValue;   // these tests are about feedback, not about spreading the searches
             var source = new CompositeCandidateSource(new AttackPlayerSource(new NeverSight()), new CloseDoorSource(cache));
             return new SaboteurBrain(new SaboteurIdentity((int)letter + 1, letter), _grid, pathfinder, _claims,
                 new List<Vector3> { _grid.CellToWorld(new Vector2Int(2, 2)) }, null, 0, source, cache);
