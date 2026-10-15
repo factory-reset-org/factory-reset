@@ -30,7 +30,7 @@ model, and do not count as S3's custom models for the GV mark.
 | `Battery_Root` | `grenade-a` | Blaster | Fitted to 0.25 x 0.4 x 0.25 m |
 | `Overcharge_Root` | `jewel` | Platformer | Scaled x0.94 to fit 0.35 m |
 | `TrapPlate_Root` | `trap-spikes` | Platformer | Base fitted to 1 x 0.05 x 1 m on its own tint material; spikes kept as the `TrapPlate_Spikes` child |
-| `BlasterModel_Root` | `blaster-a` | Blaster | Unscaled (0.8 m long); magazine kept as `BlasterModel_Cell` (own material, pivot at its centre); `BlasterModel_Muzzle` empty added at the barrel tip |
+| `BlasterModel_Root` | none since 2026-10-15 (was `blaster-a`) | n/a | Replaced by S3's own toy energy blaster, modelled from primitives in the same file and exported over the same FBX so GUIDs and prefab references stay. Same nodes: `BlasterModel` (body), `BlasterModel_Cell` (every energy part: bulb, chamber, coils, conduit, charge bars; pivot at its centre), `BlasterModel_Muzzle` (bulb tip). Not a Kenney model any more |
 
 Every prop has its pivot at the centre of its bounds, matching the primitive it
 replaces. Rotation 0 and scale 1 on every node; it faces Unity +Z. Blender sources
