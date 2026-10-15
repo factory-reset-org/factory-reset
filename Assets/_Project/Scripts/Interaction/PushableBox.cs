@@ -22,17 +22,20 @@ namespace ToyFactory.Interaction
         [SerializeField, Min(0f)] float settleSpeed = 0.05f;
 
         [Header("Sliding")]
-        [Tooltip("Speed, in m/s, a box leaves at when the player slides it with Interact. About 1.3 m of glide at 5 with the default friction.")]
-        [SerializeField, Min(0f)] float slideSpeed = 5f;
+        [Tooltip("Speed, in m/s, a box leaves at when the player slides it with Interact. With the default friction and damping, about 1.2 m of glide at 3.2, enough to carry it up a belt's edge ramp.")]
+        [SerializeField, Min(0f)] float slideSpeed = 3.2f;
 
         [Tooltip("Friction between the box and what it rests on. Low enough that a shove glides before it stops. Applied at start unless the collider already has its own material.")]
-        [SerializeField, Range(0.05f, 1f)] float slideFriction = 0.35f;
+        [SerializeField, Range(0.05f, 1f)] float slideFriction = 0.45f;
+
+        [Tooltip("Air drag on the box while it slides, per second. Low, so a shove is stopped by friction and not by drag.")]
+        [SerializeField, Min(0f)] float slideDamping = 0.3f;
 
         [Tooltip("How far, in metres, must be clear for a way to count as free when sliding.")]
         [SerializeField, Min(0.05f)] float slideClearance = 0.3f;
 
-        [Tooltip("A box faster than this (m/s) is still sliding and ignores another shove.")]
-        [SerializeField, Min(0f)] float reshoveBelowSpeed = 1f;
+        [Tooltip("A box faster than this (m/s) is still sliding and ignores another shove. Above a belt's speed, so a box carried along a belt can still be shoved.")]
+        [SerializeField, Min(0f)] float reshoveBelowSpeed = 2f;
 
         Rigidbody _rb;
         Collider _collider;
@@ -57,6 +60,7 @@ namespace ToyFactory.Interaction
 
             // A box stays upright: tipped over, a crate lay on its side with its model sunk into the floor.
             _rb.constraints |= RigidbodyConstraints.FreezeRotation;
+            _rb.linearDamping = slideDamping;
 
             if (_collider != null && _collider.sharedMaterial == null)
             {
