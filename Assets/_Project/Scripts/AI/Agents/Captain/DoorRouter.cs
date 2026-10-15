@@ -14,7 +14,8 @@ namespace ToyFactory.AI.Agents.Captain
     /// (or impossible). Walls and boxes still block.
     /// </summary>
     /// <remarks>
-    /// <para><b>Cost.</b> Each step costs the octile base cost (1 straight, √2 diagonal), plus
+    /// <para><b>Cost.</b> Each step costs the octile base cost (1 straight, √2 diagonal), or
+    /// what the Captain's own cost model says (shoulder room, other agents), plus
     /// <see cref="DoorPenalty"/> on entering a closed door from outside it: once per door, not
     /// once per door cell. The penalty only adds to the base cost, so the octile heuristic
     /// stays admissible and A* still returns the cheapest route.</para>
@@ -56,10 +57,13 @@ namespace ToyFactory.AI.Agents.Captain
         /// The cheapest route from <paramref name="start"/> to <paramref name="goal"/> (both
         /// included), going through closed doors when that is cheaper or the only way. Doors
         /// for which <paramref name="isDoorBlocked"/> returns true are treated as walls (one the
-        /// Captain failed to open). Null if there is no route.
+        /// Captain failed to open). Steps cost what <paramref name="costModel"/> says (the base
+        /// octile cost if null), plus the door penalty. Null if there is no route.
         /// </summary>
-        public List<Vector2Int> FindPath(Vector2Int start, Vector2Int goal, Predicate<int> isDoorBlocked = null)
+        public List<Vector2Int> FindPath(Vector2Int start, Vector2Int goal, Predicate<int> isDoorBlocked = null,
+            ICostModel costModel = null)
         {
+            costModel = costModel ?? BaseCostModel.Instance;
             NodesExpanded = 0;
             if (!_grid.Contains(start) || !_grid.Contains(goal) || !Enterable(start, isDoorBlocked) || !Enterable(goal, isDoorBlocked))
                 return null;
@@ -87,7 +91,7 @@ namespace ToyFactory.AI.Agents.Captain
                     GridNode nextNode = _grid.GetNode(next);
                     if (!Enterable(next, isDoorBlocked))
                         continue;
-                    float step = BaseCostModel.Instance.StepCost(cell, next);
+                    float step = costModel.StepCost(cell, next);
                     // Entering a closed door from outside it: pay once for opening it.
                     if (nextNode.IsDoorClosed && !(node.IsDoorClosed && node.DoorId == nextNode.DoorId))
                         step += DoorPenalty;
