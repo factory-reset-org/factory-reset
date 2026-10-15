@@ -725,8 +725,8 @@ The alarm colours belong to `LightingState`. A Timeline can frame or activate th
 | Damage vignette | Integrity falling | A flash for 0.5 s after a hit, and a steady glow below 30% integrity |
 | Crosshair | - | Four ticks round an empty centre |
 | Objective arrow with distance | The chapter manager's current beacon target and `Camera.main` | Shown only when the objective is off screen, on the screen edge, pointing at it (or the way to turn if it is behind) |
-| Chapter card: tag, title, subtitle, four-stop route | `ChapterEvents.OnChapterStarted` | 4.5 s, fades, never blocks; waits for a cutscene to end; switches off the director's own `ChapterCard`, as that card's design says, so only one shows |
-| Subtitle bar | `DialogueEvents` | Sorts above the letterbox; switches off the director's `PlaceholderSubtitles` the first time a line shows |
+| Chapter card: tag, title, subtitle, four-stop route | `ChapterEvents.OnChapterStarted` | 4.5 s, fades, never blocks; waits for a cutscene to end; does not look up the director's `ChapterCard`, which S4 removes |
+| Subtitle bar | `DialogueEvents` | Sorts above the letterbox; does not look up the director's `PlaceholderSubtitles`, which S4 removes |
 
 - **Visibility.** The HUD shows while the game is playing or paused and no cutscene is running (`GameClock` state, `CutsceneEvents`). It is hidden on the title screen, in cutscenes and on the results screen. The subtitle bar is not part of that: it shows in cutscenes.
 - **Two canvases.** Panels and labels sit on the main canvas; the bars' fills, the arrow and the vignette sit on nested canvases, so a moving bar does not rebuild the text. The batch counts have not been measured yet.

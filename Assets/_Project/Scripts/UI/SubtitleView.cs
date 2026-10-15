@@ -10,15 +10,12 @@ namespace ToyFactory.UI
     /// nothing more: the words, their timing and when they clear are the cutscene director's.
     /// </summary>
     /// <remarks>
-    /// Sorts above the cutscene letterbox, so the bar is readable over the black bands. The first time
-    /// a line is shown it switches off the director's <see cref="PlaceholderSubtitles"/>, which exists
-    /// only until this view does, so the line is not drawn twice.
+    /// Sorts above the cutscene letterbox, so the bar is readable over the black bands.
     /// </remarks>
     public sealed class SubtitleView : MonoBehaviour
     {
         Canvas _canvas;
         Text _text;
-        bool _placeholderChecked;
 
         /// <summary>True while a line is on screen.</summary>
         public bool IsShowing => _canvas != null && _canvas.enabled;
@@ -64,14 +61,6 @@ namespace ToyFactory.UI
         {
             if (_canvas == null)
                 return;
-
-            if (!_placeholderChecked)
-            {
-                _placeholderChecked = true;
-                PlaceholderSubtitles placeholder = FindAnyObjectByType<PlaceholderSubtitles>();
-                if (placeholder != null)
-                    placeholder.enabled = false;
-            }
 
             _text.text = Format(line);
             _canvas.enabled = true;
