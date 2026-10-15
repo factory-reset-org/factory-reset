@@ -98,7 +98,6 @@ namespace ToyFactory.UI
         GameState _state = GameState.Playing;
         bool _cutsceneActive;
         int _pendingCard;
-        bool _directorCardOff;
         bool _visible = true;
         float _lastHealth = 1f;
         float _lastHitAt = float.NegativeInfinity;
@@ -210,8 +209,6 @@ namespace ToyFactory.UI
             Build();
         }
 
-        void Start() => SwitchOffDirectorCard();
-
         void OnEnable()
         {
             ChapterEvents.OnChapterStarted += HandleChapterStarted;
@@ -299,24 +296,8 @@ namespace ToyFactory.UI
                 ShowCard(chapter);
         }
 
-        // The cutscene director draws its own chapter card until the UI does (the director's design says
-        // so, like its placeholder subtitles). Switch it off once, or two cards show at the same time.
-        void SwitchOffDirectorCard()
-        {
-            if (_directorCardOff)
-                return;
-
-            ChapterCard card = FindAnyObjectByType<ChapterCard>();
-            if (card == null)
-                return;
-
-            card.enabled = false;
-            _directorCardOff = true;
-        }
-
         void ShowCard(int chapter)
         {
-            SwitchOffDirectorCard();
             ChapterFlow flow = ChapterManager.Current != null ? ChapterManager.Current.Flow : null;
             ChapterDefinition definition = flow != null ? flow.GetDefinition(chapter) : null;
             if (definition == null)
