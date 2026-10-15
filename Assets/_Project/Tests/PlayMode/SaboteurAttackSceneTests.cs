@@ -99,5 +99,30 @@ namespace ToyFactory.Tests
             Teleport(player, saboteur.transform.position + new Vector3(40f, 0f, 0f));
             yield return Until(() => saboteur.DebugState == "Patrol", 5f, "the Saboteur to patrol again");
         }
+
+        [UnityTest]
+        public IEnumerator SaboteurClosesInOnAPlayerWhoStandsStillAndHurtsThem()
+        {
+            SceneManager.LoadScene("Bootstrap");
+            yield return Until(() => AgentSpawner.Instance != null && AgentSpawner.Instance.SpawnedAgents.Count == 7
+                && CutsceneDirector.Current != null && PlayerState.Current != null, LoadTimeout, "Bootstrap to spawn every agent");
+            if (GameClock.Current != null)
+                GameClock.Current.RequestState(GameState.Playing);
+            yield return Until(() => CutsceneDirector.Current.IsPlaying, 10f, "the intro");
+            CutsceneDirector.Current.Skip();
+            yield return Until(() => GameClock.Current != null && GameClock.Current.State == GameState.Playing, 10f, "Playing");
+
+            AgentController saboteur = AgentSpawner.Instance.SpawnedAgents
+                .First(a => a.Type == AgentType.Saboteur && a.Identity.SquadLetter == 'A');
+            var player = (Component)PlayerState.Current;
+
+            // Placed once, 4 m away, then left alone: the Saboteur has to walk the distance itself.
+            Teleport(player, saboteur.transform.position + new Vector3(4f, 0f, 0f));
+            float healthBefore = PlayerState.Current.HealthFraction;
+            yield return Until(() => PlayerState.Current.HealthFraction < healthBefore, 15f,
+                "the Saboteur to reach the player and land a swipe");
+
+            Assert.Less(PlayerState.Current.HealthFraction, healthBefore, "The claw swipe deals damage once the Saboteur is in reach.");
+        }
     }
 }
