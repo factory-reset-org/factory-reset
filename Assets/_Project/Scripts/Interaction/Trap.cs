@@ -14,12 +14,12 @@ namespace ToyFactory.Interaction
     /// trap safely by using it.
     /// </summary>
     [RequireComponent(typeof(Collider))]
-    public sealed class Trap : MonoBehaviour, ISabotageable, IInteractable, IInteractionPrompt
+    public sealed class Trap : MonoBehaviour, ISabotageable, ISabotageFact, IInteractable, IInteractionPrompt
     {
         [Tooltip("Armed from the start, without a Saboteur.")]
         [SerializeField] bool startArmed;
 
-        [Tooltip("The id the Saboteur names this trap by. Must be different for every trap.")]
+        [Tooltip("The id the Saboteur names this trap by. Unique across every door, trap and battery: the squad claims a target by id alone.")]
         [SerializeField, Min(0)] int sabotageId;
 
         [SerializeField, Min(0f)] float damage = 15f;
@@ -36,6 +36,12 @@ namespace ToyFactory.Interaction
         float _nextSparkAt;
 
         public bool IsArmed { get; private set; }
+
+        SabotageKind ISabotageFact.FactKind => SabotageKind.Trap;
+        int ISabotageFact.SabotageId => sabotageId;
+
+        /// <summary>A trap can be armed while it is not armed.</summary>
+        bool ISabotageFact.Available => !IsArmed;
 
         /// <summary>Raised when the player steps on the trap while it is armed.</summary>
         public event Action<Trap> OnSprung;

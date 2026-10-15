@@ -57,6 +57,7 @@ namespace ToyFactory.Runtime.Agents
         ChapterIndexWriter _chapterWriter;
         CaptainWakeWriter _captainWakeWriter;
         PlayerStateWriter _playerWriter;
+        SabotageFactWriter _sabotageWriter;
         AgentHearing _hearing;
 
         /// <summary>Every agent spawned so far, for the debug overlay and tests.</summary>
@@ -79,13 +80,18 @@ namespace ToyFactory.Runtime.Agents
             _chapterWriter = new ChapterIndexWriter(_blackboard);
             _captainWakeWriter = new CaptainWakeWriter(_blackboard);
             _playerWriter = new PlayerStateWriter(_blackboard);
+            _sabotageWriter = new SabotageFactWriter(_blackboard);
 
             // Reads the live agent list and the grid at each noise, so it works before and
             // after spawning and picks up a grid built later.
             _hearing = new AgentHearing(_spawned, () => GridManager.Current);
         }
 
-        void Update() => _playerWriter.Write(GridManager.Current);
+        void Update()
+        {
+            _playerWriter.Write(GridManager.Current);
+            _sabotageWriter.Write(GridManager.Current);
+        }
 
         void OnDestroy()
         {
