@@ -22,8 +22,11 @@ namespace ToyFactory.Runtime.Agents
     [RequireComponent(typeof(AgentController))]
     public sealed class AgentWeapon : MonoBehaviour
     {
-        [Tooltip("Cannon meshes. Shots come from the front of each in turn (the Captain alternates its two).")]
+        [Tooltip("Cannon meshes. Shots come from the front of each in turn.")]
         [SerializeField] Renderer[] barrels = new Renderer[0];
+
+        [Tooltip("Optional, per barrel: the model's muzzle point. Shots leave from it, along the line from the barrel's centre to it. Without one, from the front of the barrel's longest side.")]
+        [SerializeField] Transform[] muzzles = new Transform[0];
 
         [Tooltip("Seconds between the request and the shot: the telegraph.")]
         [SerializeField, Min(0f)] float aimSeconds = 0.3f;
@@ -87,7 +90,7 @@ namespace ToyFactory.Runtime.Agents
         /// <summary>True if the most recent shot hit the player.</summary>
         public bool LastShotHit { get; private set; }
 
-        /// <summary>Index into the barrels of the most recent shot (the Captain alternates 0 and 1).</summary>
+        /// <summary>Index into the barrels of the most recent shot (agents with several alternate them).</summary>
         public int LastBarrel { get; private set; }
 
         /// <summary>Shots dropped because the body could not face the target in time.</summary>
@@ -161,6 +164,15 @@ namespace ToyFactory.Runtime.Agents
                 return false;
             }
             Renderer barrel = barrels[index];
+            Transform muzzle = index < muzzles.Length ? muzzles[index] : null;
+            if (muzzle != null)
+            {
+                // The model says where the muzzle is: the Captain's cannon hangs down at rest,
+                // so its longest side would not tell which end shoots.
+                tip = muzzle.position;
+                direction = (tip - barrel.transform.position).normalized;
+                return true;
+            }
             Vector3 axis = _barrelAxes[index];
             Bounds local = barrel.localBounds;
             tip = barrel.transform.TransformPoint(local.center + Vector3.Scale(axis, local.extents));
