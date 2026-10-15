@@ -421,7 +421,11 @@ namespace ToyFactory.Editor.Animation
                 }
 
                 if (spec.Model == "CaptainBot")
+                {
                     AddCaptainCannon(root, model);
+                    // Its shoulders are much wider than its capsule: its brain routes clear of shelf edges.
+                    GetOrAdd<ShoulderFit>(root);
+                }
 
                 if (spec.Model == "TrackerToy")
                 {
