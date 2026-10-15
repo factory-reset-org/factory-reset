@@ -16,6 +16,9 @@ namespace ToyFactory.Runtime.Agents
     /// decide when to shoot and how often, never the timing of the shot itself.</para>
     /// <para><b>No friendly fire:</b> the Agents layer is not in the hit mask, so another agent
     /// standing in the line of fire neither blocks nor takes the shot.</para>
+    /// <para><b>A cannon pushed into cover:</b> the shot is traced from inside the body out to
+    /// the muzzle before it leaves, so a cannon held out into a crate, a pillar or a wall hits
+    /// that, rather than starting inside it and passing through.</para>
     /// <para><b>Time:</b> game time, like the controller, so a cutscene or the pause menu holds
     /// an aim where it is. A knock-out or scrap cancels it.</para>
     /// </remarks>
@@ -276,7 +279,14 @@ namespace ToyFactory.Runtime.Agents
 
             Vector3 end = from + direction * distance;
             LastShotHit = false;
-            if (Physics.Raycast(from, direction, out RaycastHit hit, range, _hitMask, QueryTriggerInteraction.Ignore))
+            // The muzzle can be held out well past the body (the Captain's arm cannon reaches
+            // 1.5 m in front), into a crate, a pillar or a wall. A ray that starts inside a
+            // collider does not hit it, so the shot passed straight through. Trace from inside
+            // the body, at the muzzle's height, out to the muzzle first: whatever the cannon is
+            // pushed into takes the shot.
+            Vector3 body = new Vector3(transform.position.x, from.y, transform.position.z);
+            bool blocked = Physics.Linecast(body, from, out RaycastHit hit, _hitMask, QueryTriggerInteraction.Ignore);
+            if (blocked || Physics.Raycast(from, direction, out hit, range, _hitMask, QueryTriggerInteraction.Ignore))
             {
                 end = hit.point;
                 var hitPlayer = hit.collider.GetComponentInParent<IPlayerState>();
