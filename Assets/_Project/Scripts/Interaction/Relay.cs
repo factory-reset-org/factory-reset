@@ -9,7 +9,7 @@ namespace ToyFactory.Interaction
     /// glow in its colour, and flickers red when the board reports a wrong order.
     /// </summary>
     [RequireComponent(typeof(Collider))]
-    public sealed class Relay : MonoBehaviour, IInteractable
+    public sealed class Relay : MonoBehaviour, IInteractable, IInteractionPrompt
     {
         static readonly Color AlarmColour = new Color(1f, 0.13f, 0.2f);
 
@@ -56,6 +56,9 @@ namespace ToyFactory.Interaction
         void Start() => _glow = PropGlow.Attach(gameObject, colour, 2.6f, 0.5f, 0.3f, 3f, new Vector3(0f, 0.7f, 0f));
 
         internal void Bind(RelayBoard board) => _board = board;
+
+        /// <summary>The prompt line while the player looks at this.</summary>
+        public string PromptText => "press the relay";
 
         public void Interact()
         {

@@ -10,7 +10,7 @@ namespace ToyFactory.Interaction
     /// manager says every task of its chapter is done; only then does using it restore it.
     /// Its colour shows which: red while sealed, amber once it can be used, green once restored.
     /// </summary>
-    public sealed class ControlSwitch : TaskProp, IInteractable
+    public sealed class ControlSwitch : TaskProp, IInteractable, IInteractionPrompt
     {
         // The chapter data refers to switches as "switch.1" to "switch.3".
         const string IdPrefix = "switch.";
@@ -61,6 +61,9 @@ namespace ToyFactory.Interaction
             IsUnsealed = true;
             Show(ReadyColour);
         }
+
+        /// <summary>The prompt line while the player looks at this.</summary>
+        public string PromptText => "throw the switch";
 
         public void Interact()
         {

@@ -25,7 +25,7 @@ namespace ToyFactory.Interaction
     /// A door with an unlock signal (the two Control Room doors) starts locked: the player
     /// cannot use it until a cutscene raises that signal, which unlocks it and opens it.
     /// </remarks>
-    public sealed class Door : MonoBehaviour, IDoor, ISabotageable, IInteractable
+    public sealed class Door : MonoBehaviour, IDoor, ISabotageable, IInteractable, IInteractionPrompt
     {
         enum State
         {
@@ -157,6 +157,9 @@ namespace ToyFactory.Interaction
             SetGridClosed(true);
             GameSfx.Play(Sfx.Door);
         }
+
+        /// <summary>The prompt line while the player looks at this.</summary>
+        public string PromptText => "use the door";
 
         /// <summary>Player use: opens a closed door and closes an open one.</summary>
         public void Interact()

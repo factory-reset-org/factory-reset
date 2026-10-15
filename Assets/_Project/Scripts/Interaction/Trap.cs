@@ -14,7 +14,7 @@ namespace ToyFactory.Interaction
     /// trap safely by using it.
     /// </summary>
     [RequireComponent(typeof(Collider))]
-    public sealed class Trap : MonoBehaviour, ISabotageable, IInteractable
+    public sealed class Trap : MonoBehaviour, ISabotageable, IInteractable, IInteractionPrompt
     {
         [Tooltip("Armed from the start, without a Saboteur.")]
         [SerializeField] bool startArmed;
@@ -78,6 +78,9 @@ namespace ToyFactory.Interaction
             }
             SetArmed(true);
         }
+
+        /// <summary>The prompt line while the player looks at this.</summary>
+        public string PromptText => "disarm the trap";
 
         /// <summary>Player use: clear the trap.</summary>
         public void Interact() => SetArmed(false);

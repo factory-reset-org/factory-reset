@@ -7,7 +7,7 @@ namespace ToyFactory.Interaction
     /// corner or pushed somewhere it cannot come back from; using the dispenser brings it
     /// back to the outlet, and a crate that falls out of the level comes back by itself.
     /// </summary>
-    public sealed class CrateDispenser : MonoBehaviour, IInteractable
+    public sealed class CrateDispenser : MonoBehaviour, IInteractable, IInteractionPrompt
     {
         [Tooltip("The crate this dispenser looks after.")]
         [SerializeField] PushableBox crate;
@@ -23,6 +23,9 @@ namespace ToyFactory.Interaction
         [SerializeField, Min(0.1f)] float checkInterval = 1f;
 
         float _nextCheckTime;
+
+        /// <summary>The prompt line while the player looks at this.</summary>
+        public string PromptText => "call a new crate";
 
         public void Interact() => Recall();
 
