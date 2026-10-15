@@ -57,7 +57,6 @@ Most of it is written in code on S3's frozen pivots rather than keyframed, for o
 | Technique | How | Numbers | Checked by / evidence |
 | --- | --- | --- | --- |
 | "?" and "!" icons | Above every head, facing the camera, with a pop whenever the level rises; hidden while down, scrapped or frozen | Overshoot to 130% then settle, 0.25 s | `AlertIconTests` |
-| Captain call-out bubble | A comic speech bubble above the Captain when it commits to a goal and the player can see it, in the cutscene comic words' style; pops in with the same overshoot as those words, faces the camera and grows with distance | 0 → 1.15 → 1 in 0.22 s; shown 2.8 s with a 0.5 s fade; grows ×1 to ×3 past 7 m | `CaptainCalloutTests`; `Evidence/Agents/captain_callout_bubble.png` |
 | Prediction marker | A red ring and short beam flash on the goal the Captain committed to; the ring spreads like a ping and the whole marker fades | 2 s; ring 0.5 → 1.3 × with an ease-out; fades over the last 40% | `CaptainCalloutTests`; `Evidence/Agents/captain_prediction_marker.png` |
 
 ## Cutscenes
