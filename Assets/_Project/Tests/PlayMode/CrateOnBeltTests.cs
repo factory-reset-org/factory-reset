@@ -48,6 +48,78 @@ namespace ToyFactory.Tests
             }
         }
 
+        static IEnumerator LoadLevelAndStart()
+        {
+            AgentSpawner previous = AgentSpawner.Instance;
+            SceneManager.LoadScene("Bootstrap");
+            yield return null;
+            yield return Until(() => AgentSpawner.Instance != null && AgentSpawner.Instance != previous
+                && ChapterManager.Current != null && ChapterManager.Current.Flow != null && ChapterManager.Current.Flow.HasBegun
+                && PlayerState.Current != null, 60f, "the level");
+
+            GameClock.Current.RequestState(GameState.Playing);
+            yield return Until(() => CutsceneDirector.Current != null && CutsceneDirector.Current.IsPlaying, 10f, "the intro");
+            CutsceneDirector.Current.Skip();
+            yield return Until(() => GameClock.Current.State == GameState.Playing, 10f, "Playing");
+        }
+
+        [UnityTest]
+        public IEnumerator ABoxSlidFromTheFloorClimbsTheBeltEdgeAndIsCarried()
+        {
+            yield return LoadLevelAndStart();
+
+            Type leverType = Type.GetType("ToyFactory.Interaction.ConveyorLever, Assembly-CSharp");
+            leverType.GetMethod("Interact").Invoke(UnityEngine.Object.FindAnyObjectByType(leverType), null);
+
+            GameObject crate = GameObject.Find("Crate_1");
+            Component box = crate.GetComponent("PushableBox");
+            Rigidbody rb = crate.GetComponent<Rigidbody>();
+            // On the floor just south of the top belt (z 16.75 to 18.25), with the player south of it.
+            box.GetType().GetMethod("Teleport").Invoke(box, new object[] { new Vector3(6f, 0.5f, 15.4f), Quaternion.identity });
+            yield return new WaitForSeconds(0.3f);
+            Assert.AreEqual(0.5f, crate.transform.position.y, 0.03f, "it starts on the floor, not on the belt");
+
+            Component player = (Component)PlayerState.Current;
+            CharacterController controller = player.GetComponent<CharacterController>();
+            controller.enabled = false;
+            controller.transform.position = new Vector3(6f, 0.05f, 12.5f);
+            controller.enabled = true;
+            Physics.SyncTransforms();
+            yield return null;
+
+            box.GetType().GetMethod("Interact").Invoke(box, null);
+            yield return new WaitForSeconds(4f);
+
+            Assert.Greater(crate.transform.position.z, 16.9f, "it went over the belt's edge");
+            Assert.Greater(crate.transform.position.y, 0.52f, "and is standing on the belt, not beside it");
+            Assert.Greater(crate.transform.position.x, 7f, "and the belt carried it along");
+        }
+
+        [UnityTest]
+        public IEnumerator ThePaintingRoomCratesAreTheBigPushableCrate()
+        {
+            yield return LoadLevelAndStart();
+            Vector3[] placed = new Vector3[3];
+            for (int i = 0; i < 3; i++)
+            {
+                GameObject crate = GameObject.Find("PaintCrate_" + (i + 1));
+                Assert.IsNotNull(crate, "PaintCrate_" + (i + 1));
+                placed[i] = crate.transform.position;
+                Assert.AreEqual(1.75f, crate.GetComponent<BoxCollider>().size.x, 0.001f, crate.name + " is the full-size crate");
+                Transform model = crate.transform.Find("Model");
+                Assert.IsNotNull(model, crate.name + " has its model");
+                Assert.IsTrue(model.name == "Model" && model.GetComponentInChildren<MeshRenderer>() != null);
+            }
+
+            yield return new WaitForSeconds(1.5f);
+            for (int i = 0; i < 3; i++)
+            {
+                GameObject crate = GameObject.Find("PaintCrate_" + (i + 1));
+                Assert.Less(Vector3.Distance(placed[i], crate.transform.position), 0.15f,
+                    crate.name + " sat where the level put it: it was not shoved out of anything it overlaps");
+            }
+        }
+
         [UnityTest]
         public IEnumerator ABigCrateOnTheTopBeltRidesToTheStopAndLatchesThePlate()
         {
