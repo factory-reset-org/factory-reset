@@ -11,6 +11,23 @@ namespace ToyFactory.Interfaces
         Battery
     }
 
+    /// <summary>One registered sabotage target, as listed by <see cref="SabotageTargets.CopyTo"/>.</summary>
+    public readonly struct SabotageTargetInfo
+    {
+        public SabotageKind Kind { get; }
+        public int Id { get; }
+        public ISabotageable Target { get; }
+        public Transform Where { get; }
+
+        public SabotageTargetInfo(SabotageKind kind, int id, ISabotageable target, Transform where)
+        {
+            Kind = kind;
+            Id = id;
+            Target = target;
+            Where = where;
+        }
+    }
+
     /// <summary>
     /// Finds a sabotage target from the id a Saboteur's brain names. Doors, traps and battery
     /// pickups register themselves here with the same id the brain sees (a door's id is its
@@ -55,6 +72,22 @@ namespace ToyFactory.Interfaces
         {
             if (Targets.TryGetValue((kind, id), out Entry entry) && ReferenceEquals(entry.Target, target))
                 Targets.Remove((kind, id));
+        }
+
+        /// <summary>
+        /// Replaces the contents of <paramref name="into"/> with every registered target that is still
+        /// alive. For the runtime's fact writer; allocation-free once the list has grown.
+        /// </summary>
+        public static int CopyTo(List<SabotageTargetInfo> into)
+        {
+            into.Clear();
+            foreach (KeyValuePair<(SabotageKind, int), Entry> pair in Targets)
+            {
+                if (pair.Value.Where == null)
+                    continue;
+                into.Add(new SabotageTargetInfo(pair.Key.Item1, pair.Key.Item2, pair.Value.Target, pair.Value.Where));
+            }
+            return into.Count;
         }
 
         /// <summary>The registered target and where it stands; false if there is none (or it was destroyed).</summary>
