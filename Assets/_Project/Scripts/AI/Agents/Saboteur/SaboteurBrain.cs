@@ -33,8 +33,31 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// <summary>Seconds the Saboteur keeps asking to close a door that stays open before it gives up on it.</summary>
         public const float CloseDoorTimeoutSeconds = 3f;
 
-        /// <summary>Seconds between two shots while attacking (provisional pacing, tuned in play).</summary>
-        public const float AttackIntervalSeconds = 1.5f;
+        /// <summary>
+        /// Seconds between two claw swipes while attacking: the swipe interval on the Saboteur
+        /// prefab (<c>AgentClawSwipe</c>, 1.2 s start to start), so a request never lands on a swipe
+        /// that is still playing.
+        /// </summary>
+        public const float AttackIntervalSeconds = 1.2f;
+
+        /// <summary>
+        /// Ground distance, in metres, at which the Saboteur's body holds in front of the player
+        /// (<c>PlayerStandOff</c> on the Saboteur prefab). The claw swipe is measured from here.
+        /// </summary>
+        public const float MeleeStandOffMetres = 1.6f;
+
+        /// <summary>
+        /// Ground distance, in metres, within which the Saboteur asks for a swipe. The swipe lands
+        /// up to the stand-off plus its 0.6 m lunge (2.2 m); asking from 2.0 m leaves slack for the
+        /// body's travel between two ticks. Farther away the Saboteur walks at the player instead.
+        /// </summary>
+        public const float MeleeReachMetres = 2f;
+
+        /// <summary>
+        /// Seconds between two route searches toward a moving player while closing in. A search per
+        /// tick would cost four A* runs per frame for the squad; the player moves slowly compared with it.
+        /// </summary>
+        public const float ChaseReplanSeconds = 0.5f;
 
         /// <summary>Seconds between two choices of where to run while fleeing.</summary>
         public const float FleeReplanSeconds = 1f;
@@ -107,9 +130,14 @@ namespace ToyFactory.AI.Agents.Saboteur
         float _doorReachedAt;
         List<Vector2Int> _doorRoute;
 
-        // AttackPlayer: whether the body has been stopped for the current attack, and when it
-        // may next ask for a shot.
+        // AttackPlayer: whether an attack is under way (so the patrol is routed again afterwards),
+        // whether the body has been stopped inside melee reach, the chase route toward the player
+        // (its target cell and when it may be searched again), and when a swipe may next be asked for.
         bool _attacking;
+        bool _attackStopped;
+        bool _chasing;
+        Vector2Int _chaseCell;
+        float _nextChaseTime = float.NegativeInfinity;
         float _nextShotTime;
 
         // Flee: the route being run, when to choose again, and the pause after finding no way out. A
@@ -243,8 +271,8 @@ namespace ToyFactory.AI.Agents.Saboteur
             // A Saboteur that wants to flee but has nowhere to run fights back instead.
             bool attackSelected = _selector.HasCurrent && (_selector.Current.Kind == SaboteurActionKind.AttackPlayer
                 || (_selector.Current.Kind == SaboteurActionKind.Flee && _cornered));
-            if (ctx.World != null && attackSelected && AttackPlayerSource.InRange(ctx.World.Player, ctx.Position, out _))
-                return Attack(ctx);
+            if (ctx.World != null && attackSelected && AttackPlayerSource.InRange(ctx.World.Player, ctx.Position, out float playerDistance))
+                return Attack(ctx, playerDistance);
 
             // Back to patrolling after an attack, a flight or a door: the body was stopped or sent elsewhere, so route again.
             if (_attacking || _doorActive || _fleeing)
@@ -255,7 +283,7 @@ namespace ToyFactory.AI.Agents.Saboteur
                     && doorCells.Count > 0 && _grid.GetNode(doorCells[0]).IsDoorClosed)
                     _selector.NotifySuccess(_doorKey, ctx.Time);
 
-                _attacking = false;
+                ResetAttackPlan();
                 ResetFleePlan();
                 ResetDoorPlan();
                 _needsRoute = true;
@@ -271,6 +299,9 @@ namespace ToyFactory.AI.Agents.Saboteur
         {
             if (changedCells == null || changedCells.Count == 0)
                 return;
+
+            // A door opening or closing may have cut the route to the player; search again (still rationed).
+            _chasing = false;
 
             if (_doorRoute != null)
             {
@@ -314,7 +345,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             _squad.EndPlan(_identity.AgentId);
             _needsRoute = true;
             _holdSent = false;
-            _attacking = false;
+            ResetAttackPlan();
             ResetFleePlan();
             ResetDoorPlan();
         }
@@ -453,23 +484,78 @@ namespace ToyFactory.AI.Agents.Saboteur
                 _selector.CancelCurrent();
         }
 
-        // Face the player and ask for a shot. The body is stopped once when the attack starts and
-        // the weapon turns it to face the player while it aims, so the brain only paces the
-        // requests; the weapon ignores a request while a shot is still in progress.
-        AgentIntent Attack(in AgentContext ctx)
+        void ResetAttackPlan()
         {
-            List<Vector3> path = null;
-            if (!_attacking)
+            _attacking = false;
+            _attackStopped = false;
+            _chasing = false;
+            _nextChaseTime = float.NegativeInfinity;
+        }
+
+        // The route toward the player while out of melee reach: a new one when there is none yet or
+        // the player has moved to another cell (and the search delay is over), otherwise null so the
+        // body keeps walking the route it has. With no route to the player the body is stopped once
+        // and the search is tried again after the delay.
+        List<Vector3> ChaseRoute(in AgentContext ctx)
+        {
+            Vector2Int target = ctx.World.Player.Cell;
+            if (_chasing && target == _chaseCell)
+                return null;
+            if (ctx.Time < _nextChaseTime)
+                return null;
+
+            _nextChaseTime = ctx.Time + ChaseReplanSeconds;
+            if (!TryRoute(ctx.Cell, target, out List<Vector2Int> cells))
             {
-                _attacking = true;
-                path = new List<Vector3>();
+                _chasing = false;
+                if (_attackStopped)
+                    return null;
+
+                _attackStopped = true;
+                return new List<Vector3>();
             }
 
+            _chasing = true;
+            _chaseCell = target;
+            _attackStopped = false;
+            var path = new List<Vector3>(cells.Count);
+            for (int i = 0; i < cells.Count; i++)
+                path.Add(_grid.CellToWorld(cells[i]));
+            return path;
+        }
+
+        // The Saboteur's attack is a claw swipe that only lands within about 2.2 m, so it closes in
+        // first: beyond MeleeReachMetres it walks at the player (a route to the player's cell, searched
+        // again at most every ChaseReplanSeconds once the player has moved to another cell), and inside
+        // it stops the body once and asks for a swipe, paced by AttackIntervalSeconds across both
+        // phases so stepping in and out of reach cannot beat the swipe's recovery. The runtime's
+        // stand-off holds the body in front of the player, so the route need not stop short itself.
+        AgentIntent Attack(in AgentContext ctx, float playerDistance)
+        {
+            _attacking = true;
+            List<Vector3> path = null;
             AgentAction action = AgentAction.None;
-            if (ctx.Time >= _nextShotTime)
+
+            if (playerDistance <= MeleeReachMetres)
             {
-                action = AgentAction.Shoot;
-                _nextShotTime = ctx.Time + AttackIntervalSeconds;
+                // Stepping back out of reach searches again at once, whatever the delay was.
+                _chasing = false;
+                _nextChaseTime = float.NegativeInfinity;
+                if (!_attackStopped)
+                {
+                    _attackStopped = true;
+                    path = new List<Vector3>();
+                }
+
+                if (ctx.Time >= _nextShotTime)
+                {
+                    action = AgentAction.Shoot;
+                    _nextShotTime = ctx.Time + AttackIntervalSeconds;
+                }
+            }
+            else
+            {
+                path = ChaseRoute(ctx);
             }
 
             return new AgentIntent
@@ -527,7 +613,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             }
 
             _fleeing = true;
-            _attacking = false;
+            ResetAttackPlan();
             _fleeRoute = route;
             _fleeReplanAt = ctx.Time + FleeReplanSeconds;
             intent = Move(route, "Flee");

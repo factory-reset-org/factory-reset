@@ -422,7 +422,7 @@ namespace ToyFactory.Tests.EditMode
         {
             SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(10, 10));
 
-            AgentIntent intent = brain.Tick(Ctx(WorldWith(PlayerAt(3f)), 0f));
+            AgentIntent intent = brain.Tick(Ctx(WorldWith(PlayerAt(1.5f)), 0f));
 
             Assert.AreEqual(Attack, brain.CurrentAction);
             Assert.AreEqual(AgentAction.Shoot, intent.Action);
@@ -473,11 +473,11 @@ namespace ToyFactory.Tests.EditMode
             SaboteurBrain brain = Brain(SaboteurLetter.A);
             brain.OnHealthChanged(1, 4);
 
-            AgentIntent intent = brain.Tick(Ctx(WorldWith(PlayerAt(3f)), 0f));
+            AgentIntent intent = brain.Tick(Ctx(WorldWith(PlayerAt(1.5f)), 0f));
 
             Assert.AreEqual(Flee, brain.CurrentAction, "It still wants to flee.");
             Assert.AreEqual("AttackPlayer", intent.DebugState);
-            Assert.AreEqual(AgentAction.Shoot, intent.Action);
+            Assert.AreEqual(AgentAction.Shoot, intent.Action, "Cornered with the player in reach, it swipes.");
         }
 
         [Test]
