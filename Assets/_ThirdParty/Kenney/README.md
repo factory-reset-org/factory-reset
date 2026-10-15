@@ -35,3 +35,28 @@ model, and do not count as S3's custom models for the GV mark.
 Every prop has its pivot at the centre of its bounds, matching the primitive it
 replaces. Rotation 0 and scale 1 on every node; it faces Unity +Z. Blender sources
 are in `Blender/ThirdParty/Kenney/`.
+
+## Redesign (2026-10-15)
+
+Twelve of these props were redesigned to match the Art Bible's smooth toy-plastic
+style. Each was rebuilt inside its existing `.blend` and exported over the same FBX,
+so GUIDs, node names, pivots, sizes and every prefab and scene reference stay. The
+Kenney geometry and colour map were replaced by bevelled, smooth-shaded parts in the
+shared palette plastics (`Materials/Characters/M_Char_*`); tinted parts are still a
+mesh of their own on one material. The Kenney credit stays because the props started
+from these models.
+
+| Prop | Redesign | Triangles after Unity import (before, after) | Tinted node |
+| --- | --- | --- | --- |
+| `PaintCrate_Root` | White crate with pink paint poured over the lid and running down the sides, three paint-pot lids on top | 428, 732 | none |
+| `ControlSwitch_Root` | Grey plinth, blue column, white housing with a steel lever and gold grip, warning lamp in a three-bar cage | 176, 794 | `ControlSwitch_Light` (lamp) |
+| `SpinningTarget_Root` | Modelled bullseye on both faces (red, cream, blue, cream rings and a gold centre, each a step higher) in a navy rim with a pole mount at the bottom | 84, 776 | `SpinningTarget_Face` (all rings turn the hit colour together) |
+| `Terminal_Root` | Small kiosk: purple column, tilted keypad with three key rows, one mint screen, red hack lamp | 126, 782 | none |
+| `Relay_Root` | Turned steel post on a round base, blue collar with a press pad, gold cup holding a larger 0.43 m bulb | 154, 782 | `Relay_Light` (bulb) |
+| `Console_Root` | Wide purple desk: three mint screens, a slanted deck with a red master button and four small buttons | 162, 792 | none |
+| `Battery_Root` | A cylindrical cell: blue body, gold top band, steel caps and + terminal, a raised white + sign on the front and back | 200, 784 | none |
+| `Fuse_Root` | An upright cartridge fuse: steel end caps with red bands, a glass tube (`M_Prop_Glass`) and a gold coil inside, the same from every side while it spins | 76, 772 | none |
+| `PressurePlate_Root` | Grey base with a yellow hazard rim; the top with a raised centre pad | 102, 436 | `PressurePlate_Top` (the top) |
+| `DoorPanel_Root` | Grey-framed yellow sliding panel: upper and lower panels, a black hazard band with yellow stripes and a round window, on both faces | 116, 716 | none |
+| `Overcharge_Root` | A gold lightning bolt inside a glowing cyan ring | 12, 524 | none |
+| `TrapPlate_Root` | Grey plate (red while armed) with a yellow hazard rim and a 4 x 4 bed of steel spikes standing above it | 168, 764 | `TrapPlate` (plate) |

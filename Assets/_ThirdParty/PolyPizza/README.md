@@ -40,3 +40,20 @@ All models were changed (CC BY 3.0 asks for changes to be indicated):
   with its pivot on the shaft axis, so it turns about its own local Z.
 
 Blender sources are in `Blender/ThirdParty/PolyPizza/`.
+
+## Redesign (2026-10-15)
+
+All six props were redesigned to match the Art Bible's smooth toy-plastic style. Each
+was rebuilt inside its existing `.blend` and exported over the same FBX, so GUIDs,
+pivots and prefab references stay. The original geometry was replaced by bevelled,
+smooth-shaded parts in the shared palette plastics; the credits above stay because
+the props started from these models.
+
+| Prop | Redesign | Triangles after Unity import (before, after) | Node changes |
+| --- | --- | --- | --- |
+| `SwitchCage_Root` | A see-through glass box (`M_Prop_Glass`) in a grey and steel frame, with a gold padlock on the front | 2,240, 768 | The glass is the `SwitchCage` mesh; the frame is a new `SwitchCage_Frame` child |
+| `PowerCore_Root` | An 0.8 m faceted red crystal, two gold orbit rings, the 1.04 m transparent shield | 2,112, 752 | `PowerCore` is now an empty parent of `PowerCore_Core`, `PowerCore_Ring` (new) and `PowerCore_Shield`, so the core is the first renderer `PowerCore` finds and flashes |
+| `WindUpToyModel_Root` | A yellow wind-up duck with a red beak and feet, and a red butterfly key in its tail | 2,309, 792 | `WindUpToy_Key` moved to the tail (0, 0.09, -0.13 in Unity); it still spins about its own local Z |
+| `PlateStop_Root` | Grey foot, rounded yellow bumper with black hazard stripes on both faces, steel bolts | 166, 728 | none |
+| `CrateDispenser_Root` | Blue dispenser with a gold hopper, a chute mouth and a red call button, a ramp, and a yellow-rimmed floor pad under S2's `Outlet` 1.2 m out | 1,851, 780 | none. The chute faces Unity -Z, toward the `Outlet` |
+| `Charger_Root` | A small Tesla tower: blue plinth, white column in a gold spiral coil, steel top ring, glowing cyan orb (`M_Prop_Glow`) | 2,212, 778 (`Charger_Far` 1,106, 392) | none. `Charger_Far` is the same build at half the segments, not a decimation |
