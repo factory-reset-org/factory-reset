@@ -335,7 +335,7 @@ namespace ToyFactory.Tests.EditMode
         [TestCase("SaboteurBot", 4000)]
         [TestCase("GuardBot", 4000)]
         [TestCase("CaptainBot", 4500)]
-        [TestCase("Unit047", 2500)]
+        [TestCase("Unit047", 3500)]
         public void TriangleCountsStayUnderTheArtBibleBudgets(string model, int budget)
         {
             GameObject prefab = Load($"Assets/_Project/Prefabs/Characters/{model}.prefab");

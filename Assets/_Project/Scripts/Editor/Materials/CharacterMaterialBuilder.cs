@@ -27,7 +27,8 @@ namespace ToyFactory.Editor.Materials
     /// <para><b>Unit 047's decals.</b> The <c>Chest_Tag</c> and <c>Sticker</c> plates share one textured
     /// material: their front faces are UV-mapped onto the 047 tag and the DEFECTIVE sticker in
     /// <see cref="DecalTexturePath"/>, a painted texture kept in the project, and their edges onto its plain
-    /// white and red. Its blaster takes the first-person blaster's purple, steel and black.</para>
+    /// white and red. Its blaster is the first-person blaster's model in that blaster's colours, as opaque
+    /// character plastics.</para>
     /// </remarks>
     public static class CharacterMaterialBuilder
     {
@@ -50,7 +51,8 @@ namespace ToyFactory.Editor.Materials
         public enum Key
         {
             Red, Cream, PinkSoft, Pink, Gold, Black, Blue, Navy, White, Grey, Steel,
-            Cyan, VisorCyan, VisorBlue, SaboteurBody, GuardTread, Unit047Eyes, Grape, Unit047Decals
+            Cyan, VisorCyan, VisorBlue, SaboteurBody, GuardTread, Unit047Eyes, Grape, Unit047Decals,
+            BlasterOrange, BlasterEnergy
         }
 
         readonly struct Spec
@@ -88,7 +90,11 @@ namespace ToyFactory.Editor.Materials
             { Key.GuardTread, new Spec("M_Char_GuardTread", "#FFFFFF", 0.7f) },
             { Key.Unit047Eyes, new Spec("M_Char_Unit047Eyes", "#BFF3FF", 0.9f) },
             { Key.Grape, new Spec("M_Char_Grape", "#8F6BFF", 0.8f) },
-            { Key.Unit047Decals, new Spec("M_Char_Unit047Decals", "#FFFFFF", 0.8f) }
+            { Key.Unit047Decals, new Spec("M_Char_Unit047Decals", "#FFFFFF", 0.8f) },
+            // The first-person blaster's orange, and its energy parts in the lit magenta of Unit 047's reference
+            // sheet (opaque, no emission: only the eyes glow).
+            { Key.BlasterOrange, new Spec("M_Char_BlasterOrange", "#FF7A1A", 0.8f) },
+            { Key.BlasterEnergy, new Spec("M_Char_BlasterEnergy", "#FF78DC", 0.9f) }
         };
 
         /// <summary>One model: its prefab, its FBX and what each of its three zones becomes.</summary>
@@ -187,24 +193,27 @@ namespace ToyFactory.Editor.Materials
             Add("CaptainBot", "Cannon_Ring", Key.Pink);
 
             // Unit 047: cyan body (its speaker colour), gold key, the 047 tag and DEFECTIVE sticker decals,
-            // glowing eyes, and the first-person blaster's colours on the blaster in its hand.
+            // glowing eyes, and the first-person blaster in its hand: the same model, so the same slots
+            // (orange, white, slate, pink, steel on the body; the energy parts on the barrel).
             Add("Unit047", "Key_Bar", Key.Gold);
             Add("Unit047", "Key_Shaft", Key.Gold);
             Add("Unit047", "Sticker", Key.Unit047Decals);
             Add("Unit047", "Chest_Tag", Key.Unit047Decals);
-            Add("Unit047", "Blaster_Body", Key.Grape, Key.Steel, Key.Black);
-            Add("Unit047", "Blaster_Barrel", Key.Grape, Key.Steel, Key.Black);
+            Add("Unit047", "Blaster_Body", Key.BlasterOrange, Key.White, Key.Grey, Key.Pink, Key.Steel);
+            Add("Unit047", "Blaster_Barrel", Key.BlasterEnergy);
             Add("Unit047", "Antenna_Bulb", Key.Gold);
             Add("Unit047", "Antenna_Stem", Key.Black);
             Add("Unit047", "Visor", Key.Black);
             Add("Unit047", "Eyes", Key.Unit047Eyes);
-            Add("Unit047", "Leg_L", Key.Grey);
-            Add("Unit047", "Leg_R", Key.Grey);
-            Add("Unit047", "Foot_L", Key.Black);
-            Add("Unit047", "Foot_R", Key.Black);
-            Add("Unit047", "ShoulderBall_L", Key.Steel);
-            Add("Unit047", "ShoulderBall_R", Key.Steel);
-            Add("Unit047", "Neck", Key.Steel);
+            // As on its reference sheet: navy-grey legs with white hip and knee balls, navy-grey boots, white
+            // shoulder balls and a navy neck.
+            Add("Unit047", "Leg_L", Key.Grey, Key.White);
+            Add("Unit047", "Leg_R", Key.Grey, Key.White);
+            Add("Unit047", "Foot_L", Key.Grey);
+            Add("Unit047", "Foot_R", Key.Grey);
+            Add("Unit047", "ShoulderBall_L", Key.White);
+            Add("Unit047", "ShoulderBall_R", Key.White);
+            Add("Unit047", "Neck", Key.Navy);
 
             return o;
         }
