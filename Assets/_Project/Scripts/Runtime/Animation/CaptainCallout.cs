@@ -7,44 +7,18 @@ namespace ToyFactory.Runtime.Animation
 {
     /// <summary>
     /// Shows the player that the Captain has read them: a red flash on the goal it has just
-    /// committed to (a ring and a short beam, S1's beacon look in red), and a comic speech
-    /// bubble above its head, such as "THE CONSOLE. OF COURSE." When to do which is
+    /// committed to (a ring and a short beam, S1's beacon look in red). When to flash is
     /// <see cref="CaptainCallouts"/> (pure, tested); this only shows it.
     /// </summary>
     /// <remarks>
-    /// <para>The line is only said where the player can see the Captain: on screen and not
-    /// behind a wall. Out of sight there is only the flash. The bubble faces the camera, pops
-    /// in like the cutscene comic words, and grows with distance, so it stays readable from
-    /// across a room.</para>
-    /// <para>Each line is a pre-drawn bubble in the cutscene comic words' style (dark outline,
-    /// the Captain's orange, white lettering), found by <see cref="CaptainCallouts.BubbleName"/>.
-    /// Nothing shows while the game is frozen (cutscene, pause) or the Captain is down.</para>
+    /// The flash shows wherever the Captain is, so the player learns it has been read even
+    /// when it is out of sight. Nothing shows while the game is frozen (cutscene, pause) or the
+    /// Captain is down. (The comic speech bubbles it used to say above its head were removed
+    /// on 15 October; the cutscenes keep their own comic words.)
     /// </remarks>
     [RequireComponent(typeof(AgentController))]
     public sealed class CaptainCallout : MonoBehaviour
     {
-        [Header("Line")]
-        [Tooltip("The comic speech bubbles, one per line (Textures/FX/CaptainSays), found by name.")]
-        [SerializeField] Sprite[] bubbles = new Sprite[0];
-
-        [Tooltip("Height of the bubble's tail tip above the Captain's feet, in metres (above the \"!\" icon).")]
-        [SerializeField, Min(0f)] float lineHeight = 4.3f;
-
-        [Tooltip("Size of the bubble up close, as a multiple of the sprite's own size.")]
-        [SerializeField, Min(0.01f)] float bubbleScale = 1.25f;
-
-        [Tooltip("Seconds the line shows, including its fade.")]
-        [SerializeField, Min(0.5f)] float lineSeconds = 2.8f;
-
-        [Tooltip("Beyond this distance (m) the bubble grows with distance, so it keeps its size on screen.")]
-        [SerializeField, Min(0.1f)] float growFrom = 7f;
-
-        [Tooltip("Largest growth, as a multiple of the close-up size.")]
-        [SerializeField, Min(1f)] float maxGrow = 3f;
-
-        [Tooltip("What hides the Captain from the camera: walls, not agents or props.")]
-        [SerializeField] LayerMask sightBlockers = 1;   // Default
-
         [Header("Prediction marker")]
         [SerializeField] Mesh ringMesh;
         [SerializeField] Mesh beamMesh;
@@ -62,13 +36,6 @@ namespace ToyFactory.Runtime.Animation
         readonly CaptainCallouts _callouts = new CaptainCallouts();
         AgentController _agent;
 
-        readonly System.Collections.Generic.Dictionary<string, Sprite> _bubbleByName =
-            new System.Collections.Generic.Dictionary<string, Sprite>();
-        Transform _line;
-        SpriteRenderer _bubble;
-        string _lineText;
-        float _lineSince = float.PositiveInfinity;
-
         Transform _marker;
         Transform _ring;
         MeshRenderer _ringRenderer;
@@ -78,9 +45,6 @@ namespace ToyFactory.Runtime.Animation
         float _beamIntensity;
         Vector3 _markPoint;
         float _markSince = float.PositiveInfinity;
-
-        /// <summary>The line showing now, or null.</summary>
-        public string Line => _line != null && _line.gameObject.activeSelf ? _lineText : null;
 
         /// <summary>True while the red marker is flashing.</summary>
         public bool IsMarking => _marker != null && _marker.gameObject.activeSelf;
@@ -93,24 +57,7 @@ namespace ToyFactory.Runtime.Animation
         void Awake()
         {
             _agent = GetComponent<AgentController>();
-            BuildLine();
             BuildMarker();
-        }
-
-        void BuildLine()
-        {
-            var line = new GameObject("CalloutLine");
-            _line = line.transform;
-            _line.SetParent(transform, false);
-            _line.localPosition = Vector3.up * lineHeight;
-            // The bubbles' pivot is the bottom centre (the tail), so the tail points at the Captain.
-            _bubble = line.AddComponent<SpriteRenderer>();
-            _bubble.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            _bubble.receiveShadows = false;
-            foreach (Sprite bubble in bubbles)
-                if (bubble != null)
-                    _bubbleByName[bubble.name] = bubble;
-            line.SetActive(false);
         }
 
         void BuildMarker()
@@ -155,81 +102,24 @@ namespace ToyFactory.Runtime.Animation
             // over a cutscene or the pause menu.
             if (_agent.IsFrozen)
             {
-                HideAll();
+                Hide();
                 return;
             }
             // Down: its plan is gone, so the commitment ends (a new one after the reboot is
             // fresh, not a change of mind).
             if (_agent.IsDisabled || _agent.IsDead)
             {
-                HideAll();
-                _callouts.Update(Now, false, default, false, false, false);
+                Hide();
+                _callouts.Update(Now, false, default);
                 return;
             }
             if (!(_agent.Brain is CaptainBrain brain))
                 return;
 
-            Camera camera = Camera.main;
-            bool visible = camera != null && CanBeSeen(camera);
-            bool committed = brain.TryGetCommitment(out CandidateGoal goal, out Vector3 goalPosition, out bool guarding);
-            bool finalChapter = _agent.World != null && _agent.World.IsFinalChapter;
-
-            Callout callout = _callouts.Update(Now, committed, goal, guarding, finalChapter, visible);
-            if (callout.Mark)
+            bool committed = brain.TryGetCommitment(out CandidateGoal goal, out Vector3 goalPosition, out _);
+            if (_callouts.Update(Now, committed, goal))
                 Mark(goalPosition);
-            if (callout.Line != null)
-                Say(callout.Line);
-
-            UpdateLine(camera, visible);
             UpdateMarker();
-        }
-
-        // On screen and not behind a wall. The line of sight is to the Captain's chest; props
-        // and agents do not hide a 3.25 m robot.
-        bool CanBeSeen(Camera camera)
-        {
-            Vector3 chest = transform.position + Vector3.up * 2f;
-            Vector3 viewport = camera.WorldToViewportPoint(chest);
-            if (viewport.z <= 0f || viewport.x < 0f || viewport.x > 1f || viewport.y < 0f || viewport.y > 1f)
-                return false;
-            // The first thing hit being the Captain itself means nothing nearer is in the way.
-            return !Physics.Linecast(camera.transform.position, chest, out RaycastHit hit, sightBlockers, QueryTriggerInteraction.Ignore) ||
-                hit.transform.IsChildOf(transform);
-        }
-
-        void Say(string line)
-        {
-            if (!_bubbleByName.TryGetValue(CaptainCallouts.BubbleName(line), out Sprite bubble))
-            {
-                Debug.LogWarning($"{nameof(CaptainCallout)}: no bubble for \"{line}\" ({CaptainCallouts.BubbleName(line)}).", this);
-                return;
-            }
-            _bubble.sprite = bubble;
-            _lineText = line;
-            _lineSince = 0f;
-            _line.gameObject.SetActive(true);
-        }
-
-        void UpdateLine(Camera camera, bool visible)
-        {
-            if (!_line.gameObject.activeSelf)
-                return;
-            _lineSince += Time.deltaTime;
-            // Ends early if the Captain goes out of sight: a line through a wall would give it away.
-            if (_lineSince >= lineSeconds || !visible || camera == null)
-            {
-                _line.gameObject.SetActive(false);
-                return;
-            }
-
-            Vector3 toLine = _line.position - camera.transform.position;
-            _line.rotation = Quaternion.LookRotation(toLine, camera.transform.up);
-            float grow = Mathf.Clamp(toLine.magnitude / growFrom, 1f, maxGrow);
-            // Pops in with an overshoot like the cutscene comic words, fades out over the last 0.5 s.
-            float pop = _lineSince < 0.12f ? Mathf.Lerp(0f, 1.15f, _lineSince / 0.12f) : Mathf.Lerp(1.15f, 1f, (_lineSince - 0.12f) / 0.1f);
-            _line.localScale = Vector3.one * (bubbleScale * grow * pop);
-            float alpha = Mathf.Clamp01((lineSeconds - _lineSince) / 0.5f);
-            _bubble.color = new Color(1f, 1f, 1f, alpha);
         }
 
         void Mark(Vector3 point)
@@ -276,10 +166,8 @@ namespace ToyFactory.Runtime.Animation
             renderer.SetPropertyBlock(_block);
         }
 
-        void HideAll()
+        void Hide()
         {
-            if (_line != null && _line.gameObject.activeSelf)
-                _line.gameObject.SetActive(false);
             if (_marker != null && _marker.gameObject.activeSelf)
                 _marker.gameObject.SetActive(false);
         }

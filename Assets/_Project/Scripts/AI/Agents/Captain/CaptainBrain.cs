@@ -33,7 +33,7 @@ namespace ToyFactory.AI.Agents.Captain
     /// <para><b>Time.</b> Every timer uses <c>ctx.Time</c> (game time), so cutscenes and pause
     /// freeze the 5 s history and the 2 Hz clock. Stuns are owned by the controller.</para>
     /// </remarks>
-    public sealed partial class CaptainBrain : IAgentBrain, IGoalPredictor, IActionFeedback
+    public sealed partial class CaptainBrain : IAgentBrain, IGoalPredictor, IActionFeedback, IBodyFitAware, ICrowdAware
     {
         // Speeds in m/s. 4.6 is the prototype's Captain speed, used by the intercept timing.
         public const float InterceptSpeed = 4.6f;
@@ -157,6 +157,8 @@ namespace ToyFactory.AI.Agents.Captain
         // Doors: the router, doors it failed to open and until when, the door it is waiting
         // at, and the door it opened and may shut behind it.
         readonly DoorRouter _doors;
+        // What a step of its own routes costs: shoulders that do not fit, other agents in the way.
+        readonly CaptainRouteCost _routeCost;
         readonly Dictionary<int, float> _blockedDoorsUntil = new Dictionary<int, float>();
         readonly Predicate<int> _isDoorBlocked;
         const int NoDoor = int.MinValue;
@@ -237,6 +239,7 @@ namespace ToyFactory.AI.Agents.Captain
             _converge = new ConvergeState();
             _isAvoided = IsAvoided;
             _doors = new DoorRouter(grid);
+            _routeCost = new CaptainRouteCost(grid);
             _isDoorBlocked = IsDoorBlocked;
 
             var rules = new List<Transition<CaptainBrain>>();
@@ -302,6 +305,11 @@ namespace ToyFactory.AI.Agents.Captain
                 MoveTo(_routeGoal);
             _replanRequested = false;
 
+            // Another agent has stopped on the way: route round it now rather than walking into
+            // it and waiting for the stuck check.
+            if (_decidedThisTick && _outPath == null && _routeCells != null && RouteBlockedAhead())
+                MoveTo(_routeGoal);
+
             HandleDoors();
 
             return new AgentIntent
@@ -315,6 +323,15 @@ namespace ToyFactory.AI.Agents.Captain
                 Alert = CurrentAlert()
             };
         }
+
+        /// <inheritdoc/>
+        public void OnBodyFit(BodyFit fit) => _routeCost.Fit = fit;
+
+        /// <inheritdoc/>
+        public void OnCrowd(IReadOnlyList<CrowdMember> others) => _routeCost.SetCrowd(others);
+
+        /// <summary>Where its shoulders fit, as measured by the body (null until then).</summary>
+        public BodyFit BodyFit => _routeCost.Fit;
 
         // "!" once it has committed to the player (cutting them off, waiting, fighting);
         // "?" while it watches and re-predicts; nothing while asleep, down or with no player.
@@ -513,6 +530,11 @@ namespace ToyFactory.AI.Agents.Captain
         // wall's clearance band is not hidden by it (see TrackerBrain.GridSight). Walls and
         // closed doors block it; props and boxes do not: at 3.25 m the Captain sees over a
         // console, a switch cage or a crate, which the grid marks as blocked only for walking.
+        // Either test may clear the line: walking clearance runs a cell deep round every shelf
+        // and wall, and on its own it hid a player standing in plain view in a Storage aisle
+        // whenever the line ran along a shelf. The sight layer (what is really tall enough to
+        // hide behind) has no such band. It already leaves out the target's own cell, so it
+        // gets the whole line: stopped short, its last cell could be a wall it then skips.
         bool GridSight(Vector3 from, Vector3 to)
         {
             Vector3 delta = to - from;
@@ -521,7 +543,7 @@ namespace ToyFactory.AI.Agents.Captain
             if (distance <= SightEndInset)
                 return true;
             Vector3 end = from + delta * ((distance - SightEndInset) / distance);
-            return GridLineCheck.IsSightClear(_grid, from, end);
+            return GridLineCheck.IsSightClear(_grid, from, end) || GridLineCheck.HasLineOfSight(_grid, from, to);
         }
 
         // ---- Prediction and intercept (2 Hz) -------------------------------------------
@@ -708,11 +730,12 @@ namespace ToyFactory.AI.Agents.Captain
             return new InterceptPlan(kind, goalCell, route.Count - 1, playerArrival, captainArrival);
         }
 
-        static float RouteCost(List<Vector2Int> cells)
+        // In the same terms as the routes it is compared with (shoulder room and other agents included).
+        float RouteCost(List<Vector2Int> cells)
         {
             float cost = 0f;
             for (int i = 1; i < cells.Count; i++)
-                cost += BaseCostModel.Instance.StepCost(cells[i - 1], cells[i]);
+                cost += _routeCost.StepCost(cells[i - 1], cells[i]);
             return cost;
         }
 
@@ -1031,11 +1054,13 @@ namespace ToyFactory.AI.Agents.Captain
             }
             _routeGoal = end;   // the walkable cell actually routed to
 
-            PathResult result = _pathfinder.FindPath(start, end, BaseCostModel.Instance);
+            // Its own costs: round other agents, and clear of shelf edges its shoulders would
+            // scrape.
+            PathResult result = _pathfinder.FindPath(start, end, _routeCost);
             List<Vector2Int> cells = result.Found ? result.Cells : null;
             // The Captain can open doors: go through a closed one when that is the only way, or
             // cheaper than walking round even after the time it takes to open it.
-            List<Vector2Int> viaDoor = _doors.FindPath(start, end, _isDoorBlocked);
+            List<Vector2Int> viaDoor = _doors.FindPath(start, end, _isDoorBlocked, _routeCost);
             if (viaDoor != null && CrossesClosedDoor(viaDoor) &&
                 (cells == null || _doors.LastCost + 0.01f < RouteCost(cells)))
                 cells = viaDoor;
@@ -1051,6 +1076,33 @@ namespace ToyFactory.AI.Agents.Captain
                 world.Add(_grid.CellToWorld(cells[i]));
             _outPath = world;
             return true;
+        }
+
+        /// <summary>Cells ahead on the route checked for a standing agent (4 m).</summary>
+        public const int CrowdLookAhead = 8;
+
+        // A standing agent on one of the next cells of the route, short of its end (re-routing
+        // does not help if it stands on the goal itself).
+        bool RouteBlockedAhead()
+        {
+            if (_routeCost.Crowd.Count == 0)
+                return false;
+            int here = 0;
+            float nearest = float.MaxValue;
+            for (int i = 0; i < _routeCells.Count; i++)
+            {
+                float d = (_routeCells[i] - _ctx.Cell).sqrMagnitude;
+                if (d < nearest)
+                {
+                    nearest = d;
+                    here = i;
+                }
+            }
+            int last = Mathf.Min(_routeCells.Count - 2, here + CrowdLookAhead);
+            for (int i = here + 1; i <= last; i++)
+                if (_routeCost.BlockedByStanding(_routeCells[i]))
+                    return true;
+            return false;
         }
 
         void StopMoving()

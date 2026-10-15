@@ -69,6 +69,8 @@ namespace ToyFactory.Runtime.Agents
         IGoalPredictor _predictor;
         IActionFeedback _feedback;
         IHealthAware _health;
+        ICrowdAware _crowdAware;
+        readonly List<CrowdMember> _crowd = new List<CrowdMember>();
         WorldBlackboard _blackboard;
         GridGraph _grid;
         bool _warnedNotInitialised;
@@ -251,9 +253,13 @@ namespace ToyFactory.Runtime.Agents
             WindUp = brain as IWindUpState;
             _feedback = brain as IActionFeedback;
             _health = brain as IHealthAware;
+            _crowdAware = brain as ICrowdAware;
             _lastAction = AgentAction.None;
             _sabotageAction = AgentAction.None;
             _health?.OnHealthChanged(HitPointsLeft, hitPoints);
+            // A body much wider than its capsule measures where it fits, once, for its brain.
+            if (brain is IBodyFitAware fitAware && grid != null && TryGetComponent(out ShoulderFit shoulders))
+                fitAware.OnBodyFit(shoulders.MeasureFit(grid));
 
             if (_grid != null)
                 _grid.Changed -= HandleGridChanged;
@@ -385,6 +391,8 @@ namespace ToyFactory.Runtime.Agents
             var context = new AgentContext(CurrentCell(position), position, transform.forward,
                 Now, _blackboard, _heard);
             _heard = default; // each noise reaches the brain once
+            if (_crowdAware != null)
+                _crowdAware.OnCrowd(OtherAgents());
 
             AgentIntent intent;
             int type = (int)Type;
@@ -403,6 +411,25 @@ namespace ToyFactory.Runtime.Agents
             DebugState = intent.DebugState ?? string.Empty;
             _alert = intent.Alert != AlertLevel.None ? intent.Alert : AlertFromState.For(DebugState);
             IgnoresPlayer = intent.IgnorePlayer;
+        }
+
+        // Every other agent that is still a body in the way (up or knocked out, not scrapped),
+        // from the spawner's list: no scene search. Reuses one list.
+        List<CrowdMember> OtherAgents()
+        {
+            _crowd.Clear();
+            AgentSpawner spawner = AgentSpawner.Instance;
+            if (spawner == null)
+                return _crowd;
+            IReadOnlyList<AgentController> agents = spawner.SpawnedAgents;
+            for (int i = 0; i < agents.Count; i++)
+            {
+                AgentController other = agents[i];
+                if (other == null || other == this || other.IsDead || !other.isActiveAndEnabled)
+                    continue;
+                _crowd.Add(new CrowdMember(other.transform.position, other.Speed));
+            }
+            return _crowd;
         }
 
         void OnDestroy()

@@ -16,8 +16,9 @@ using ToyFactory.Runtime.Animation;
 namespace ToyFactory.Tests
 {
     /// <summary>
-    /// The Captain's body shows its call-outs: when it commits to a goal it flashes the red
-    /// marker on that goal, and says a line above its head only if the camera can see it.
+    /// The Captain's body shows its prediction: when it commits to a goal it flashes the red
+    /// marker on that goal, in view or not, and puts nothing above its head (the comic speech
+    /// bubbles were removed).
     /// </summary>
     public sealed class CaptainCalloutTests
     {
@@ -72,16 +73,6 @@ namespace ToyFactory.Tests
             var material = Track(new Material(Shader.Find("Sprites/Default")));
             SetField(callout, "ringMesh", cube.GetComponent<MeshFilter>().sharedMesh);
             SetField(callout, "ringMaterial", material);
-            // Stand-ins for the comic bubbles: one small sprite per line, named like the real ones.
-            var bubbles = new List<Sprite>();
-            var texture = Track(new Texture2D(8, 4));
-            foreach (string line in CaptainCallouts.AllLines())
-            {
-                Sprite bubble = Track(Sprite.Create(texture, new Rect(0f, 0f, 8f, 4f), new Vector2(0.5f, 0f), 4f));
-                bubble.name = CaptainCallouts.BubbleName(line);
-                bubbles.Add(bubble);
-            }
-            SetField(callout, "bubbles", bubbles.ToArray());
             go.SetActive(true);
             agent.Initialise(new AgentIdentity(AgentType.Captain, 6), new CaptainBrain(grid, new AStarSearch(grid), world, startAwake: true), world, grid);
             return callout;
@@ -96,13 +87,11 @@ namespace ToyFactory.Tests
             go.transform.LookAt(target + Vector3.up * 2f);
         }
 
-        IEnumerator Watch(CaptainCallout callout, float seconds, List<string> lines, List<Vector3> marks)
+        IEnumerator Watch(CaptainCallout callout, float seconds, List<Vector3> marks)
         {
             float until = Time.time + seconds;
             while (Time.time < until)
             {
-                if (callout.Line != null && !lines.Contains(callout.Line))
-                    lines.Add(callout.Line);
                 if (callout.IsMarking)
                     marks.Add(callout.MarkPoint);
                 yield return null;
@@ -110,24 +99,23 @@ namespace ToyFactory.Tests
         }
 
         [UnityTest]
-        public IEnumerator InViewItSaysALineAndFlashesTheGoal()
+        public IEnumerator ItFlashesTheGoalAndSaysNothing()
         {
             var grid = new GridGraph(60, 20, Vector3.zero);
             CaptainCallout callout = Captain(grid);
             CameraLookingAt(grid.CellToWorld(CaptainCell));
 
-            var lines = new List<string>();
             var marks = new List<Vector3>();
-            yield return Watch(callout, 2f, lines, marks);
+            yield return Watch(callout, 2f, marks);
 
-            Assert.AreEqual(1, lines.Count, "One line: " + string.Join(" | ", lines));
             Assert.Greater(marks.Count, 0, "The goal flashed.");
             Vector3 goal = grid.CellToWorld(GoalCell);
             Assert.Less(Vector3.Distance(new Vector3(marks[0].x, 0f, marks[0].z), new Vector3(goal.x, 0f, goal.z)), 0.01f, "On the goal, not on the Captain.");
+            Assert.IsEmpty(callout.GetComponentsInChildren<SpriteRenderer>(true), "No speech bubble above its head.");
         }
 
         [UnityTest]
-        public IEnumerator BehindAWallItOnlyFlashesTheGoal()
+        public IEnumerator BehindAWallTheGoalStillFlashes()
         {
             var grid = new GridGraph(60, 20, Vector3.zero);
             CaptainCallout callout = Captain(grid);
@@ -137,11 +125,9 @@ namespace ToyFactory.Tests
             wall.transform.position = captain + new Vector3(0f, 3f, -5f);
             wall.transform.localScale = new Vector3(12f, 8f, 0.5f);
 
-            var lines = new List<string>();
             var marks = new List<Vector3>();
-            yield return Watch(callout, 2f, lines, marks);
+            yield return Watch(callout, 2f, marks);
 
-            Assert.AreEqual(0, lines.Count, "No line nobody can see it say.");
             Assert.Greater(marks.Count, 0, "The flash still tells the player.");
         }
     }
