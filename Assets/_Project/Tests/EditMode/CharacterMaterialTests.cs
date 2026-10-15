@@ -104,9 +104,9 @@ namespace ToyFactory.Tests.EditMode
 
         // ---- Saboteur tint
 
-        static IEnumerable<string> TintTargets(GameObject prefab, out Renderer body)
+        static IEnumerable<string> TintTargets(GameObject prefab, out List<Renderer> tinted)
         {
-            body = null;
+            tinted = new List<Renderer>();
             var names = new List<string>();
             foreach (MonoBehaviour behaviour in prefab.GetComponentsInChildren<MonoBehaviour>(true))
             {
@@ -119,7 +119,7 @@ namespace ToyFactory.Tests.EditMode
                     SerializedProperty element = targets.GetArrayElementAtIndex(i);
                     var renderer = (Renderer)element.FindPropertyRelative("renderer").objectReferenceValue;
                     names.Add(renderer.name + ":" + element.FindPropertyRelative("materialIndex").intValue);
-                    body = renderer;
+                    tinted.Add(renderer);
                 }
             }
 
@@ -128,20 +128,23 @@ namespace ToyFactory.Tests.EditMode
 
         [TestCase("Assets/_Project/Prefabs/Characters/SaboteurBot.prefab")]
         [TestCase("Assets/_Project/Prefabs/Agents/Agent_SaboteurBot.prefab")]
-        public void SaboteurTintLandsOnTheBodyColourSlotAndNothingElse(string path)
+        public void SaboteurTintLandsOnTheBodyColourSlotsAndNothingElse(string path)
         {
             GameObject prefab = Load(path);
-            string[] targets = TintTargets(prefab, out Renderer body).ToArray();
+            string[] targets = TintTargets(prefab, out List<Renderer> tinted).ToArray();
 
-            CollectionAssert.AreEqual(new[] { "Body:0" }, targets, "The tint writes the body's first slot only.");
-            Assert.AreEqual("M_Char_SaboteurBody", body.sharedMaterials[0].name);
+            CollectionAssert.AreEquivalent(
+                new[] { "Body:0", "ShoulderPad_L:0", "ShoulderPad_R:0", "Forearm_L:0", "Forearm_R:0" }, targets,
+                "The tint writes the first slot of the body, the shoulder pads and the forearms.");
+            foreach (Renderer renderer in tinted)
+                Assert.AreEqual("M_Char_SaboteurBody", renderer.sharedMaterials[0].name, renderer.name);
 
             // No other slot uses the body colour, so the tint cannot reach a part that should keep its own colour.
             foreach (Renderer renderer in Renderers(prefab))
             {
                 for (int i = 0; i < renderer.sharedMaterials.Length; i++)
                 {
-                    bool isBodySlot = renderer == body && i == 0;
+                    bool isBodySlot = tinted.Contains(renderer) && i == 0;
                     if (!isBodySlot)
                         Assert.AreNotEqual("M_Char_SaboteurBody", renderer.sharedMaterials[i].name, $"{renderer.name} slot {i}");
                 }
