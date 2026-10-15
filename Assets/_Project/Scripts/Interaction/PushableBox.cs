@@ -52,6 +52,9 @@ namespace ToyFactory.Interaction
             _collider = GetComponent<Collider>();
             _blockerId = ++s_nextBlockerId;
 
+            // A box stays upright: tipped over, a crate lay on its side with its model sunk into the floor.
+            _rb.constraints |= RigidbodyConstraints.FreezeRotation;
+
             if (_collider != null && _collider.sharedMaterial == null)
             {
                 // Minimum, so the box glides on a floor whose own friction is higher.
