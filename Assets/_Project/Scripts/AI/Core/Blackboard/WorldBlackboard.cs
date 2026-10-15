@@ -64,6 +64,42 @@ namespace ToyFactory.AI.Core.Blackboard
         public WorldBlackboard()
         {
             _objectiveTargetView = _objectiveTargets.AsReadOnly();
+            _sabotageFactView = _sabotageFacts.AsReadOnly();
+        }
+
+        readonly List<SabotageFact> _sabotageFacts = new List<SabotageFact>();
+        readonly IReadOnlyList<SabotageFact> _sabotageFactView;
+
+        /// <summary>
+        /// Every trap and battery a Saboteur could act on right now. A battery that was taken is
+        /// not listed; a trap that is armed stays listed with <see cref="SabotageFact.Available"/> false.
+        /// A fact that is missing means the action is not possible.
+        /// </summary>
+        public IReadOnlyList<SabotageFact> SabotageFacts => _sabotageFactView;
+
+        /// <summary>Increases whenever <see cref="SabotageFacts"/> changes.</summary>
+        public int SabotageFactsVersion { get; private set; }
+
+        /// <summary>Replaces the sabotage facts with a blackboard-owned copy. Runtime only.</summary>
+        public void SetSabotageFacts(IReadOnlyList<SabotageFact> facts)
+        {
+            if (facts == null)
+                throw new ArgumentNullException(nameof(facts));
+
+            bool same = _sabotageFacts.Count == facts.Count;
+            for (int i = 0; same && i < facts.Count; i++)
+            {
+                SabotageFact a = _sabotageFacts[i];
+                SabotageFact b = facts[i];
+                same = a.Id == b.Id && a.Cell == b.Cell && a.Kind == b.Kind && a.Available == b.Available;
+            }
+            if (same)
+                return;
+
+            _sabotageFacts.Clear();
+            for (int i = 0; i < facts.Count; i++)
+                _sabotageFacts.Add(facts[i]);
+            SabotageFactsVersion++;
         }
 
         /// <summary>Replaces the active objective sequence with a blackboard-owned copy.</summary>
