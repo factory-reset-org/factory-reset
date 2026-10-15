@@ -208,7 +208,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Managers.SceneLoader
   beginJourney: 1
-  stateAfterLoad: 1
+  stateAfterLoad: 0
 --- !u!4 &875900644
 Transform:
   m_ObjectHideFlags: 0

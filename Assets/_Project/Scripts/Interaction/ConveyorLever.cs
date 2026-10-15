@@ -8,7 +8,7 @@ namespace ToyFactory.Interaction
     /// completes the task, and every later pull switches them off or on again. The first pull
     /// is a CLANK; every pull is a click.
     /// </summary>
-    public sealed class ConveyorLever : TaskProp, IInteractable
+    public sealed class ConveyorLever : TaskProp, IInteractable, IInteractionPrompt
     {
         [Tooltip("Must equal the task id in the chapter data.")]
         [SerializeField] string taskId = "ch1.lever";
@@ -28,6 +28,9 @@ namespace ToyFactory.Interaction
         public bool IsOn { get; private set; }
 
         void Start() => ApplyToBelts();
+
+        /// <summary>The prompt line while the player looks at this.</summary>
+        public string PromptText => "pull the lever";
 
         public void Interact()
         {

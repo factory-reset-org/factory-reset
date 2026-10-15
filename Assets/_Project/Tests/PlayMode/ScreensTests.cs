@@ -400,6 +400,9 @@ namespace ToyFactory.Tests
             IGameClock clock = GameClock.Current;
 
             // Skip the intro so the clock is free, then go back to the title as a fresh start would.
+            // Bootstrap waits on the title screen; this is the player pressing Start.
+            if (GameClock.Current != null)
+                GameClock.Current.RequestState(GameState.Playing);
             yield return Until(() => CutsceneDirector.Current.IsPlaying, 10f, "the intro");
             CutsceneDirector.Current.Skip();
             yield return Until(() => clock.State == GameState.Playing, 10f, "Playing");

@@ -107,6 +107,8 @@ namespace ToyFactory.Tests
                 && Object.FindAnyObjectByType<ChapterJump>() != null && AgentSpawner.Instance != null
                 && AgentSpawner.Instance.SpawnedAgents.Count == 7 && PlayerState.Current != null,
                 30f, "Bootstrap to load");
+            // Bootstrap now waits on the title screen; this is the player pressing Start.
+            GameClock.Current?.RequestState(GameState.Playing);
             ChapterJump jump = Object.FindAnyObjectByType<ChapterJump>();
             jump.JumpTo(4);
             yield return Until(() => !jump.IsJumping, 20f, "the jump to Chapter 4");

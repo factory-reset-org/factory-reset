@@ -368,6 +368,9 @@ namespace ToyFactory.Tests
                 yield return null;
             }
 
+            // Bootstrap waits on the title screen; this is the player pressing Start.
+            GameClock.Current.RequestState(GameState.Playing);
+
             until = Time.realtimeSinceStartup + 10f;
             while (!CutsceneDirector.Current.IsPlaying)
             {

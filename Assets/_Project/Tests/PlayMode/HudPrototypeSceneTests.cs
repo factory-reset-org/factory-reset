@@ -69,6 +69,8 @@ namespace ToyFactory.Tests
             yield return Until(() => HudPresenter.Current != null && ChapterManager.Current != null && ChapterManager.Current.Flow != null
                 && ChapterManager.Current.Flow.HasBegun && CutsceneDirector.Current != null && PlayerState.Current != null,
                 LoadTimeout, "Bootstrap to load the scenes and the HUD");
+            // Bootstrap now waits on the title screen; this is the player pressing Start.
+            GameClock.Current?.RequestState(GameState.Playing);
             yield return Until(() => CutsceneDirector.Current.IsPlaying, 10f, "the intro");
             CutsceneDirector.Current.Skip();
             yield return Until(() => GameClock.Current != null && GameClock.Current.State == GameState.Playing, 10f, "Playing");

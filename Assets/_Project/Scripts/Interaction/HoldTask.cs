@@ -13,7 +13,7 @@ namespace ToyFactory.Interaction
     /// While it is on, its glow grows with the progress; each beep of the terminal is a
     /// comic word and a tick; when it completes the glow turns green.
     /// </remarks>
-    public sealed class HoldTask : TaskProp, IHoldable
+    public sealed class HoldTask : TaskProp, IHoldable, IInteractionPrompt
     {
         static readonly string[] BeepWords = { "beep", "boop", "bzzt" };
         static readonly Color BlueGlow = new Color(0.23f, 0.61f, 1f);
@@ -64,6 +64,9 @@ namespace ToyFactory.Interaction
         }
 
         // The press itself does nothing; the first Hold arrives in the same frame.
+        /// <summary>The prompt line while the player looks at this.</summary>
+        public string PromptText => "work it";
+
         public void Interact()
         {
         }

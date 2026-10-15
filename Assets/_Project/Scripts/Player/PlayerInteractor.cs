@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using ToyFactory.Interaction;
 using ToyFactory.Interfaces;
+using ToyFactory.UI;
 
 namespace ToyFactory.Player
 {
@@ -42,6 +43,7 @@ namespace ToyFactory.Player
         InputAction _interactAction;
 
         // What is being held, and the collider the sweep found it by.
+        string _promptShown = string.Empty;
         IHoldable _held;
         Collider _heldCollider;
 
@@ -57,12 +59,15 @@ namespace ToyFactory.Player
             if (GameClock.Current != null && GameClock.Current.State != GameState.Playing)
             {
                 _held = null;
+                ClearPrompt();
                 return;
             }
 
             // The lookups in Press only run on the frame the key goes down, never every frame.
             if (_interactAction.WasPressedThisFrame())
                 Press();
+
+            ShowPrompt();
 
             if (_held == null)
                 return;
@@ -76,6 +81,19 @@ namespace ToyFactory.Player
         {
             _held = null;
 
+            IInteractable target = FindTarget(out Collider found);
+            if (target == null)
+                return;
+
+            target.Interact();
+            _held = target as IHoldable;
+            _heldCollider = found;
+        }
+
+        // The nearest usable thing the sweep touches that is also in plain sight, or null.
+        IInteractable FindTarget(out Collider found)
+        {
+            found = null;
             Vector3 origin = aim.position;
             int count = Physics.SphereCastNonAlloc(origin, aimRadius, aim.forward, _hits, reach, interactMask,
                 QueryTriggerInteraction.Collide);
@@ -92,11 +110,47 @@ namespace ToyFactory.Player
                 if (target == null || !InPlainSight(origin, _hits[i].point, target))
                     continue;
 
-                target.Interact();
-                _held = target as IHoldable;
-                _heldCollider = _hits[i].collider;
-                return;
+                found = _hits[i].collider;
+                return target;
             }
+
+            return null;
+        }
+
+        void ClearPrompt()
+        {
+            HudPresenter hud = HudPresenter.Current;
+            if (hud == null || _promptShown.Length == 0)
+                return;
+            _promptShown = string.Empty;
+            hud.SetPrompt(string.Empty);
+        }
+
+        // The prompt line: what is in reach and usable right now, with the key it needs. Looked up
+        // each frame the player is in play and not already holding something; it clears on a
+        // pause, a cutscene and the title screen.
+        void ShowPrompt()
+        {
+            HudPresenter hud = HudPresenter.Current;
+            if (hud == null)
+                return;
+
+            string text = string.Empty;
+            if (_held == null)
+            {
+                IInteractable target = FindTarget(out Collider _);
+                if (target != null)
+                {
+                    string what = target is IInteractionPrompt p && !string.IsNullOrEmpty(p.PromptText) ? p.PromptText : "Use";
+                    text = target is IHoldable ? $"Hold [E]  {what}" : $"[E]  {what}";
+                }
+            }
+
+            // Only what this script showed is ever cleared, so a prompt fed by something else stays.
+            if (text == _promptShown)
+                return;
+            _promptShown = text;
+            hud.SetPrompt(text);
         }
 
         // A hold only needs the player to stay next to the prop, not to keep aiming at it.

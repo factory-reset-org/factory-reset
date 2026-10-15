@@ -9,11 +9,14 @@ namespace ToyFactory.Interaction
     /// The charging station. Using it fills the blaster's battery and every spare cell.
     /// It stays where it is and can be used as often as the player likes.
     /// </summary>
-    public sealed class Charger : MonoBehaviour, IInteractable
+    public sealed class Charger : MonoBehaviour, IInteractable, IInteractionPrompt
     {
         static readonly Color ChargeColour = new Color(0.24f, 0.86f, 0.69f);
 
         void Start() => PropGlow.Attach(gameObject, ChargeColour, 3f, 0.55f, 0.25f, 5f, new Vector3(0f, 1.2f, 0f));
+
+        /// <summary>The prompt line while the player looks at this.</summary>
+        public string PromptText => "charge the blaster";
 
         public void Interact()
         {
