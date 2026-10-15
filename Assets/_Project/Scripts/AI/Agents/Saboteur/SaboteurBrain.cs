@@ -720,6 +720,16 @@ namespace ToyFactory.AI.Agents.Saboteur
                 return false;
             }
 
+            // The player may step into the doorway between two decisions (4 Hz): never close a door on
+            // them. This is checked on every tick, not only when a decision is made, and it ends the plan
+            // with no cooldown, so the door is offered again once they have moved on.
+            if (ctx.World != null && ctx.World.Player.IsKnown && ctx.World.Player.IsAlive
+                && CloseDoorSource.IsInDoorway(ctx.World.Player.Cell, cells))
+            {
+                EndDoorPlan(key, ctx.Time, false, false);
+                return false;
+            }
+
             _doorActive = true;
             _doorKey = key;
             Vector3 nearest = _grid.CellToWorld(cells[0]);
