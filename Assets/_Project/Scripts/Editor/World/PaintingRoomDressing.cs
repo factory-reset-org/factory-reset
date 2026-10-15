@@ -14,10 +14,12 @@ namespace ToyFactory.Editor.World
     /// 20.5): the paint tanks refitted (no more drip balls; paint runs, a gauge and a valve on
     /// each, and tank 5, which carries no target, rebuilt as a mixing vat fed by four paint
     /// pipes), door 2 raised to 5 m with framed openings on both of this room's doors, paint
-    /// splats and a paw-print trail in place of the round puddles, porthole windows, a
-    /// three-colour paint stripe and paint drips down the walls, a colour-wheel mural, signs and
-    /// posters, paint tins and drums, a drying rack of freshly painted toys, a cleaning sink and
-    /// two extractor fans in the ceiling. It differs from the Assembly Floor on purpose (round
+    /// splats and a paw-print trail in place of the round puddles, real round porthole windows
+    /// (openings cut through the walls, glass, the sky and the sun), a three-colour paint stripe,
+    /// a colour-wheel mural, signs and posters, paint tins and drums, a drying rack of freshly
+    /// painted toys, a cleaning sink and two extractor fans in the ceiling. Photographed floor
+    /// and ceiling tiles; machines, pipes, tanks, tins and cabinets are painted steel
+    /// (<see cref="RoomPieces.Machine"/>), and only wet paint, toys and small tools stay plastic. It differs from the Assembly Floor on purpose (round
     /// windows, no corner columns, a stripe instead of a rail, paint lines from the ceiling
     /// instead of wall pipes), and the ceiling light panels light the room (no hanging lamps).
     /// Re-running replaces the previous build.
@@ -70,7 +72,8 @@ namespace ToyFactory.Editor.World
 
             // What this replaces: the round puddles and an earlier build. The tanks are refitted in place.
             int removed = 0;
-            foreach (string path in new[] { "Level/Dressing/PaintPuddles", "Level/Dressing/Painting" })
+            // The last two wall gears turned for no reason (the Assembly Floor's six became its belt drive).
+            foreach (string path in new[] { "Level/Dressing/PaintPuddles", "Level/Dressing/Painting", "Level/Dressing/WallGears" })
             {
                 GameObject old = GameObject.Find(path);
                 if (old == null)
@@ -81,6 +84,7 @@ namespace ToyFactory.Editor.World
 
             Load();
             PaintAtlas();
+            Surfaces(level.transform);
             Transform root = Group(dressing, "Painting");
 
             int refitted = RefitTanks(level.transform);
@@ -256,6 +260,14 @@ namespace ToyFactory.Editor.World
                     if (child != null)
                         Object.DestroyImmediate(child.gameObject);
                 }
+                // The tank itself (body, band, lid): painted steel, not toy plastic.
+                foreach (MeshRenderer part in tank.GetComponentsInChildren<MeshRenderer>(true))
+                {
+                    Material[] materials = part.sharedMaterials;
+                    for (int m = 0; m < materials.Length; m++)
+                        materials[m] = AsMachine(materials[m]);
+                    part.sharedMaterials = materials;
+                }
                 Transform detail = Group(tank, "Detail", tank.position);
                 Vector3 c = tank.position;
                 Vector3 facing = RoomCentre - c;
@@ -282,7 +294,7 @@ namespace ToyFactory.Editor.World
                 Part(detail, "Gauge", Quad("Gauge", new Vector2(0.26f, 0.26f), _uvGauge), _signs, gauge + facing * 0.015f, toward);
                 Vector3 valve = c + facing * TankRadius + Vector3.up * 0.42f;
                 Part(detail, "Valve_Pipe", Cylinder(0.06f, 0.24f), M.Chrome, valve - facing * 0.05f, toward * Quaternion.Euler(90f, 0f, 0f));
-                Part(detail, "Valve_Wheel", Ring(0.08f, 0.15f, 0.04f, 16), M.Red, valve + facing * 0.2f, toward * Quaternion.Euler(90f, 0f, 0f));
+                Part(detail, "Valve_Wheel", Ring(0.08f, 0.15f, 0.04f, 16), M.MachineRed, valve + facing * 0.2f, toward * Quaternion.Euler(90f, 0f, 0f));
 
                 DetailTank(tank, detail, c, facing, band);
 
@@ -343,7 +355,7 @@ namespace ToyFactory.Editor.World
                 bar.gameObject.SetActive(false);
             // A bridge across the lid carrying the stirrer's motor (the lid itself turns underneath).
             Box(detail, "Mixer_Bridge", new Vector3(1.5f, 0.1f, 0.18f), M.Grey, c + Vector3.up * 2.42f, rotation: toward * Quaternion.Euler(0f, 90f, 0f));
-            Box(detail, "Mixer_Motor", new Vector3(0.5f, 0.38f, 0.5f), M.Blue, c + Vector3.up * 2.66f);
+            Box(detail, "Mixer_Motor", new Vector3(0.5f, 0.38f, 0.5f), M.MachineBlue, c + Vector3.up * 2.66f);
             Part(detail, "Mixer_Cap", Cylinder(0.14f, 0.1f), M.Chrome, c + Vector3.up * 2.85f, Quaternion.identity);
             Part(detail, "Mixer_Label", Quad("Sign_Mixer", new Vector2(0.8f, 0.3f), _uvMixer), _signs,
                 c + facing * (TankRadius + 0.02f) + Vector3.up * 1.0f, toward);
@@ -471,32 +483,6 @@ namespace ToyFactory.Editor.World
                 Box(walls, "Stripe_N2", new Vector3(7.9f, 0.07f, 0.04f), stripe.material, new Vector3(36.95f, stripe.y, 20.48f));
             }
 
-            // Paint drips running down from the top band, each ending in a drop (clear of the
-            // signs, posters, windows and gears).
-            (Vector3 top, Vector3 alongWall, Vector3 outward, float length, Material material)[] drips =
-            {
-                (new Vector3(25.2f, 5.7f, 0.5f), Vector3.right, Vector3.forward, 1.2f, M.Bubble),
-                (new Vector3(29.3f, 5.7f, 0.5f), Vector3.right, Vector3.forward, 0.7f, M.Mint),
-                (new Vector3(33.2f, 5.7f, 0.5f), Vector3.right, Vector3.forward, 1.5f, M.Yellow),
-                (new Vector3(38.0f, 5.7f, 0.5f), Vector3.right, Vector3.forward, 0.9f, M.Blue),
-                (new Vector3(41f, 5.7f, 5.0f), Vector3.forward, Vector3.left, 1.4f, M.Purple),
-                (new Vector3(41f, 5.7f, 7.8f), Vector3.forward, Vector3.left, 0.8f, M.Bubble),
-                (new Vector3(41f, 5.7f, 19.3f), Vector3.forward, Vector3.left, 1.1f, M.Yellow),
-                (new Vector3(26.0f, 5.7f, 20.5f), Vector3.right, Vector3.back, 1.3f, M.Mint),
-                (new Vector3(36.8f, 5.7f, 20.5f), Vector3.right, Vector3.back, 0.9f, M.Red),
-                (new Vector3(21f, 5.7f, 2.2f), Vector3.forward, Vector3.right, 1.0f, M.Blue),
-                (new Vector3(21f, 5.7f, 7.9f), Vector3.forward, Vector3.right, 1.2f, M.Yellow),
-                (new Vector3(21f, 5.7f, 19.5f), Vector3.forward, Vector3.right, 0.8f, M.Bubble),
-            };
-            foreach (var drip in drips)
-            {
-                Quaternion onWall = Quaternion.LookRotation(drip.outward, Vector3.up);
-                Vector3 centre = drip.top + drip.outward * 0.03f - Vector3.up * drip.length * 0.5f;
-                Box(walls, "Drip", new Vector3(0.11f, drip.length, 0.03f), drip.material, centre, rotation: onWall);
-                Part(walls, "Drip_Drop", M.Ball, drip.material, drip.top + drip.outward * 0.035f - Vector3.up * drip.length,
-                    onWall, scale: new Vector3(0.16f, 0.2f, 0.06f));
-            }
-
             // Four paint lines come straight down from a manifold in the ceiling into the mixing
             // vat (tank 5), each with a shut-off wheel, clamped to the wall.
             Transform pipes = Group(walls, "PaintLines");
@@ -505,26 +491,63 @@ namespace ToyFactory.Editor.World
             Box(pipes, "Manifold", new Vector3(1.1f, 0.3f, 0.36f), M.Grey, new Vector3(23.07f, 5.8f, wallZ));
             foreach (var line in lines)
             {
-                Part(pipes, "Line_Down", Cylinder(0.065f, 5.65f - vatY), line.material, new Vector3(line.x, vatY, wallZ), Quaternion.identity);
-                Part(pipes, "Line_Into_Vat", Cylinder(0.065f, 0.4f), line.material, new Vector3(line.x, vatY, wallZ), AlongZ);
+                Part(pipes, "Line_Down", Cylinder(0.065f, 5.65f - vatY), AsMachine(line.material), new Vector3(line.x, vatY, wallZ), Quaternion.identity);
+                Part(pipes, "Line_Into_Vat", Cylinder(0.065f, 0.4f), AsMachine(line.material), new Vector3(line.x, vatY, wallZ), AlongZ);
                 Part(pipes, "Joint", M.Ball, M.Chrome, new Vector3(line.x, vatY, wallZ), Quaternion.identity, scale: Vector3.one * 0.18f);
                 Part(pipes, "Nozzle", Cylinder(0.08f, 0.08f), M.Chrome, new Vector3(line.x, vatY, wallZ + 0.4f), AlongZ);
-                Part(pipes, "ShutOff", Ring(0.05f, 0.1f, 0.03f, 16), M.Red, new Vector3(line.x, 4.2f, wallZ + 0.07f), AlongZ);
+                Part(pipes, "ShutOff", Ring(0.05f, 0.1f, 0.03f, 16), M.MachineRed, new Vector3(line.x, 4.2f, wallZ + 0.07f), AlongZ);
             }
             foreach (float y in new[] { 3.5f, 5.0f })
                 Box(pipes, "Clamp", new Vector3(1.0f, 0.08f, 0.3f), M.Grey, new Vector3(23.07f, y, 0.66f));
         }
 
+        // ---- Surfaces ----------------------------------------------------------------------
+
+        // Photographed floor tiles (0.5 m here, as in every room but the Assembly Floor) and
+        // acoustic ceiling tiles. The walls are already panelled concrete (the Assembly builder
+        // gives every wall that material).
+        static void Surfaces(Transform level)
+        {
+            // The floor's top face runs its UVs from x = 41.5 and z = 20.75 back; the photo holds
+            // 8 x 8 tiles, scaled to 4 m (0.5 m tiles), and is offset 0.25 m in z to land the joins.
+            Material tiles = Mat("FloorTiled_Painting");
+            PhotoTextures.Apply(tiles, PhotoTextures.Kind.FloorTile, new Vector2(20.75f / 4f, 20.75f / 4f));
+            tiles.SetTextureOffset("_BaseMap", new Vector2(0f, 0.0625f));
+            EditorUtility.SetDirty(tiles);
+
+            Material ceilingTiles = Plastic("CeilingTiles", Hex("2B2450"), 0.5f);
+            PhotoTextures.Apply(ceilingTiles, PhotoTextures.Kind.Ceiling, new Vector2(20.75f / 3.85f, 20.75f / 3.85f));
+            Transform ceiling = level.Find("Ceilings/Ceiling_Painting");
+            if (ceiling != null)
+                ceiling.GetComponent<MeshRenderer>().sharedMaterial = ceilingTiles;
+        }
+
         // ---- Windows -----------------------------------------------------------------------
+
+        // Real round windows: a square opening cut through the outside wall (the wall keeps its
+        // collider), filled back in round the circle, with glass in it; the sky, the backdrop and
+        // the sun (from the south-west, through the south portholes) come through.
+        static readonly float[] SouthPortholes = { 27.1f, 35.6f }, EastPortholes = { 2.6f, 10.5f, 16.2f };
+        const float PortholeY = 3.4f, PortholeRadius = 0.75f;
 
         static void Windows(Transform root)
         {
             Transform windows = Group(root, "Windows");
-            // Round portholes, unlike the Assembly Floor's square windows.
-            foreach (float x in new[] { 27.1f, 35.6f })
-                Porthole(windows, new Vector3(x, 3.4f, 0.5f), FacingSouth, 0.75f);
-            foreach (float z in new[] { 2.6f, 10.5f, 16.2f })
-                Porthole(windows, new Vector3(41f, 3.4f, z), FacingWest, 0.75f);
+            Material wall = Mat("WallPanel");
+            var south = new List<(float, float, float, float)>();
+            var east = new List<(float, float, float, float)>();
+            foreach (float x in SouthPortholes)
+            {
+                Porthole(windows, new Vector3(x, PortholeY, 0.5f), FacingSouth, PortholeRadius, open: true, wall: wall);
+                south.Add((x - PortholeRadius, x + PortholeRadius, PortholeY - PortholeRadius, PortholeY + PortholeRadius));
+            }
+            foreach (float z in EastPortholes)
+            {
+                Porthole(windows, new Vector3(41f, PortholeY, z), FacingWest, PortholeRadius, open: true, wall: wall);
+                east.Add((z - PortholeRadius, z + PortholeRadius, PortholeY - PortholeRadius, PortholeY + PortholeRadius));
+            }
+            WallCutter.Cut(GameObject.Find("Level/Walls/Wall_South"), "Painting", south);
+            WallCutter.Cut(GameObject.Find("Level/Walls/Wall_East"), "Painting", east);
         }
 
         // ---- Signs and posters -------------------------------------------------------------
@@ -571,9 +594,9 @@ namespace ToyFactory.Editor.World
                     int column = i / layers[layer].rows, row = i % layers[layer].rows;
                     var at = new Vector3(layers[layer].x0 + column * 0.38f, layer * 0.34f, layers[layer].z0 + row * 0.36f);
                     Material colour = colours[n++ % colours.Length];
-                    Part(tins, "Tin", Cylinder(0.17f, 0.34f, 12), M.White, at, Quaternion.identity);
-                    Part(tins, "Tin_Band", Cylinder(0.175f, 0.12f, 12), colour, at + Vector3.up * 0.11f, Quaternion.identity);
-                    Part(tins, "Tin_Lid", Ring(0.04f, 0.16f, 0.025f, 14), colour, at + Vector3.up * 0.34f, Quaternion.identity);
+                    Part(tins, "Tin", Cylinder(0.17f, 0.34f, 12), M.MachineWhite, at, Quaternion.identity);
+                    Part(tins, "Tin_Band", Cylinder(0.175f, 0.12f, 12), AsMachine(colour), at + Vector3.up * 0.11f, Quaternion.identity);
+                    Part(tins, "Tin_Lid", Ring(0.04f, 0.16f, 0.025f, 14), AsMachine(colour), at + Vector3.up * 0.34f, Quaternion.identity);
                 }
 
             Blocker(tins, "Solid_Drums", new Vector3(35.3f, 0.48f, 0.92f), new Vector3(2.4f, 0.96f, 0.74f));
@@ -581,7 +604,7 @@ namespace ToyFactory.Editor.World
             for (int i = 0; i < 3; i++)
             {
                 var at = new Vector3(34.5f + i * 0.78f, 0f, 0.92f);
-                Part(tins, "Drum", Cylinder(0.32f, 0.9f), drums[i], at, Quaternion.identity);
+                Part(tins, "Drum", Cylinder(0.32f, 0.9f), AsMachine(drums[i]), at, Quaternion.identity);
                 Part(tins, "Drum_Hoop", Cylinder(0.33f, 0.06f), M.Grey, at + Vector3.up * 0.28f, Quaternion.identity);
                 Part(tins, "Drum_Hoop", Cylinder(0.33f, 0.06f), M.Grey, at + Vector3.up * 0.62f, Quaternion.identity);
                 Part(tins, "Drum_Bung", Cylinder(0.05f, 0.04f), M.Chrome, at + new Vector3(0.14f, 0.9f, 0f), Quaternion.identity);
@@ -597,7 +620,7 @@ namespace ToyFactory.Editor.World
             foreach (float side in new[] { -1.47f, 1.47f })
                 Box(rack, "Post", new Vector3(0.7f, 2.0f, 0.06f), M.Grey, new Vector3(x, 1.0f, z + side));
             foreach (float y in new[] { 0.6f, 1.2f, 1.8f })
-                Box(rack, "Shelf", new Vector3(0.7f, 0.04f, 3.0f), M.White, new Vector3(x, y, z));
+                Box(rack, "Shelf", new Vector3(0.7f, 0.04f, 3.0f), M.MachineWhite, new Vector3(x, y, z));
             string[] kinds = { "Teddy", "Robot", "Duck" };
             Material[] paints = { M.Bubble, M.Mint, M.Blue, M.Yellow, M.Purple, M.Red, M.Orange, M.Bubble, M.Mint };
             for (int shelf = 0; shelf < 3; shelf++)
@@ -617,8 +640,8 @@ namespace ToyFactory.Editor.World
             Transform sink = Group(root, "Sink");
             const float x = 21.36f, z = 17.4f;   // clear of z 15-16: SaboteurDoorSceneTests opens a gap beside door 1 there
             Blocker(sink, "Solid", new Vector3(x, 0.5f, z), new Vector3(0.72f, 1.0f, 1.8f));
-            Box(sink, "Cabinet", new Vector3(0.7f, 0.86f, 1.8f), M.Blue, new Vector3(x, 0.43f, z));
-            Box(sink, "Top", new Vector3(0.74f, 0.08f, 1.84f), M.White, new Vector3(x, 0.9f, z));
+            Box(sink, "Cabinet", new Vector3(0.7f, 0.86f, 1.8f), M.MachineBlue, new Vector3(x, 0.43f, z));
+            Box(sink, "Top", new Vector3(0.74f, 0.08f, 1.84f), M.MachineWhite, new Vector3(x, 0.9f, z));
             Box(sink, "Basin", new Vector3(0.46f, 0.04f, 0.7f), M.Grey, new Vector3(x + 0.04f, 0.95f, z - 0.35f));
             Part(sink, "Tap", Cylinder(0.03f, 0.3f), M.Chrome, new Vector3(21.1f, 0.94f, z - 0.35f), Quaternion.identity);
             Box(sink, "Tap_Spout", new Vector3(0.22f, 0.04f, 0.04f), M.Chrome, new Vector3(21.2f, 1.22f, z - 0.35f));
@@ -659,7 +682,7 @@ namespace ToyFactory.Editor.World
                 rotor.gameObject.AddComponent<DressingSpinner>().Configure(Vector3.up, 120f);
                 Part(rotor, "Hub", Cylinder(0.12f, 0.06f), M.Chrome, centre + Vector3.up * 0.02f, Quaternion.identity, moving: true);
                 for (int b = 0; b < 5; b++)
-                    Box(rotor, "Blade", new Vector3(0.5f, 0.02f, 0.16f), M.White,
+                    Box(rotor, "Blade", new Vector3(0.5f, 0.02f, 0.16f), M.MachineWhite,
                         centre + Vector3.up * 0.05f + Quaternion.Euler(0f, b * 72f, 0f) * Vector3.right * 0.33f,
                         rotation: Quaternion.Euler(0f, b * 72f, 12f), moving: true);
             }

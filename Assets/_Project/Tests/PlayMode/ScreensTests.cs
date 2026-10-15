@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -131,6 +132,18 @@ namespace ToyFactory.Tests
         }
 
         [UnityTest]
+        public IEnumerator TitleShowsTheCreditsForTheCcByModels()
+        {
+            _clock.Set(GameState.Title);
+            yield return Frame();
+            Assert.IsTrue(_screens.Title.IsShowing);
+
+            string shown = string.Join("\n", _screens.Title.GetComponentsInChildren<Text>(true).Select(t => t.text));
+            foreach (ModelCredit credit in ThirdPartyCredits.Attribution)
+                StringAssert.Contains(credit.Line, shown);
+        }
+
+        [UnityTest]
         public IEnumerator StartRequestsPlayingAndHidesTheTitle()
         {
             _clock.Set(GameState.Title);
@@ -146,12 +159,12 @@ namespace ToyFactory.Tests
         [UnityTest]
         public IEnumerator TitleCreatesAnEventSystemSoTheButtonCanBeClicked()
         {
-            Assert.IsNull(UnityEngine.Object.FindFirstObjectByType<EventSystem>(), "None in the test scene.");
+            Assert.IsNull(UnityEngine.Object.FindAnyObjectByType<EventSystem>(), "None in the test scene.");
 
             _clock.Set(GameState.Title);
             yield return Frame();
 
-            Assert.IsNotNull(UnityEngine.Object.FindFirstObjectByType<EventSystem>());
+            Assert.IsNotNull(UnityEngine.Object.FindAnyObjectByType<EventSystem>());
         }
 
         [UnityTest]

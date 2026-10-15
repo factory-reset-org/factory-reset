@@ -6,8 +6,9 @@ namespace ToyFactory.Runtime.Animation
     /// <summary>
     /// The kick of a shot: when <see cref="AgentWeapon"/> fires, the arm holding that barrel
     /// snaps up and back, the torso jolts back and the head nods with it, then everything
-    /// settles over <see cref="duration"/>. The Captain alternates its cannons, so its kick
-    /// alternates arms with them. Without it the aim pose stood frozen while shots left the
+    /// settles over <see cref="duration"/>. An agent with several barrels alternates them, so
+    /// its kick alternates arms with them (the Captain's cannon also slams back: see
+    /// <see cref="CaptainCannon"/>). Without it the aim pose stood frozen while shots left the
     /// cannon, which did not read as firing.
     /// </summary>
     /// <remarks>

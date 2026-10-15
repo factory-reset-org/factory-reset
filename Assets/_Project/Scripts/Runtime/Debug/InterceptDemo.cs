@@ -63,7 +63,7 @@ namespace ToyFactory.Runtime.Debugging
                 return null;
             }
 
-            AgentDebugOverlay overlay = Object.FindFirstObjectByType<AgentDebugOverlay>();
+            AgentDebugOverlay overlay = Object.FindAnyObjectByType<AgentDebugOverlay>();
             if (overlay != null)
                 overlay.Shown = true;
             return chaser;

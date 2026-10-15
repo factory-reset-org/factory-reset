@@ -91,7 +91,8 @@ namespace ToyFactory.Journey.Cutscenes
             new Unit047Cue("intro", 4, Unit047Beat.EyesOn),      // the close-up: quality check
             new Unit047Cue("intro", 4, Unit047Beat.LookAhead),
             new Unit047Cue("intro", 5, Unit047Beat.LookSide),    // the radio crackles: Pip
-            new Unit047Cue("ending", 1, Unit047Beat.LookUp),     // the camera cranes up: "Not defective."
+            new Unit047Cue("ending", 0, Unit047Beat.LookAhead),  // at the console as it shuts down
+            new Unit047Cue("ending", 4, Unit047Beat.LookUp),     // the camera cranes up: "Not defective."
         };
 
         [Header("Idle")]

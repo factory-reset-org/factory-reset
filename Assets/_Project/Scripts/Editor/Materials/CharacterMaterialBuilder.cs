@@ -24,6 +24,10 @@ namespace ToyFactory.Editor.Materials
     /// one colour for all four.</para>
     /// <para><b>Guard treads.</b> Their dark zone has its own material with a tileable tread texture, so
     /// S4 can scroll <c>_BaseMap</c> with the body's speed.</para>
+    /// <para><b>Unit 047's decals.</b> The <c>Chest_Tag</c> and <c>Sticker</c> plates share one textured
+    /// material: their front faces are UV-mapped onto the 047 tag and the DEFECTIVE sticker in
+    /// <see cref="DecalTexturePath"/>, a painted texture kept in the project, and their edges onto its plain
+    /// white and red. Its blaster takes the first-person blaster's purple, steel and black.</para>
     /// </remarks>
     public static class CharacterMaterialBuilder
     {
@@ -39,11 +43,14 @@ namespace ToyFactory.Editor.Materials
         /// <summary>Size of the tread texture in pixels (power of two).</summary>
         public const int TreadTextureSize = 128;
 
+        /// <summary>Unit 047's 047 tag and DEFECTIVE sticker (512 x 256): tag on the left, sticker on the right.</summary>
+        public const string DecalTexturePath = TextureFolder + "/T_Char_Unit047Decals.png";
+
         /// <summary>The character materials.</summary>
         public enum Key
         {
             Red, Cream, PinkSoft, Pink, Gold, Black, Blue, Navy, White, Grey, Steel,
-            Cyan, VisorCyan, VisorBlue, SaboteurBody, GuardTread, Unit047Eyes
+            Cyan, VisorCyan, VisorBlue, SaboteurBody, GuardTread, Unit047Eyes, Grape, Unit047Decals
         }
 
         readonly struct Spec
@@ -79,7 +86,9 @@ namespace ToyFactory.Editor.Materials
             { Key.VisorBlue, new Spec("M_Char_VisorBlue", "#4466FF", 0.9f) },
             { Key.SaboteurBody, new Spec("M_Char_SaboteurBody", "#8F6BFF", 0.8f) },
             { Key.GuardTread, new Spec("M_Char_GuardTread", "#FFFFFF", 0.7f) },
-            { Key.Unit047Eyes, new Spec("M_Char_Unit047Eyes", "#BFF3FF", 0.9f) }
+            { Key.Unit047Eyes, new Spec("M_Char_Unit047Eyes", "#BFF3FF", 0.9f) },
+            { Key.Grape, new Spec("M_Char_Grape", "#8F6BFF", 0.8f) },
+            { Key.Unit047Decals, new Spec("M_Char_Unit047Decals", "#FFFFFF", 0.8f) }
         };
 
         /// <summary>One model: its prefab, its FBX and what each of its three zones becomes.</summary>
@@ -160,33 +169,26 @@ namespace ToyFactory.Editor.Materials
             Add("GuardBot", "Tread_L", Key.GuardTread, Key.Grey, Key.Gold);
             Add("GuardBot", "Tread_R", Key.GuardTread, Key.Grey, Key.Gold);
 
-            // Captain: navy legs and hat band, black boots and brim, gold shoulders, steel cannons with a pink ring, blue visor.
-            Add("CaptainBot", "Boot_L", Key.Black, Key.Black, Key.Steel);
-            Add("CaptainBot", "Boot_R", Key.Black, Key.Black, Key.Steel);
-            Add("CaptainBot", "UpperLeg_L", Key.Navy, Key.Navy);
-            Add("CaptainBot", "UpperLeg_R", Key.Navy, Key.Navy);
-            Add("CaptainBot", "LowerLeg_L", Key.Navy, Key.Navy);
-            Add("CaptainBot", "LowerLeg_R", Key.Navy, Key.Navy);
-            Add("CaptainBot", "Arm_L", Key.White, Key.Black, Key.Steel);
-            Add("CaptainBot", "Arm_R", Key.White, Key.Black, Key.Steel);
-            Add("CaptainBot", "Cannon_L", Key.Steel, Key.Steel, Key.Pink);
-            Add("CaptainBot", "Cannon_R", Key.Steel, Key.Steel, Key.Pink);
-            Add("CaptainBot", "ShoulderBall_L", Key.Gold);
-            Add("CaptainBot", "ShoulderBall_R", Key.Gold);
-            Add("CaptainBot", "Epaulette_L", Key.Gold, Key.Gold);
-            Add("CaptainBot", "Epaulette_R", Key.Gold, Key.Gold);
-            Add("CaptainBot", "Hat_Band", Key.Navy, Key.Gold);
-            Add("CaptainBot", "Hat_Brim", Key.Black);
-            Add("CaptainBot", "Hat_Crown", Key.White, Key.White);
-            Add("CaptainBot", "Head", Key.White, Key.VisorBlue, Key.Black);
-            Add("CaptainBot", "Neck", Key.Black, Key.Steel);
-            Add("CaptainBot", "Visor", Key.Black, Key.VisorBlue);
+            // Captain (remake): one slot per part. White, gold and black come from the zones; these
+            // parts are navy, steel or pink. The visor and the cannon cell stay black: S4's
+            // AgentLights makes them glow.
+            foreach (string part in new[] { "UpperLeg_L", "UpperLeg_R", "Boot_L", "Boot_R", "Pelvis",
+                         "CoatFront", "FaceFrame", "Hat_Band", "Fist_L", "Thumb_L" })
+                Add("CaptainBot", part, Key.Navy);
+            foreach (string part in new[] { "KneeHinge_L", "KneeHinge_R", "Buckle", "Ear_L", "Ear_R",
+                         "ElbowHinge_L", "ElbowHinge_R", "Knuckles_L", "Cannon_Housing", "Cannon_Shroud",
+                         "Cannon_Barrel", "Cannon_Brake" })
+                Add("CaptainBot", part, Key.Steel);
+            Add("CaptainBot", "Cannon_Ring", Key.Pink);
 
-            // Unit 047: cyan body (its speaker colour), gold key, red DEFECTIVE sticker, glowing eyes.
+            // Unit 047: cyan body (its speaker colour), gold key, the 047 tag and DEFECTIVE sticker decals,
+            // glowing eyes, and the first-person blaster's colours on the blaster in its hand.
             Add("Unit047", "Key_Bar", Key.Gold);
             Add("Unit047", "Key_Shaft", Key.Gold);
-            Add("Unit047", "Sticker", Key.Red);
-            Add("Unit047", "Chest_Tag", Key.White);
+            Add("Unit047", "Sticker", Key.Unit047Decals);
+            Add("Unit047", "Chest_Tag", Key.Unit047Decals);
+            Add("Unit047", "Blaster_Body", Key.Grape, Key.Steel, Key.Black);
+            Add("Unit047", "Blaster_Barrel", Key.Grape, Key.Steel, Key.Black);
             Add("Unit047", "Antenna_Bulb", Key.Gold);
             Add("Unit047", "Antenna_Stem", Key.Black);
             Add("Unit047", "Visor", Key.Black);
@@ -219,9 +221,10 @@ namespace ToyFactory.Editor.Materials
             EnsureFolder("Assets/_Project/Textures", "Characters");
 
             Texture2D tread = EnsureTreadTexture();
+            Texture2D decals = EnsureDecalTexture();
             var materials = new Dictionary<Key, Material>();
             foreach (KeyValuePair<Key, Spec> entry in Specs)
-                materials[entry.Key] = EnsureMaterial(entry.Key, entry.Value, tread);
+                materials[entry.Key] = EnsureMaterial(entry.Key, entry.Value, tread, decals);
             AssetDatabase.SaveAssets();
 
             foreach (Model model in Models)
@@ -240,7 +243,7 @@ namespace ToyFactory.Editor.Materials
 
         // ---- Materials
 
-        static Material EnsureMaterial(Key key, Spec spec, Texture2D tread)
+        static Material EnsureMaterial(Key key, Spec spec, Texture2D tread, Texture2D decals)
         {
             string path = PathOf(key);
             var material = AssetDatabase.LoadAssetAtPath<Material>(path);
@@ -254,7 +257,7 @@ namespace ToyFactory.Editor.Materials
             material.SetColor("_BaseColor", spec.Colour);
             material.SetFloat("_Metallic", 0f);
             material.SetFloat("_Smoothness", spec.Smoothness);
-            material.SetTexture("_BaseMap", key == Key.GuardTread ? tread : null);
+            material.SetTexture("_BaseMap", key == Key.GuardTread ? tread : key == Key.Unit047Decals ? decals : null);
 
             if (key == Key.Unit047Eyes)
             {
@@ -327,6 +330,39 @@ namespace ToyFactory.Editor.Materials
             });
             importer.SaveAndReimport();
             return AssetDatabase.LoadAssetAtPath<Texture2D>(TreadTexturePath);
+        }
+
+        // ---- Unit 047's decal texture
+
+        // Painted, not generated: the lettering comes from the source PNG. Only its import settings are set here.
+        static Texture2D EnsureDecalTexture()
+        {
+            var importer = (TextureImporter)AssetImporter.GetAtPath(DecalTexturePath);
+            if (importer == null)
+                throw new InvalidOperationException("Missing decal texture " + DecalTexturePath);
+
+            importer.textureType = TextureImporterType.Default;
+            importer.sRGBTexture = true;
+            importer.mipmapEnabled = true;
+            importer.wrapMode = TextureWrapMode.Clamp;
+            importer.filterMode = FilterMode.Trilinear;
+            importer.anisoLevel = 4;
+            importer.isReadable = false;
+            importer.npotScale = TextureImporterNPOTScale.None;
+            importer.alphaIsTransparency = false;
+            importer.maxTextureSize = 512;
+            importer.textureCompression = TextureImporterCompression.Compressed;
+            importer.SetPlatformTextureSettings(new TextureImporterPlatformSettings
+            {
+                name = "Standalone",
+                overridden = true,
+                maxTextureSize = 512,
+                format = TextureImporterFormat.BC7,
+                textureCompression = TextureImporterCompression.Compressed,
+                compressionQuality = 50
+            });
+            importer.SaveAndReimport();
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(DecalTexturePath);
         }
 
         // ---- Prefabs

@@ -125,11 +125,19 @@ namespace ToyFactory.Tests
             model = new GameObject("Model").transform;
             model.SetParent(root.transform, false);
             rig = Pivot("CaptainBot_Root", model, Vector3.zero);
-            frontHip = Pivot("Leg_L_Pivot", rig, new Vector3(-0.285f, 1.08f, 0f));
-            Transform frontKnee = Pivot("Knee_L_Pivot", frontHip, new Vector3(0f, -0.44f, 0f));
-            Transform backHip = Pivot("Leg_R_Pivot", rig, new Vector3(0.285f, 1.08f, 0f));
-            Transform backKnee = Pivot("Knee_R_Pivot", backHip, new Vector3(0f, -0.44f, 0f));
-            Transform torso = Pivot("Torso_Pivot", rig, new Vector3(0f, 1.04f, 0f));
+            Transform pelvis = Pivot("Pelvis_Pivot", rig, new Vector3(0f, 1.21f, 0f));
+            frontHip = Pivot("Leg_L_Pivot", pelvis, new Vector3(-0.29f, -0.04f, 0f));
+            Transform frontKnee = Pivot("Knee_L_Pivot", frontHip, new Vector3(0f, -0.48f, 0.02f));
+            Transform backHip = Pivot("Leg_R_Pivot", pelvis, new Vector3(0.29f, -0.04f, 0f));
+            Transform backKnee = Pivot("Knee_R_Pivot", backHip, new Vector3(0f, -0.48f, 0.02f));
+            Transform waist = Pivot("Waist_Pivot", pelvis, new Vector3(0f, 0.13f, 0f));
+            Transform chest = Pivot("Chest_Pivot", waist, new Vector3(0f, 0.22f, 0f));
+            Transform neck = Pivot("Neck_Pivot", chest, new Vector3(0f, 0.69f, 0.02f));
+            Transform shoulderL = Pivot("Shoulder_L_Pivot", Pivot("Clavicle_L_Pivot", chest, new Vector3(-0.32f, 0.51f, 0f)),
+                new Vector3(-0.35f, 0.01f, 0f));
+            Transform clavicleR = Pivot("Clavicle_R_Pivot", chest, new Vector3(0.32f, 0.51f, 0f));
+            Transform shoulderR = Pivot("Shoulder_R_Pivot", clavicleR, new Vector3(0.35f, 0.01f, 0f));
+            Transform elbowL = Pivot("Elbow_L_Pivot", shoulderL, new Vector3(-0.04f, -0.46f, 0f));
 
             AgentKnockdown knockdown = root.AddComponent<AgentKnockdown>();
             SetField(knockdown, "model", model);
@@ -148,16 +156,23 @@ namespace ToyFactory.Tests
 
             kneel = root.AddComponent<AgentKneel>();
             SetField(kneel, "root", rig);
+            SetField(kneel, "pelvis", pelvis);
             SetField(kneel, "frontHip", frontHip);
             SetField(kneel, "frontKnee", frontKnee);
-            SetField(kneel, "frontAnkle", Pivot("Ankle_L_Pivot", frontKnee, new Vector3(0f, -0.4f, 0f)));
+            SetField(kneel, "frontAnkle", Pivot("Ankle_L_Pivot", frontKnee, new Vector3(0f, -0.45f, -0.02f)));
             SetField(kneel, "backHip", backHip);
             SetField(kneel, "backKnee", backKnee);
-            SetField(kneel, "backAnkle", Pivot("Ankle_R_Pivot", backKnee, new Vector3(0f, -0.4f, 0f)));
-            SetField(kneel, "torso", torso);
-            SetField(kneel, "head", Pivot("Head_Pivot", torso, new Vector3(0f, 1.08f, 0f)));
-            SetField(kneel, "frontArm", Pivot("CannonArm_L_Pivot", torso, new Vector3(-0.72f, 0.91f, 0f)));
-            SetField(kneel, "backArm", Pivot("CannonArm_R_Pivot", torso, new Vector3(0.72f, 0.91f, 0f)));
+            SetField(kneel, "backAnkle", Pivot("Ankle_R_Pivot", backKnee, new Vector3(0f, -0.45f, -0.02f)));
+            SetField(kneel, "waist", waist);
+            SetField(kneel, "chest", chest);
+            SetField(kneel, "neck", neck);
+            SetField(kneel, "head", Pivot("Head_Pivot", neck, new Vector3(0f, 0.08f, 0f)));
+            SetField(kneel, "frontShoulder", shoulderL);
+            SetField(kneel, "frontElbow", elbowL);
+            SetField(kneel, "frontWrist", Pivot("Wrist_L_Pivot", elbowL, new Vector3(0f, -0.43f, 0f)));
+            SetField(kneel, "backClavicle", clavicleR);
+            SetField(kneel, "backShoulder", shoulderR);
+            SetField(kneel, "backElbow", Pivot("Elbow_R_Pivot", shoulderR, new Vector3(0.04f, -0.46f, 0f)));
 
             root.SetActive(true);
             agent.Initialise(new AgentIdentity(AgentType.Captain, id), new IdleBrain(), world ?? new WorldBlackboard());
@@ -175,7 +190,7 @@ namespace ToyFactory.Tests
             yield return null;
             Assert.IsTrue(knockdown.IsDormant);
             Assert.AreEqual(1f, kneel.Amount, "On its knee from the first frame, with no drop.");
-            Assert.That(rig.localPosition.y, Is.EqualTo(-0.45f).Within(0.01f));
+            Assert.That(rig.localPosition.y, Is.EqualTo(-AgentKneel.KneelDrop).Within(0.01f));
             Assert.AreEqual(0f, lights.Level, "Switched off.");
             Assert.AreEqual(0, knockdown.ParticlesEmitted, "No explosion: it was never hit.");
             Assert.IsFalse(knockdown.WordShowing);
@@ -235,8 +250,8 @@ namespace ToyFactory.Tests
             Assert.AreEqual(0f, knockdown.Tip, "Does not tip over.");
             Assert.Less(Vector3.Angle(model.up, Vector3.up), 0.5f, "The model stays upright.");
             Assert.That(kneel.Amount, Is.EqualTo(1f).Within(0.02f), "On one knee.");
-            Assert.That(rig.localPosition.y, Is.EqualTo(-0.45f).Within(0.02f), "Dropped 0.45 m.");
-            Assert.Less(Quaternion.Angle(frontHip.localRotation, Quaternion.Euler(-91f, 0f, 0f)), 1f, "Front leg forward.");
+            Assert.That(rig.localPosition.y, Is.EqualTo(-AgentKneel.KneelDrop).Within(0.02f), "Dropped onto the knee.");
+            Assert.Less(Quaternion.Angle(frontHip.localRotation, Quaternion.Euler(-89f, 0f, 0f)), 1f, "Front leg forward.");
 
             yield return Seconds(0.9f);   // rebooted at 1 s; 0.6 s into the 1.2 s stand-up
             Assert.IsFalse(agent.IsDisabled);

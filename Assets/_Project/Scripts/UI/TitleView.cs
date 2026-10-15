@@ -52,6 +52,7 @@ namespace ToyFactory.UI
             HudWidgets.Place(route.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -285f), new Vector2(1500f, 44f));
 
             BuildControls(root);
+            BuildCredits(root);
 
             Button start = HudWidgets.MakeButton("Start", root, "START", HudWidgets.Mint, HudWidgets.Plum, 56);
             HudWidgets.Place((RectTransform)start.transform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 120f), new Vector2(440f, 100f));
@@ -89,6 +90,17 @@ namespace ToyFactory.UI
             if (keyboard != null && (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame
                                      || keyboard.spaceKey.wasPressedThisFrame))
                 RequestStart();
+        }
+
+        // The CC BY credits, small, in the bottom-left corner: the game must show them, not only the READMEs.
+        static void BuildCredits(Transform root)
+        {
+            Text heading = HudWidgets.Label("Credits Heading", root, ThirdPartyCredits.Heading, 20, HudWidgets.Mint, TextAnchor.LowerLeft);
+            HudWidgets.Place(heading.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(40f, 168f), new Vector2(760f, 28f));
+
+            Text credits = HudWidgets.Label("Credits", root, string.Join("\n", ThirdPartyCredits.Lines()), 20, HudWidgets.InkDim,
+                TextAnchor.LowerLeft, FontStyle.Normal);
+            HudWidgets.Place(credits.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(40f, 30f), new Vector2(760f, 136f));
         }
 
         // Two columns of keys and what they do, on one panel.

@@ -78,6 +78,7 @@ Check your weekly count: `git shortlog -sn --since="1 week ago"`.
 | `Agents` | S4 |
 | `UI` | S3 (HUD, subtitles, chapter card, title, results; added to Build Settings and loaded by S2) |
 | `ModelShowcase` | S3 (model turntable and wireframe line-up; never in build) |
+| `Test/Test_SquadClaims` | S3 (four Saboteurs and two doors for the squad evidence; a personal test scene, never in build) |
 
 Only the owner edits a scene, including its metadata. Everyone else works in a personal test scene and hands over prefabs. Test scenes live under `Scenes/Test/` and stay out of the build.
 
@@ -85,8 +86,10 @@ Only the owner edits a scene, including its metadata. Everyone else works in a p
 
 - Blender sources go in `Blender/` (outside `Assets/`, so Unity never tries to import `.blend` files).
 - Export FBX to `Assets/_Project/Models/<Model>/`, overwriting the existing file so its `.meta` GUID is kept: Forward Y, Up Z, Apply Transform off, Apply Scalings "FBX Units Scale", Leaf Bones off, Object Types Empty and Mesh only, Bake Animation off. Keep **Bake Axis Conversion** enabled in the Unity model importer. This is the validated pipeline: models authored facing Blender +Y import facing Unity +Z, and every node in the rigid-part hierarchy keeps rotation 0 and scale 1.
-- Character and keycard materials (`Materials/Characters/M_Char_*`) are set by the menu item Factory Reset > Materials > Build Character Materials, which also rewrites the character prefab variants. Change a colour in `CharacterMaterialBuilder` and run it again; do not edit those materials or the prefab material slots by hand.
+- Character and keycard materials (`Materials/Characters/M_Char_*`) are set by the menu item Factory Reset > Materials > Build Character Materials, which also rewrites the character prefab variants. Change a colour in `CharacterMaterialBuilder` and run it again; do not edit those materials or the prefab material slots by hand. Unit 047's decal texture (`Textures/Characters/T_Char_Unit047Decals.png`) is painted, not generated: edit the PNG, keep each plate's half of it, and run the builder again.
+- Prop materials: untextured props use the shared `M_Char_*` plastics; parts that S2 tints or that need a texture get their own `Materials/Props/M_Prop_*` material, so a tint never reaches another prop.
 - Textures power-of-two, BC7, through a shared texture import preset rather than one-off settings. The prop atlas is 1024 x 1024. Follow [Docs/ArtBible.md](Docs/ArtBible.md); S1 owns palette changes.
+- **Third-party models:** only with a licence that allows it (CC0 preferred; CC BY only with the credit), recorded in the [Docs/DesignDoc.md](Docs/DesignDoc.md) decision log. Keep the fitted `.blend` in `Blender/ThirdParty/<Source>/`, the FBX export (and the original `License.txt` when the source ships one) in `Assets/_ThirdParty/<Source>/`, and a `README.md` there naming each model's author, licence, link and changes. A CC BY model also goes in `ThirdPartyCredits` (`Scripts/UI/`), which the title screen shows, and `ThirdPartyCreditsTests` fails if the README and the game disagree. Map their colours to the shared palette plastics where they have no texture. Export and import them like our own models; their prefabs go in `Prefabs/Props/` and their materials in `Materials/Props/`. Third-party models never count as anyone's own models.
 - Only S1 commits lighting and NavMesh bake output, and only after major changes (LFS quota).
 
 ### Model handoff
@@ -107,6 +110,9 @@ S3 owns everything under `Assets/_Project/Models/`, the character prefab variant
 
 - `Scenes/ModelShowcase.unity` is S3's presentation scene (turntable and wireframe views). It stays out of Build Settings.
 - Add every S3 model to it, including Unit 047 once it exists. Its turntable must not depend on S4's animation clips.
+- Keys: Tab line-up or turntable, Left and Right pick the turntable model, Space spin, W wireframe, L hold a LOD level, Up and Down move the turntable camera.
+- A new model's prefab goes in the `Showcase` object's entries (`ModelShowcaseSceneTests` fails if a character or a `*_Root` prop prefab is missing).
+- A LOD level is named `<Model>_Far`, never `_LOD1`: Unity builds a LOD group by itself from a file whose nodes end in `_LOD0`, `_LOD1`, and a test fails on such a name.
 - Open it fresh in Unity at 16:9 for a clean lit check. Do not bake lighting or NavMesh from it.
 - The models keep a neutral rotation so the line-up matches DesignDoc section 8.9.
 

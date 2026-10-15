@@ -18,6 +18,8 @@ namespace ToyFactory.Editor.World
     /// under a wall of screens showing Factory OS's status. There are no windows;
     /// the walls are clad dark, the ceiling lights are dimmed and cooled, and red light comes from
     /// the cables and channels, violet from the strips and screens. Re-running replaces the previous build.
+    /// Like the other rooms, every surface has a photographic texture: dark painted steel on the
+    /// cladding and the server shells, photographed floor and ceiling tiles.
     /// </summary>
     /// <remarks>
     /// Everything stays clear of S2's console, cores, traps and pickups, the Captain's spawn and
@@ -34,7 +36,7 @@ namespace ToyFactory.Editor.World
         static readonly Color Night = Hex("0B0910"), Panel = Hex("231E31"), Slot = Hex("110E18"),
             Bay = Hex("3A3450"), Edge = Hex("5B5277"), Blood = Hex("E0203A"), Ember = Hex("FF5A3C");
 
-        static Material _signs, _screens, _shell, _trim, _black, _wall, _red, _violet, _cable, _cableGlow, _panel;
+        static Material _signs, _screens, _shell, _trim, _black, _wall, _red, _violet, _cable, _cableGlow, _panel, _perforated;
 
         // Atlas rectangles (pixels, bottom-left origin, 1024 x 1024).
         static readonly RectInt MainSign = new RectInt(0, 944, 1024, 80);
@@ -131,37 +133,62 @@ namespace ToyFactory.Editor.World
 
         static void Materials()
         {
-            _shell = Plastic("ServerShell", Hex("1C1828"), 0.8f);
-            _trim = Plastic("ServerTrim", Hex("3A3450"), 0.85f);
-            _black = Plastic("ServerBlack", Night, 0.6f);
+            _shell = Plastic("ServerShell", Hex("312C40"), 0.8f);
+            _trim = Plastic("ServerTrim", Hex("4E4766"), 0.85f);
+            _black = Plastic("ServerBlack", Hex("1C1926"), 0.6f);
             _wall = Plastic("ControlWall", Hex("241E34"), 0.65f);
             _red = Plastic("GlowRed", Blood, 0.6f, null, new Color(2.4f, 0.18f, 0.28f));
             _violet = Plastic("GlowViolet", Grape, 0.6f, null, new Color(0.6f, 0.36f, 1.6f));
             _cable = Plastic("Cable", Hex("17141F"), 0.45f);
             _cableGlow = Plastic("CableGlow", Hex("A01628"), 0.5f, null, new Color(1.1f, 0.06f, 0.14f));
             _panel = Plastic("CeilingPanelControl", Hex("C9BDFF"), 0.9f, null, new Color(0.75f, 0.68f, 1.35f));
+            // The cladding and the server shells, trims and plinths are dark painted steel (the
+            // photographed brushed metal, tinted); the cables are rubber.
+            foreach (Material steel in new[] { _shell, _trim, _black, _wall })
+                PhotoTextures.Apply(steel, PhotoTextures.Kind.Metal);
+            PhotoTextures.Apply(_cable, PhotoTextures.Kind.Plastic);
+            // A deeper brushed grain on the shells and trims, so it catches the light on such dark steel.
+            foreach (Material steel in new[] { _shell, _trim })
+                steel.SetFloat("_BumpScale", 1.4f);
+            // Perforated steel for the rack sides, the cabinet doors and the mainframe's vents, as on real server racks.
+            _perforated = Plastic("PerforatedSteel", Hex("6E6690"), 1f);
+            PhotoTextures.Apply(_perforated, PhotoTextures.Kind.Perforated);
         }
 
-        // The dark look: a dark floor whose grid glows violet, dimmed cool ceiling lights, a violet glow over the mainframe.
+        // The dark look: a dark tiled floor with a violet glow round each tile, dimmed cool ceiling
+        // lights, a violet glow over the mainframe.
         static void Mood()
         {
+            // Photographed 0.5 m floor tiles, as in every room. The floor's top face runs its UVs
+            // from x = 20.75 and z = 41.5 back; the photo holds 8 x 8 tiles, scaled to 4 m and offset
+            // 0.25 m in x to land the joins on the half metres. The glow map (which shares the
+            // tiling) traces a square inside each of the 8 x 8 tiles.
             Material floor = Mat("FloorTiled_Control");
             floor.SetColor("_BaseColor", Hex("4A4260"));
+            PhotoTextures.Apply(floor, PhotoTextures.Kind.FloorTile, new Vector2(20.75f / 4f, 20.75f / 4f));
+            floor.SetTextureOffset("_BaseMap", new Vector2(0.0625f, 0f));
+            floor.SetTexture("_EmissionMap", AssetDatabase.LoadAssetAtPath<Texture2D>(TextureFolder + "/T_Env_FloorGlowGrid8.png"));
             floor.EnableKeyword("_EMISSION");
             floor.SetColor("_EmissionColor", new Color(0.16f, 0.07f, 0.3f));
             EditorUtility.SetDirty(floor);
+
+            // The acoustic ceiling tiles every room shares.
+            GameObject ceilingTiles = GameObject.Find("Level/Ceilings/Ceiling_Control");
+            if (ceilingTiles != null)
+                ceilingTiles.GetComponent<MeshRenderer>().sharedMaterial = Mat("CeilingTiles");
 
             GameObject panels = GameObject.Find("Panels_Control");
             if (panels != null)
                 foreach (MeshRenderer panel in panels.GetComponentsInChildren<MeshRenderer>())
                     panel.sharedMaterial = _panel;
 
-            GameObject ceiling = GameObject.Find("Lighting/CeilingLights_Control");
+            // Cool violet ceiling lights, under half the other rooms' strength (they are 32).
+            GameObject ceiling = GameObject.Find("Lighting/CeilingLights_Baked/CeilingLights_Control");
             if (ceiling != null)
                 foreach (Light light in ceiling.GetComponentsInChildren<Light>())
                 {
-                    light.color = Hex("9C8EFF");
-                    light.intensity = 9f;
+                    light.color = Hex("B8A8FF");
+                    light.intensity = 16f;
                 }
             GameObject fill = GameObject.Find("Lighting/RoomFills_Baked/Fill_Control");
             if (fill != null)
@@ -308,6 +335,9 @@ namespace ToyFactory.Editor.World
             for (int i = 0; i < 4; i++)
                 _uvPlaque[i] = p.Uv(Plaque(i));
             _signs = Plastic("SignsControl", Color.white, 0.6f, atlas, new Color(0.16f, 0.16f, 0.16f), atlas);
+            // The server faceplates, vents and plaques are painted on steel: the photographed
+            // brushed-metal relief over the pictures, so they catch the light like metal.
+            PhotoTextures.ApplyRelief(_signs, PhotoTextures.Kind.Metal, 1.2f);
             _screens = Plastic("SignsControlGlow", Color.white, 0.5f, atlas, new Color(1.1f, 1.1f, 1.1f), atlas);
         }
 
@@ -538,7 +568,7 @@ namespace ToyFactory.Editor.World
             }
         }
 
-        // The detail on one rack: plinth, crown, framed fronts of server units, rear fans, vented sides.
+        // The detail on one rack: plinth, crown, framed fronts of server units, rear fans, perforated steel sides.
         static void RackDetail(Transform parent, Vector3 c, int n)
         {
             Box(parent, "Plinth", new Vector3(1.34f, 0.12f, 1.54f), _black, c + Vector3.up * 0.06f);
@@ -561,9 +591,9 @@ namespace ToyFactory.Editor.World
                 // Vented sides with the logo and a danger label.
                 Quaternion side = s > 0f ? FacingEast : FacingWest;
                 Vector3 sideFace = c + new Vector3(s * 0.625f, 0f, 0f);
-                Part(parent, "Side_Vent", Quad("Control_RackVent", new Vector2(1.3f, 1.7f), _uvVent), _signs, sideFace + Vector3.up * 1.2f, side);
-                Part(parent, "Side_Logo", Quad("Control_RackLogo", new Vector2(0.56f, 0.56f), _uvLogo), _signs, sideFace + Vector3.up * 2.4f + side * Vector3.forward * 0.002f, side);
-                Part(parent, "Side_Danger", Quad("Control_RackDanger", new Vector2(0.52f, 0.2f), _uvDanger), _signs, sideFace + Vector3.up * 0.5f + side * Vector3.forward * 0.004f, side);
+                Box(parent, "Side_Panel", new Vector3(0.02f, 1.7f, 1.3f), _perforated, sideFace + Vector3.up * 1.2f + side * Vector3.forward * 0.01f);
+                Part(parent, "Side_Logo", Quad("Control_RackLogo", new Vector2(0.56f, 0.56f), _uvLogo), _signs, sideFace + Vector3.up * 2.4f + side * Vector3.forward * 0.022f, side);
+                Part(parent, "Side_Danger", Quad("Control_RackDanger", new Vector2(0.52f, 0.2f), _uvDanger), _signs, sideFace + Vector3.up * 0.5f + side * Vector3.forward * 0.024f, side);
             }
         }
 
@@ -824,7 +854,7 @@ namespace ToyFactory.Editor.World
                 new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z)));
         }
 
-        // One wall cabinet: shell, plinth, frame, and either open server units or a vented door.
+        // One wall cabinet: shell, plinth, frame, and either open server units or a perforated steel door.
         static void Cabinet(Transform parent, Vector3 foot, Quaternion facing, bool door, List<(Vector3, Vector3)> lights)
         {
             Vector3 into = facing * Vector3.forward, along = facing * Vector3.right;
@@ -836,11 +866,11 @@ namespace ToyFactory.Editor.World
             Box(parent, "Cabinet_Top", new Vector3(CabinetWidth - 0.08f, 0.07f, 0.04f), _trim, front + Vector3.up * (CabinetHeight - 0.05f), rotation: facing);
             if (door)
             {
-                Part(parent, "Door", Quad("Control_CabinetDoor", new Vector2(CabinetWidth - 0.2f, 2.7f), _uvVent), _signs, front + into * 0.008f + Vector3.up * 1.68f, facing);
-                Part(parent, "Door_Logo", Quad("Control_CabinetLogo", new Vector2(0.5f, 0.5f), _uvLogo), _signs, front + into * 0.012f + Vector3.up * 2.55f, facing);
+                Box(parent, "Door", new Vector3(CabinetWidth - 0.2f, 2.7f, 0.02f), _perforated, front + into * 0.012f + Vector3.up * 1.68f, rotation: facing);
+                Part(parent, "Door_Logo", Quad("Control_CabinetLogo", new Vector2(0.5f, 0.5f), _uvLogo), _signs, front + into * 0.024f + Vector3.up * 2.55f, facing);
                 Box(parent, "Door_Handle", new Vector3(0.03f, 0.5f, 0.04f), M.Chrome, front + into * 0.03f + along * (CabinetWidth * 0.5f - 0.16f) + Vector3.up * 1.6f, rotation: facing);
-                lights.Add((front + into * 0.014f + along * 0.38f + Vector3.up * 0.42f, into));
-                lights.Add((front + into * 0.014f + along * 0.42f + Vector3.up * 0.42f, into));
+                lights.Add((front + into * 0.025f + along * 0.38f + Vector3.up * 0.42f, into));
+                lights.Add((front + into * 0.025f + along * 0.42f + Vector3.up * 0.42f, into));
             }
             else
                 StackUnits(parent, CabinetFront, 0.3f, CabinetHeight - 0.12f, CabinetWidth - 0.2f, front, into * 0.006f, facing, lights);
@@ -872,7 +902,7 @@ namespace ToyFactory.Editor.World
                     Part(frame, "Reel_Rim", Ring(0.3f, 0.33f, 0.035f, 28), _violet, column + Vector3.up * y + into * 0.02f, facing * Quaternion.Euler(90f, 0f, 0f));
                     Part(frame, "Reel_Hub", Cylinder(0.08f, 0.05f), _trim, column + Vector3.up * y + into * 0.01f, facing * Quaternion.Euler(90f, 0f, 0f));
                 }
-                Part(frame, "Vent", Quad("Control_MainframeVent", new Vector2(0.9f, 0.8f), _uvVent), _signs, column + into * 0.008f + Vector3.up * 0.75f, facing);
+                Box(frame, "Vent", new Vector3(0.9f, 0.8f, 0.02f), _perforated, column + into * 0.012f + Vector3.up * 0.75f, rotation: facing);
                 Box(frame, "Divider", new Vector3(0.06f, height - 0.25f, 0.05f), _trim, front + along * s * 0.6f + Vector3.up * (0.25f + (height - 0.25f) * 0.5f), rotation: facing);
             }
             // Centre column: a red core slot between racks of drives, and a warning.

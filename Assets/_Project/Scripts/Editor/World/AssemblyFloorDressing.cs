@@ -33,6 +33,7 @@ namespace ToyFactory.Editor.World
         static Material _white, _grey, _blue, _red, _yellow, _purple, _chrome, _hazard, _glow, _amber;
         static Material _mint, _orange, _bubble, _plum, _signs, _screens, _window;
         static Mesh _sphere;
+        static Material _wood, _card, _lockerBlue, _lockerMint, _wallPanel, _ceilingTiles;
 
         // Sign atlas rectangles (pixels, bottom-left origin, 1024 x 1024).
         static readonly RectInt MainSign = new RectInt(0, 832, 1024, 192);
@@ -68,7 +69,10 @@ namespace ToyFactory.Editor.World
                      {
                          "Level/Obstacles/Assembly_Press_1", "Level/Obstacles/Assembly_Press_2",
                          "Level/Dressing/Assembly_PressLight_1", "Level/Dressing/Assembly_PressLight_2",
-                         "Level/Dressing/PressOutlines", "Level/Dressing/Assembly"
+                         "Level/Dressing/PressOutlines", "Level/Dressing/Assembly",
+                         // The room's six wall gears turned for no reason; their job is now the belt drive's.
+                         "Level/Dressing/WallGears/Gear_1", "Level/Dressing/WallGears/Gear_2", "Level/Dressing/WallGears/Gear_3",
+                         "Level/Dressing/WallGears/Gear_4", "Level/Dressing/WallGears/Gear_5", "Level/Dressing/WallGears/Gear_6"
                      })
             {
                 GameObject old = GameObject.Find(path);
@@ -80,6 +84,7 @@ namespace ToyFactory.Editor.World
 
             LoadMaterials();
             PaintAtlas();
+            Surfaces(level.transform);
             Transform root = Group(dressing, "Assembly");
 
             Floor(root);
@@ -92,8 +97,10 @@ namespace ToyFactory.Editor.World
             Lockers(root);
             Pallet(root);
             Shelf(root);
+            BeltDrive(root);
             Ceiling(root);
 
+            string outside = OutsideDressing.Build();
             int probesMoved = MoveProbesOutOfSolids(root);
 
             // One renderer per material per section instead of one per part.
@@ -110,6 +117,7 @@ namespace ToyFactory.Editor.World
                 report.AppendLine($"  {section.name}: {section.GetComponentsInChildren<MeshRenderer>(true).Length} renderers, " +
                                   $"{Triangles(section)} triangles, {section.GetComponentsInChildren<BoxCollider>(true).Length} colliders");
             report.AppendLine($"  Total: {root.GetComponentsInChildren<MeshRenderer>(true).Length} renderers, {Triangles(root)} triangles.");
+            report.AppendLine(outside);
             return report.ToString();
         }
 
@@ -122,6 +130,51 @@ namespace ToyFactory.Editor.World
             _purple = M.Purple; _chrome = M.Chrome; _hazard = M.Hazard; _glow = M.Glow; _amber = M.Amber;
             _mint = M.Mint; _orange = M.Orange; _bubble = M.Bubble; _plum = M.Plum; _window = M.Window;
             _sphere = M.Ball;
+
+            // Materials made of something other than plastic, with their surface textures.
+            _wood = Plastic("Wood", Hex("C8894B"), 0.55f);
+            PhotoTextures.Apply(_wood, PhotoTextures.Kind.Wood);
+            _card = Plastic("Cardboard", Hex("C9A271"), 0.4f);
+            PhotoTextures.Apply(_card, PhotoTextures.Kind.Cardboard);
+            _lockerBlue = Plastic("LockerBlue", Cobalt, 0.75f);
+            PhotoTextures.Apply(_lockerBlue, PhotoTextures.Kind.Metal);
+            _lockerMint = Plastic("LockerMint", Mint, 0.75f);
+            PhotoTextures.Apply(_lockerMint, PhotoTextures.Kind.Metal);
+            _wallPanel = Plastic("WallPanel", Hex("E8ECF2"), 0.6f);
+            PhotoTextures.Apply(_wallPanel, PhotoTextures.Kind.WallPanel);
+            _ceilingTiles = Plastic("CeilingTiles", Hex("2B2450"), 0.5f);
+            PhotoTextures.Apply(_ceilingTiles, PhotoTextures.Kind.Ceiling, new Vector2(20.75f / 3.85f, 20.75f / 3.85f));
+        }
+
+        // Panelled walls everywhere (the walls run through every room), 1 m floor tiles and an
+        // acoustic tile ceiling in this room.
+        static void Surfaces(Transform level)
+        {
+            foreach (MeshRenderer wall in level.Find("Walls").GetComponentsInChildren<MeshRenderer>())
+                wall.sharedMaterial = _wallPanel;
+
+            // 0.5 m tiles, the size of a grid cell, as in every room, with the joins on the half
+            // metres. The floor's top face runs its UVs from x = z = 20.75 back to 0; the photo
+            // holds 8 x 8 tiles, scaled to 4 m, so it repeats 20.75 / 4 times and is offset 0.25 m
+            // (1/16) to land the joins.
+            Material tiles = Mat("FloorTiled_Assembly");
+            PhotoTextures.Apply(tiles, PhotoTextures.Kind.FloorTile, new Vector2(20.75f / 4f, 20.75f / 4f));
+            tiles.SetTextureOffset("_BaseMap", new Vector2(0.0625f, 0.0625f));
+            EditorUtility.SetDirty(tiles);
+
+            // Three times the lightmap detail on this floor, so the sun's patches through the
+            // windows have sharp edges and show the window bars.
+            Transform floorObject = level.Find("Floors/Floor_Assembly");
+            if (floorObject != null)
+            {
+                var lightmapped = new SerializedObject(floorObject.GetComponent<MeshRenderer>());
+                lightmapped.FindProperty("m_ScaleInLightmap").floatValue = 3f;
+                lightmapped.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            Transform ceiling = level.Find("Ceilings/Ceiling_Assembly");
+            if (ceiling != null)
+                ceiling.GetComponent<MeshRenderer>().sharedMaterial = _ceilingTiles;
         }
 
         // The signs, posters and decals, painted into one atlas (one material, one draw state).
@@ -256,17 +309,6 @@ namespace ToyFactory.Editor.World
         {
             Transform floor = Group(root, "Floor");
 
-            // 1 m tiles, the size of S2's crates, with the joins on whole metres. The floor's top
-            // face runs its UVs from x = z = 20.75 back to 0, so the 4-tile texture repeats every
-            // 4 m (tiling 20.75 / 4) and is offset a quarter tile to land the joins on whole metres.
-            Material tiles = Mat("FloorTiled_Assembly");
-            foreach (string property in new[] { "_BaseMap", "_MainTex" })
-            {
-                tiles.SetTextureScale(property, new Vector2(20.75f / 4f, 20.75f / 4f));
-                tiles.SetTextureOffset(property, new Vector2(0.0625f, 0.0625f));
-            }
-            EditorUtility.SetDirty(tiles);
-
             // Hazard edging along both belts (painted lines, no collider).
             Stripe(floor, "BeltEdge_Bottom_S", 10.3f, 6.62f, 17.5f, true);
             Stripe(floor, "BeltEdge_Bottom_N", 10.3f, 8.38f, 17.5f, true);
@@ -277,14 +319,20 @@ namespace ToyFactory.Editor.World
             Part(floor, "StartPad", Ring(0.01f, 0.62f, 0.012f), _plum, new Vector3(10.5f, 0f, 3f), Quaternion.identity);
             Part(floor, "StartPad_Glow", Ring(0.66f, 0.84f, 0.016f), _glow, new Vector3(10.5f, 0f, 3f), Quaternion.identity);
 
-            // A big painted gear medallion in the open middle of the room (paint only: the
-            // Tracker's patrol lane and the crates' routes cross it).
-            var medallion = new Vector3(13.5f, 0f, 12.2f);
-            Part(floor, "Medallion_Ring", Ring(1.45f, 1.62f, 0.012f), _mint, medallion, Quaternion.identity);
-            Part(floor, "Medallion_Disc", Ring(0.01f, 1.4f, 0.008f), _white, medallion, Quaternion.identity);
-            Part(floor, "Medallion_Gear", SavedGear("Gear_Floor_16", 1.15f, 0.92f, 0.32f, 16, 0.014f), _plum, medallion + Vector3.up * 0.009f,
-                Quaternion.Euler(-90f, 0f, 0f));
-            Part(floor, "Medallion_Hub", Ring(0.01f, 0.2f, 0.022f), _yellow, medallion, Quaternion.identity);
+            // A painted walkway from the start pad to the Painting Room door: two white lines and
+            // mint arrows along the south wall and up the east wall, past the charger and the
+            // bottom belt's end, so the way on reads at a glance (paint only).
+            Transform walk = Group(floor, "Walkway");
+            const float laneZ = 3.4f, laneX = 19.85f, half = 0.6f, laneStart = 11.6f, laneEnd = 9.2f;
+            Box(walk, "Line", new Vector3(laneX + half - laneStart, 0.012f, 0.08f), _white, new Vector3((laneStart + laneX + half) * 0.5f, 0.006f, laneZ - half));
+            Box(walk, "Line", new Vector3(laneX - half - laneStart, 0.012f, 0.08f), _white, new Vector3((laneStart + laneX - half) * 0.5f, 0.006f, laneZ + half));
+            Box(walk, "Line", new Vector3(0.08f, 0.012f, laneEnd - (laneZ - half)), _white, new Vector3(laneX + half, 0.006f, (laneZ - half + laneEnd) * 0.5f));
+            Box(walk, "Line", new Vector3(0.08f, 0.012f, laneEnd - (laneZ + half)), _white, new Vector3(laneX - half, 0.006f, (laneZ + half + laneEnd) * 0.5f));
+            foreach (float x in new[] { 13.6f, 15.6f, 17.6f })
+                FloorArrow(walk, new Vector3(x, 0.007f, laneZ), Vector3.right);
+            foreach (float z in new[] { 5.6f, 7.6f })
+                FloorArrow(walk, new Vector3(laneX, 0.007f, z), Vector3.forward);
+            FloorArrow(walk, new Vector3(laneX, 0.007f, 10.3f), Vector3.right);   // into door 1
 
             // Painted chevrons from the start pad towards the belts and the tasks.
             foreach (float cz in new[] { 4.4f, 5.0f, 5.6f })
@@ -294,6 +342,20 @@ namespace ToyFactory.Editor.World
 
             // A painted sun-yellow ring round the control switch, so the goal reads from across the room.
             Part(floor, "SwitchRing", Ring(1.0f, 1.14f, 0.012f), _yellow, new Vector3(1.5f, 0f, 4f), Quaternion.identity);
+        }
+
+        // A painted arrow (two strokes) pointing along 'direction' on the floor.
+        static void FloorArrow(Transform parent, Vector3 at, Vector3 direction)
+        {
+            Vector3 side = Vector3.Cross(Vector3.up, direction);
+            Vector3 tip = at + direction * 0.22f;
+            foreach (float s in new[] { -1f, 1f })
+            {
+                Vector3 tail = at - direction * 0.12f + side * s * 0.28f;
+                Vector3 stroke = tip - tail;
+                Box(parent, "Arrow", new Vector3(0.11f, 0.012f, stroke.magnitude + 0.08f), _mint, (tip + tail) * 0.5f,
+                    rotation: Quaternion.LookRotation(stroke));
+            }
         }
 
         // ---- Doors -------------------------------------------------------------------------
@@ -328,12 +390,12 @@ namespace ToyFactory.Editor.World
             Transform walls = Group(root, "Walls");
 
             // A mint rail round the room at 1.6 m, broken at the doors.
-            Box(walls, "Rail_S", new Vector3(20f, 0.12f, 0.05f), _mint, new Vector3(10.5f, 1.61f, 0.525f));
-            Box(walls, "Rail_W", new Vector3(0.05f, 0.12f, 20f), _mint, new Vector3(0.525f, 1.61f, 10.5f));
-            Box(walls, "Rail_N1", new Vector3(8.1f, 0.12f, 0.05f), _mint, new Vector3(4.55f, 1.61f, 20.475f));
-            Box(walls, "Rail_N2", new Vector3(7.9f, 0.12f, 0.05f), _mint, new Vector3(16.55f, 1.61f, 20.475f));
-            Box(walls, "Rail_E1", new Vector3(0.05f, 0.12f, 8.1f), _mint, new Vector3(20.475f, 1.61f, 4.55f));
-            Box(walls, "Rail_E2", new Vector3(0.05f, 0.12f, 7.9f), _mint, new Vector3(20.475f, 1.61f, 16.55f));
+            Box(walls, "Rail_S", new Vector3(20f, 0.12f, 0.05f), M.MachineMint, new Vector3(10.5f, 1.61f, 0.525f));
+            Box(walls, "Rail_W", new Vector3(0.05f, 0.12f, 20f), M.MachineMint, new Vector3(0.525f, 1.61f, 10.5f));
+            Box(walls, "Rail_N1", new Vector3(8.1f, 0.12f, 0.05f), M.MachineMint, new Vector3(4.55f, 1.61f, 20.475f));
+            Box(walls, "Rail_N2", new Vector3(7.9f, 0.12f, 0.05f), M.MachineMint, new Vector3(16.55f, 1.61f, 20.475f));
+            Box(walls, "Rail_E1", new Vector3(0.05f, 0.12f, 8.1f), M.MachineMint, new Vector3(20.475f, 1.61f, 4.55f));
+            Box(walls, "Rail_E2", new Vector3(0.05f, 0.12f, 7.9f), M.MachineMint, new Vector3(20.475f, 1.61f, 16.55f));
 
             // Rounded corner columns.
             foreach (Vector2 corner in new[] { new Vector2(0.75f, 0.75f), new Vector2(0.75f, 20.25f), new Vector2(20.25f, 0.75f), new Vector2(20.25f, 20.25f) })
@@ -342,7 +404,7 @@ namespace ToyFactory.Editor.World
             // Pipes: three colours along the west wall and on along the north wall, rising into the
             // ceiling at both ends, with a blue drop to a valve box near the lever.
             Transform pipes = Group(walls, "Pipes");
-            (float y, Material material)[] runs = { (5.05f, _red), (5.3f, _yellow), (5.55f, _blue) };
+            (float y, Material material)[] runs = { (5.05f, M.MachineRed), (5.3f, M.MachineYellow), (5.55f, M.MachineBlue) };
             const float wallX = 0.75f, wallZ = 20.25f;
             foreach (var run in runs)
             {
@@ -357,13 +419,13 @@ namespace ToyFactory.Editor.World
                 Box(pipes, "Bracket", new Vector3(0.34f, 0.75f, 0.12f), _grey, new Vector3(0.66f, 5.3f, z));
             foreach (float x in new[] { 3f, 6.5f })
                 Box(pipes, "Bracket", new Vector3(0.12f, 0.75f, 0.34f), _grey, new Vector3(x, 5.3f, 20.34f));
-            Part(pipes, "Drop", Cylinder(0.07f, 3.9f), _blue, new Vector3(wallX, 1.65f, 13.8f), Quaternion.identity);
+            Part(pipes, "Drop", Cylinder(0.07f, 3.9f), M.MachineBlue, new Vector3(wallX, 1.65f, 13.8f), Quaternion.identity);
             Part(pipes, "Joint", _sphere, _chrome, new Vector3(wallX, 5.55f, 13.8f), Quaternion.identity, scale: Vector3.one * 0.2f);
             Box(pipes, "ValveBox", new Vector3(0.36f, 0.5f, 0.42f), _grey, new Vector3(0.7f, 1.42f, 13.8f));
-            Part(pipes, "ValveWheel", Ring(0.1f, 0.18f, 0.04f), _red, new Vector3(0.9f, 1.42f, 13.8f), Quaternion.Euler(0f, 0f, -90f));
+            Part(pipes, "ValveWheel", Ring(0.1f, 0.18f, 0.04f), M.MachineRed, new Vector3(0.9f, 1.42f, 13.8f), Quaternion.Euler(0f, 0f, -90f));
 
             // Fire extinguisher by the west wall.
-            Part(walls, "Extinguisher", Cylinder(0.12f, 0.6f), _red, new Vector3(0.72f, 0.65f, 9.3f), Quaternion.identity);
+            Part(walls, "Extinguisher", Cylinder(0.12f, 0.6f), M.MachineRed, new Vector3(0.72f, 0.65f, 9.3f), Quaternion.identity);
             Part(walls, "Extinguisher_Top", Cylinder(0.05f, 0.12f), _chrome, new Vector3(0.72f, 1.25f, 9.3f), Quaternion.identity);
             Box(walls, "Extinguisher_Hook", new Vector3(0.1f, 0.1f, 0.3f), _grey, new Vector3(0.56f, 1.05f, 9.3f));
 
@@ -375,7 +437,7 @@ namespace ToyFactory.Editor.World
             spinner.Configure(Vector3.forward, 140f);
             for (int i = 0; i < 4; i++)
             {
-                GameObject blade = Part(hub, "Blade", RoundBox(new Vector3(0.16f, 0.5f, 0.03f)), _white, hub.position,
+                GameObject blade = Part(hub, "Blade", RoundBox(new Vector3(0.16f, 0.5f, 0.03f)), M.MachineWhite, hub.position,
                     hub.rotation * Quaternion.Euler(0f, 0f, i * 90f) * Quaternion.Euler(0f, 18f, 0f), moving: true);
                 blade.transform.position = hub.position + blade.transform.up * 0.3f;
                 blade.transform.localScale = new Vector3(1f / 0.18f, 1f / 0.18f, 1f / 0.18f);
@@ -384,15 +446,29 @@ namespace ToyFactory.Editor.World
 
         // ---- Windows -----------------------------------------------------------------------
 
+        // Real windows: openings cut through the outside walls (the walls keep their colliders),
+        // glass in the frames, and the sky, the sun and the backdrop outside (OutsideDressing).
+        static readonly float[] WestWindows = { 2.7f, 9.9f, 15.9f }, SouthWindows = { 9.35f, 11.65f };
+        const float WindowY = 3.4f;
+
         static void Windows(Transform root)
         {
             Transform windows = Group(root, "Windows");
             // West wall (outside): behind the switch, behind the assembler, above the lever.
-            foreach (float z in new[] { 2.7f, 9.9f, 15.9f })
-                Window(windows, new Vector3(0.5f, 3.4f, z), FacingEast);
+            foreach (float z in WestWindows)
+                Window(windows, new Vector3(0.5f, WindowY, z), FacingEast, open: true);
             // South wall (outside): a double window behind the start pad.
-            foreach (float x in new[] { 9.35f, 11.65f })
-                Window(windows, new Vector3(x, 3.4f, 0.5f), FacingSouth);
+            foreach (float x in SouthWindows)
+                Window(windows, new Vector3(x, WindowY, 0.5f), FacingSouth, open: true);
+
+            var west = new List<(float, float, float, float)>();
+            foreach (float z in WestWindows)
+                west.Add((z - 1f, z + 1f, WindowY - 0.7f, WindowY + 0.7f));
+            var south = new List<(float, float, float, float)>();
+            foreach (float x in SouthWindows)
+                south.Add((x - 1f, x + 1f, WindowY - 0.7f, WindowY + 0.7f));
+            WallCutter.Cut(GameObject.Find("Level/Walls/Wall_West"), "Assembly", west);
+            WallCutter.Cut(GameObject.Find("Level/Walls/Wall_South"), "Assembly", south);
         }
 
         // ---- Signs, posters, clock ---------------------------------------------------------
@@ -422,8 +498,8 @@ namespace ToyFactory.Editor.World
             // South wall: a poster by the corner, seen on the way back from the switch.
             Part(signs, "Poster_Smile", Quad("Poster_Smile", new Vector2(1.2f, 1.5f), _uvSmile), _signs, new Vector3(18.8f, 2.9f, 0.52f), FacingSouth);
 
-            // West wall: a pegboard of tools between the battery and the valve.
-            Part(signs, "Pegboard", Quad("Pegboard", new Vector2(1.8f, 0.9f), _uvPeg), _signs, new Vector3(0.56f, 2.2f, 12.2f), FacingEast);
+            // South wall: the tool pegboard above the repair bench, where the tools are used.
+            Part(signs, "Pegboard", Quad("Pegboard", new Vector2(1.8f, 0.9f), _uvPeg), _signs, new Vector3(5.2f, 2.2f, 0.535f), FacingSouth);
         }
 
         // ---- The Toy-O-Matic assembler ------------------------------------------------------
@@ -443,7 +519,8 @@ namespace ToyFactory.Editor.World
             Stripe(a, "Outline_W", 2.21f, z, 2.74f, false);
             Stripe(a, "Outline_E", 6.89f, z, 2.74f, false);
 
-            // Hopper on four chrome legs, heaped with coloured parts.
+            // Hopper on four chrome legs, heaped with the parts it feeds the stamper: wheels, robot
+            // heads, teddy heads and arms.
             const float hx = 3.2f;
             foreach (Vector2 leg in new[] { new Vector2(-0.45f, -0.45f), new Vector2(0.45f, -0.45f), new Vector2(-0.45f, 0.45f), new Vector2(0.45f, 0.45f) })
                 Part(a, "Hopper_Leg", Cylinder(0.05f, 2.05f), _chrome, new Vector3(hx + leg.x, 0.3f, z + leg.y), Quaternion.identity);
@@ -452,16 +529,13 @@ namespace ToyFactory.Editor.World
                 new Vector2(0f, 0f), new Vector2(0.14f, 0f), new Vector2(0.17f, 0.08f), new Vector2(0.2f, 0.3f),
                 new Vector2(0.64f, 0.8f), new Vector2(0.7f, 0.88f), new Vector2(0.72f, 1f), new Vector2(0.66f, 1.06f), new Vector2(0f, 1.06f)
             }, 28);
-            Part(a, "Hopper", funnel, _blue, new Vector3(hx, 1.55f, z), Quaternion.identity);
-            Material[] gumballs = { _red, _yellow, _mint, _purple, _bubble, _orange };
+            Part(a, "Hopper", funnel, M.MachineBlue, new Vector3(hx, 1.55f, z), Quaternion.identity);
             var random = new System.Random(47);
-            for (int i = 0; i < 11; i++)
+            for (int i = 0; i < 12; i++)
             {
-                float angle = i * 2.4f, radius = 0.12f + 0.42f * (i / 10f);
-                float size = 0.22f + 0.08f * (float)random.NextDouble();
-                Part(a, "Part", _sphere, gumballs[i % gumballs.Length],
-                    new Vector3(hx + Mathf.Cos(angle) * radius, 2.62f + size * 0.25f + (i < 4 ? 0.08f : 0f), z + Mathf.Sin(angle) * radius),
-                    Quaternion.identity, scale: Vector3.one * size);
+                float angle = i * 2.4f, radius = 0.1f + 0.4f * (i / 11f);
+                var turn = Quaternion.Euler((float)random.NextDouble() * 50f - 25f, (float)random.NextDouble() * 360f, (float)random.NextDouble() * 50f - 25f);
+                ToyPart(a, i, new Vector3(hx + Mathf.Cos(angle) * radius, 2.66f + 0.1f * (1f - i / 11f), z + Mathf.Sin(angle) * radius), turn, 1.1f);
             }
             Box(a, "Chute", new Vector3(0.7f, 0.06f, 0.3f), _chrome, new Vector3(3.7f, 1.3f, z), rotation: Quaternion.Euler(0f, 0f, -22f));
 
@@ -470,28 +544,29 @@ namespace ToyFactory.Editor.World
             Box(a, "Stamper_Platform", new Vector3(0.7f, 0.5f, 0.7f), _grey, new Vector3(sx, 0.55f, z));
             foreach (float side in new[] { -0.32f, 0.32f })
                 Part(a, "Stamper_Post", Cylinder(0.05f, 1.6f), _chrome, new Vector3(sx + side, 0.8f, z), Quaternion.identity);
-            Box(a, "Stamper_Bar", new Vector3(0.8f, 0.18f, 0.2f), _red, new Vector3(sx, 2.42f, z));
+            Box(a, "Stamper_Bar", new Vector3(0.8f, 0.18f, 0.2f), M.MachineRed, new Vector3(sx, 2.42f, z));
             Transform stamper = Group(a, "Stamper", new Vector3(sx, 0f, z));
-            GameObject head = Box(stamper, "Stamper_Head", new Vector3(0.45f, 0.3f, 0.45f), _red, new Vector3(sx, 1.75f, z), moving: true);
+            GameObject head = Box(stamper, "Stamper_Head", new Vector3(0.45f, 0.3f, 0.45f), M.MachineRed, new Vector3(sx, 1.75f, z), moving: true);
             head.AddComponent<DressingPiston>().Configure(1.27f, 1.75f, 0.6f, 0.2f);
             Toy(a, "Teddy", new Vector3(sx, 0.88f, z), 0.7f, Quaternion.Euler(0f, 200f, 0f));
 
             // Main body with a mint band, a screen and its name.
             const float bx = 5.85f;
-            Box(a, "Body", new Vector3(1.6f, 1.5f, 1.9f), _white, new Vector3(bx, 1.05f, z));
-            Box(a, "Body_Band", new Vector3(1.64f, 0.18f, 1.94f), _mint, new Vector3(bx, 1.5f, z));
+            Box(a, "Body", new Vector3(1.6f, 1.5f, 1.9f), M.MachineWhite, new Vector3(bx, 1.05f, z));
+            Box(a, "Body_Band", new Vector3(1.64f, 0.18f, 1.94f), M.MachineMint, new Vector3(bx, 1.5f, z));
             Box(a, "Screen_Bezel", new Vector3(1f, 0.6f, 0.04f), _plum, new Vector3(bx, 1.0f, 10.54f));
             Part(a, "Screen", Quad("Screen_Assembler", new Vector2(0.86f, 0.48f), _uvScreen), _screens, new Vector3(bx, 1.0f, 10.515f), FacingNorth);
             Part(a, "Label", Quad("Sign_Assembler", new Vector2(1.2f, 0.3f), _uvLabel), _signs, new Vector3(bx, 0.5f, 10.535f), FacingNorth);
 
             // Robot arm on a turntable, slowly turning, holding a robot toy.
-            Part(a, "Arm_Turret", Cylinder(0.32f, 0.2f), _blue, new Vector3(bx, 1.8f, z), Quaternion.identity);
+            Part(a, "Arm_Turret", Cylinder(0.32f, 0.2f), M.MachineBlue, new Vector3(bx, 1.8f, z), Quaternion.identity);
             Transform arm = Group(a, "Arm", new Vector3(bx, 2f, z));
             arm.gameObject.AddComponent<DressingSpinner>().Configure(Vector3.up, 18f);
-            Part(arm, "Shoulder", _sphere, _chrome, new Vector3(bx, 2.08f, z), Quaternion.identity, moving: true, scale: Vector3.one * 0.34f);
-            Box(arm, "UpperArm", new Vector3(0.2f, 0.9f, 0.2f), _yellow, new Vector3(bx, 2.55f, z), moving: true);
-            Part(arm, "Elbow", _sphere, _chrome, new Vector3(bx, 3.0f, z), Quaternion.identity, moving: true, scale: Vector3.one * 0.26f);
-            Box(arm, "Forearm", new Vector3(0.16f, 0.16f, 0.8f), _yellow, new Vector3(bx, 3.0f, z + 0.42f), moving: true);
+            // Joint housings: steel drums across the arm, the axles it would bend on.
+            Part(arm, "Shoulder", Cylinder(0.15f, 0.34f), _chrome, new Vector3(bx - 0.17f, 2.1f, z), AlongX, moving: true);
+            Box(arm, "UpperArm", new Vector3(0.2f, 0.9f, 0.2f), M.MachineYellow, new Vector3(bx, 2.55f, z), moving: true);
+            Part(arm, "Elbow", Cylinder(0.12f, 0.28f), _chrome, new Vector3(bx - 0.14f, 3.0f, z), AlongX, moving: true);
+            Box(arm, "Forearm", new Vector3(0.16f, 0.16f, 0.8f), M.MachineYellow, new Vector3(bx, 3.0f, z + 0.42f), moving: true);
             Box(arm, "Claw_L", new Vector3(0.04f, 0.22f, 0.06f), _chrome, new Vector3(bx - 0.08f, 2.86f, z + 0.84f), moving: true);
             Box(arm, "Claw_R", new Vector3(0.04f, 0.22f, 0.06f), _chrome, new Vector3(bx + 0.08f, 2.86f, z + 0.84f), moving: true);
             Toy(arm, "Robot", new Vector3(bx, 2.6f, z + 0.84f), 0.6f, Quaternion.identity, moving: true);
@@ -509,34 +584,90 @@ namespace ToyFactory.Editor.World
 
         // ---- Floor props along the walls ---------------------------------------------------
 
+        // A repair bench: a robot toy held in a vise under a lamp, its spare head and a screwdriver
+        // beside it, three tidy trays of parts, and the tool pegboard on the wall above (Signs).
         static void Workbench(Transform root)
         {
             Transform bench = Group(root, "Workbench");
             const float z = 0.95f;
             Blocker(bench, "Solid", new Vector3(5.2f, 0.5f, z), new Vector3(3.2f, 1f, 0.8f));
-            Box(bench, "Top", new Vector3(3.2f, 0.08f, 0.8f), _orange, new Vector3(5.2f, 0.92f, z));
+            Box(bench, "Top", new Vector3(3.2f, 0.08f, 0.8f), _wood, new Vector3(5.2f, 0.92f, z));
             foreach (float x in new[] { 4.0f, 6.4f })
-                Box(bench, "Cabinet", new Vector3(0.72f, 0.86f, 0.7f), _blue, new Vector3(x, 0.44f, z));
+                Box(bench, "Cabinet", new Vector3(0.72f, 0.86f, 0.7f), M.MachineBlue, new Vector3(x, 0.44f, z));
             foreach (float x in new[] { 4.0f, 6.4f })
                 Box(bench, "Drawer_Handle", new Vector3(0.3f, 0.04f, 0.04f), _chrome, new Vector3(x, 0.66f, 1.32f));
-            // On the bench: a vise, a half-built robot toy, loose parts, a lamp.
-            Box(bench, "Vise", new Vector3(0.3f, 0.2f, 0.24f), _grey, new Vector3(3.9f, 1.06f, 1.05f));
-            Toy(bench, "Robot", new Vector3(5.0f, 1.02f, 1.0f), 0.7f, Quaternion.Euler(0f, 160f, 0f));
-            Toy(bench, "Duck", new Vector3(5.6f, 1.0f, 1.05f), 0.6f, Quaternion.Euler(0f, 210f, 0f));
-            Material[] colours = { _red, _yellow, _mint, _purple };
-            for (int i = 0; i < 4; i++)
-                Part(bench, "Part", _sphere, colours[i], new Vector3(6.0f + i * 0.13f, 1.01f, 0.8f + (i % 2) * 0.1f), Quaternion.identity, scale: Vector3.one * 0.1f);
-            Part(bench, "Lamp_Base", Cylinder(0.1f, 0.04f), _grey, new Vector3(6.6f, 0.96f, 0.75f), Quaternion.identity);
-            Box(bench, "Lamp_Arm", new Vector3(0.04f, 0.5f, 0.04f), _chrome, new Vector3(6.6f, 1.2f, 0.82f), rotation: Quaternion.Euler(18f, 0f, 0f));
+
+            // The vise, and the robot clamped in it.
+            Box(bench, "Vise_Base", new Vector3(0.4f, 0.08f, 0.26f), _grey, new Vector3(5.0f, 1.0f, 1.0f));
+            foreach (float side in new[] { -0.16f, 0.16f })
+                Box(bench, "Vise_Jaw", new Vector3(0.06f, 0.16f, 0.24f), _grey, new Vector3(5.0f + side, 1.12f, 1.0f));
+            Part(bench, "Vise_Screw", Cylinder(0.02f, 0.3f), _chrome, new Vector3(5.19f, 1.12f, 1.0f), AlongX);
+            Box(bench, "Vise_Handle", new Vector3(0.03f, 0.03f, 0.24f), _red, new Vector3(5.49f, 1.12f, 1.0f));
+            Toy(bench, "Robot", new Vector3(5.0f, 1.16f, 1.0f), 0.8f, Quaternion.identity);
+
+            // Its spare head, and a screwdriver.
+            ToyPart(bench, 1, new Vector3(5.75f, 1.05f, 0.9f), Quaternion.Euler(0f, -20f, 0f), 0.9f);
+            Part(bench, "Screwdriver_Handle", Cylinder(0.025f, 0.11f), _red, new Vector3(4.4f, 0.985f, 1.12f), AlongX);
+            Part(bench, "Screwdriver_Shaft", Cylinder(0.008f, 0.15f), _chrome, new Vector3(4.51f, 0.985f, 1.12f), AlongX);
+
+            // Three trays of parts at the east end: wheels, teddy heads, arms.
+            Material[] trays = { _red, _yellow, _blue };
+            int[] kinds = { 0, 2, 3 };
+            for (int i = 0; i < 3; i++)
+            {
+                var tray = new Vector3(6.05f + i * 0.3f, 0.99f, 0.85f);
+                Box(bench, "Tray", new Vector3(0.26f, 0.06f, 0.36f), trays[i], tray);
+                for (int k = 0; k < 2; k++)
+                    ToyPart(bench, kinds[i], tray + new Vector3(0f, 0.07f, -0.08f + k * 0.16f), Quaternion.Euler(0f, 90f, 0f), 0.6f);
+            }
+
+            // A lamp at the west end, bent over the vise.
+            Part(bench, "Lamp_Base", Cylinder(0.08f, 0.04f), _grey, new Vector3(4.05f, 0.96f, 0.8f), Quaternion.identity);
+            Box(bench, "Lamp_Arm", new Vector3(0.04f, 0.55f, 0.04f), _chrome, new Vector3(4.19f, 1.22f, 0.85f), rotation: Quaternion.Euler(0f, 0f, -30f));
             Part(bench, "Lamp_Shade", Lathe("LampSmall", new[] { new Vector2(0f, 0.12f), new Vector2(0.04f, 0.12f), new Vector2(0.13f, 0f), new Vector2(0.11f, 0f) }, 20),
-                _yellow, new Vector3(6.6f, 1.36f, 0.95f), Quaternion.Euler(30f, 0f, 0f));
+                _yellow, new Vector3(4.42f, 1.44f, 0.9f), Quaternion.Euler(0f, 0f, 35f));
+        }
+
+        // Recognisable toy parts for the hopper, the bins and the bench: 0 a wheel, 1 a robot head
+        // with a glowing visor, 2 a teddy head, 3 an arm with its hand.
+        static void ToyPart(Transform parent, int kind, Vector3 at, Quaternion turn, float scale = 1f)
+        {
+            switch (kind % 4)
+            {
+                case 0:
+                    Part(parent, "Part_Wheel", Cylinder(0.11f * scale, 0.07f * scale), _plum, at - turn * Vector3.right * 0.035f * scale, turn * AlongX);
+                    Part(parent, "Part_Hub", Cylinder(0.045f * scale, 0.076f * scale), _chrome, at - turn * Vector3.right * 0.038f * scale, turn * AlongX);
+                    break;
+                case 1:
+                    Box(parent, "Part_RobotHead", new Vector3(0.2f, 0.17f, 0.17f) * scale, _white, at, rotation: turn);
+                    Box(parent, "Part_Visor", new Vector3(0.15f, 0.045f, 0.02f) * scale, _glow, at + turn * new Vector3(0f, 0.01f, 0.086f) * scale, rotation: turn);
+                    break;
+                case 2:
+                    Part(parent, "Part_TeddyHead", _sphere, _orange, at, turn, scale: Vector3.one * 0.2f * scale);
+                    foreach (float side in new[] { -1f, 1f })
+                        Part(parent, "Part_Ear", _sphere, _orange, at + turn * new Vector3(side * 0.075f, 0.08f, 0f) * scale, turn, scale: Vector3.one * 0.07f * scale);
+                    Part(parent, "Part_Muzzle", _sphere, _white, at + turn * new Vector3(0f, -0.02f, 0.085f) * scale, turn, scale: Vector3.one * 0.07f * scale);
+                    break;
+                default:
+                    Box(parent, "Part_Arm", new Vector3(0.07f, 0.07f, 0.24f) * scale, _yellow, at, rotation: turn);
+                    Part(parent, "Part_Hand", _sphere, _yellow, at + turn * new Vector3(0f, 0f, 0.13f) * scale, turn, scale: Vector3.one * 0.09f * scale);
+                    break;
+            }
+        }
+
+        // A cardboard toy box with its brand-coloured band and a strip of tape over the top.
+        static void ToyBox(Transform parent, Vector3 centre, Vector3 size, Material band)
+        {
+            Box(parent, "ToyBox", size, _card, centre);
+            Box(parent, "ToyBox_Band", new Vector3(size.x + 0.01f, size.y * 0.24f, size.z + 0.01f), band, centre);
+            Box(parent, "ToyBox_Tape", new Vector3(0.09f, size.y + 0.012f, size.z + 0.012f), _white, centre);
         }
 
         static void Lockers(Transform root)
         {
             Transform lockers = Group(root, "Lockers");
             Blocker(lockers, "Solid", new Vector3(14.4f, 0.95f, 0.8f), new Vector3(3.6f, 1.9f, 0.5f));
-            Material[] doors = { _blue, _mint, _blue, _mint };
+            Material[] doors = { _lockerBlue, _lockerMint, _lockerBlue, _lockerMint };
             for (int i = 0; i < 4; i++)
             {
                 float x = 12.95f + i * 0.9f;
@@ -548,22 +679,22 @@ namespace ToyFactory.Editor.World
             }
         }
 
+        // A wooden pallet of taped cardboard toy boxes, squarely stacked, waiting to ship.
         static void Pallet(Transform root)
         {
             Transform pallet = Group(root, "Pallet");
             Vector3 centre = new Vector3(1.8f, 0f, 1.6f);
-            Blocker(pallet, "Solid", centre + Vector3.up * 0.7f, new Vector3(1.4f, 1.4f, 1.2f));
-            Box(pallet, "Pallet", new Vector3(1.4f, 0.14f, 1.2f), _orange, centre + Vector3.up * 0.07f);
-            Material[] boxes = { _yellow, _orange, _orange, _yellow };
+            Blocker(pallet, "Solid", centre + Vector3.up * 0.62f, new Vector3(1.4f, 1.24f, 1.2f));
+            foreach (float x in new[] { -0.6f, 0f, 0.6f })
+                Box(pallet, "Runner", new Vector3(0.12f, 0.1f, 1.2f), _wood, centre + new Vector3(x, 0.05f, 0f));
+            for (int i = 0; i < 5; i++)
+                Box(pallet, "Board", new Vector3(1.4f, 0.03f, 0.2f), _wood, centre + new Vector3(0f, 0.115f, -0.5f + i * 0.25f));
+            Material[] bands = { _red, _blue, _mint, _yellow };
+            var size = new Vector3(0.62f, 0.52f, 0.56f);
             for (int i = 0; i < 4; i++)
-            {
-                Vector3 c = centre + new Vector3(i % 2 == 0 ? -0.33f : 0.33f, 0.4f, i < 2 ? -0.29f : 0.29f);
-                Box(pallet, "ToyBox", new Vector3(0.62f, 0.52f, 0.56f), boxes[i], c);
-                Box(pallet, "Tape", new Vector3(0.64f, 0.08f, 0.58f), _white, c + Vector3.up * 0.05f);
-            }
-            Box(pallet, "ToyBox", new Vector3(0.62f, 0.52f, 0.56f), _yellow, centre + new Vector3(-0.3f, 0.93f, -0.05f), rotation: Quaternion.Euler(0f, 14f, 0f));
-            Box(pallet, "ToyBox", new Vector3(0.5f, 0.42f, 0.46f), _orange, centre + new Vector3(0.32f, 0.88f, 0.12f), rotation: Quaternion.Euler(0f, -9f, 0f));
-            Toy(pallet, "Teddy", centre + new Vector3(0.3f, 1.18f, 0.1f), 0.8f, Quaternion.Euler(0f, 40f, 0f));
+                ToyBox(pallet, centre + new Vector3(i % 2 == 0 ? -0.33f : 0.33f, 0.13f + size.y * 0.5f, i < 2 ? -0.29f : 0.29f), size, bands[i]);
+            for (int i = 0; i < 2; i++)
+                ToyBox(pallet, centre + new Vector3(i == 0 ? -0.33f : 0.33f, 0.13f + size.y * 1.5f, 0f), size, bands[(i + 2) % 4]);
         }
 
         // North end of the east wall (z 16.6 to 18.6), clear of fuse 3 and of z 15-16, where
@@ -583,13 +714,56 @@ namespace ToyFactory.Editor.World
                 {
                     float y = 0.93f + row * 0.65f, bz = z - 0.62f + i * 0.62f;
                     Box(shelf, "Bin", new Vector3(0.45f, 0.3f, 0.5f), bins[(i + row * 3) % bins.Length], new Vector3(x - 0.02f, y, bz));
-                    Part(shelf, "Bin_Parts", _sphere, bins[(i + row * 3 + 2) % bins.Length], new Vector3(x - 0.05f, y + 0.12f, bz), Quaternion.identity, scale: new Vector3(0.3f, 0.12f, 0.34f));
+                    for (int k = 0; k < 3; k++)   // one kind of part per bin, peeking over the rim
+                        ToyPart(shelf, i + row * 3, new Vector3(x - 0.1f, y + 0.17f, bz - 0.14f + k * 0.14f), FacingWest, 0.7f);
                 }
             for (int i = 0; i < 2; i++)
-                Box(shelf, "ToyBox", new Vector3(0.45f, 0.5f, 0.85f), i % 2 == 0 ? _orange : _yellow, new Vector3(x - 0.02f, 0.38f, z - 0.45f + i * 0.9f));
+                ToyBox(shelf, new Vector3(x - 0.02f, 0.38f, z - 0.45f + i * 0.9f), new Vector3(0.45f, 0.5f, 0.85f), i % 2 == 0 ? _orange : _red);
         }
 
         const float ShelfZ = 17.6f;
+
+        // The belt drive: a gearbox on the west wall at the bottom belt's start, a motor on top, its
+        // two gears turning behind a hazard-striped guard, and a chain guard down to the drum the
+        // belt runs over. It is why the belt moves. No collider: it stands within the wall's 0.55 m
+        // clearance, and the drum is ankle-high at the belt's end.
+        static void BeltDrive(Transform root)
+        {
+            Transform drive = Group(root, "BeltDrive");
+            const float z = 7.5f, face = 0.87f;
+            Box(drive, "Housing", new Vector3(0.36f, 1.5f, 1.7f), _grey, new Vector3(0.68f, 1.15f, z));
+            Box(drive, "Housing_Face", new Vector3(0.02f, 1.3f, 1.5f), _plum, new Vector3(face, 1.15f, z));
+            foreach (float y in new[] { 0.46f, 1.84f })
+                Box(drive, "Guard", new Vector3(0.05f, 0.08f, 1.6f), _hazard, new Vector3(face + 0.02f, y, z));
+            foreach (float dz in new[] { -0.78f, 0.78f })
+                Box(drive, "Guard", new Vector3(0.05f, 1.46f, 0.08f), _hazard, new Vector3(face + 0.02f, 1.15f, z + dz));
+            Part(drive, "Motor", Cylinder(0.2f, 0.7f), M.MachineBlue, new Vector3(0.72f, 2.1f, z - 0.35f), AlongZ);
+            Part(drive, "Motor_Cap", Cylinder(0.12f, 0.06f), _chrome, new Vector3(0.72f, 2.1f, z + 0.35f), AlongZ);
+
+            // Two meshing gears: the motor turns the big one, the small one drives the chain.
+            var big = new Vector3(face + 0.04f, 1.35f, z - 0.25f);
+            var small = new Vector3(face + 0.04f, 0.83f, z + 0.29f);
+            Gear(drive, "Gear_Big", SavedGear("Gear_Drive_14", 0.5f, 0.42f, 0.08f, 14, 0.06f), M.MachineYellow, big, 40f);
+            Gear(drive, "Gear_Small", SavedGear("Gear_Drive_9", 0.33f, 0.26f, 0.06f, 9, 0.06f), M.MachineRed, small, -40f * 14f / 9f);
+
+            // The drum at the belt's west end, turning with it, and the chain guard down to it.
+            var drum = new Vector3(1.38f, 0.11f, 6.75f);
+            Transform drumSpin = Group(drive, "Drum", drum + new Vector3(0f, 0f, 0.75f));
+            Part(drumSpin, "Drum", Cylinder(0.11f, 1.5f), _chrome, drum, AlongZ, moving: true);
+            drumSpin.gameObject.AddComponent<DressingSpinner>().Configure(Vector3.forward, -120f);
+            Vector3 top = small + Vector3.right * 0.04f, bottom = new Vector3(1.38f, 0.2f, small.z);
+            Box(drive, "ChainGuard", new Vector3(0.1f, Vector3.Distance(top, bottom) + 0.1f, 0.12f), M.MachineYellow, (top + bottom) * 0.5f,
+                rotation: Quaternion.FromToRotation(Vector3.up, top - bottom));
+        }
+
+        // A gear facing into the room from the west wall, turning about its centre (moving, so not merged).
+        static void Gear(Transform parent, string name, Mesh mesh, Material material, Vector3 centre, float degreesPerSecond)
+        {
+            Transform pivot = Group(parent, name, centre);
+            Part(pivot, name, mesh, material, centre, FacingEast, moving: true);
+            Part(pivot, name + "_Hub", Cylinder(0.06f, 0.08f), _chrome, centre, Quaternion.Euler(0f, 0f, -90f), moving: true);
+            pivot.gameObject.AddComponent<DressingSpinner>().Configure(Vector3.right, degreesPerSecond);
+        }
 
         // ---- Ceiling: the toy rail --------------------------------------------------------
 

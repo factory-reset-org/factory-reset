@@ -68,7 +68,7 @@ namespace ToyFactory.UI
             if (!_placeholderChecked)
             {
                 _placeholderChecked = true;
-                PlaceholderSubtitles placeholder = FindFirstObjectByType<PlaceholderSubtitles>();
+                PlaceholderSubtitles placeholder = FindAnyObjectByType<PlaceholderSubtitles>();
                 if (placeholder != null)
                     placeholder.enabled = false;
             }

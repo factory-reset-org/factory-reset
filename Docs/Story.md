@@ -192,10 +192,15 @@ Shot 3's second line has three versions. The cutscene picks one when it plays: S
 
 **Trigger:** the console hold completes. **Critical signals:** `FactoryShutdown`. **After:** the Results screen.
 
+047 stands at the console and the Captain on its spawn facing it, wherever the final fight left them.
+
 | Shot | Camera and action | Lines |
 | --- | --- | --- |
-| 1 | Behind 047, looking at the console. A mint "SHUTDOWN" pop. **Signal `FactoryShutdown`:** the lights fade to warm and the emissives dim (S1's `LightingState`). | **Factory OS:** Shutdown... sequence... accepted. / **Factory OS:** Good... night... |
-| 2 | The camera pulls back and up from 047, about 6 m, as every toy in the building tips over and goes to sleep. | **Pip:** You did it! Every toy in the building just yawned and fell asleep. / **Pip:** Re-running quality check... Product status: NOT DEFECTIVE. / **Unit 047:** Not defective. / **Pip:** Welcome to the team, 047. |
+| 1 | Low up the middle aisle: 047 at the console, the Captain beyond. A mint "SHUTDOWN" pop. **Signal `FactoryShutdown`:** the lights fade to warm and the emissives dim (S1's `LightingState`); the Captain's visor dies and it sinks onto one knee. | **Factory OS:** Shutdown... sequence... accepted. |
+| 2 | Low push-in on the Captain, kneeling and dark. | **Factory OS:** Good... night... |
+| 3 | High from the Storage door across the room as it goes quiet. | **Pip:** You did it! Every toy in the building just yawned and fell asleep. |
+| 4 | Push-in on 047's face over the console. A green "NOT DEFECTIVE!" pop with the second line, answering the intro's red "DEFECTIVE!". | **Pip:** Re-running quality check... / **Pip:** Product status: NOT DEFECTIVE. |
+| 5 | Crane up and back over the console as 047 looks up. | **Unit 047:** Not defective. / **Pip:** Welcome to the team, 047. |
 
 ## Results screen
 

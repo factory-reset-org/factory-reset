@@ -61,11 +61,21 @@ namespace ToyFactory.Editor.Animation
                 new LightPart { Path = parent, LensName = name, Shape = shape, Position = position, Euler = euler, Scale = scale };
         }
 
+        // The remade Captain's pivots (DesignDoc model contract, 14 October).
+        const string CaptainChest = "CaptainBot_Root/Pelvis_Pivot/Waist_Pivot/Chest_Pivot";
+        const string CaptainHead = CaptainChest + "/Neck_Pivot/Head_Pivot";
+        const string CaptainCannonArm = CaptainChest + "/Clavicle_R_Pivot/Shoulder_R_Pivot";
+        const string CaptainBarrel = CaptainCannonArm + "/Elbow_R_Pivot/Barrel_Pivot";
+
+        // Declared before Lights: static fields are set in the order they are written.
+        static readonly Color CaptainRed = new Color(1f, 0.16f, 0.24f);
+
         // What glows on each agent, and its colour from the prototype: the Tracker's green
         // antenna ball, the Guard's cyan visor, the Saboteur's green goggles and the Captain's
         // red visor. Lens sizes come from the visor and goggle meshes: the Guard's visor plate
-        // is 0.44 x 0.11 x 0.035 m, the Captain's 0.64 x 0.17 x 0.03 m, each goggle rim 0.24 m
-        // across and closed at the front (front face 0.41 m forward), so its lens sits on that face.
+        // is 0.44 x 0.11 x 0.035 m, each goggle rim 0.24 m across and closed at the front (front
+        // face 0.41 m forward), so its lens sits on that face. The remade Captain's visor is its
+        // own part, so it glows itself; its cannon's power cell glows too (CaptainCannon).
         static readonly Dictionary<string, (LightPart[] parts, Color colour)> Lights =
             new Dictionary<string, (LightPart[], Color)>
             {
@@ -81,9 +91,7 @@ namespace ToyFactory.Editor.Animation
                         LightPart.Lens("SaboteurBot_Root/Body_Pivot", "Goggle_Lens_R", PrimitiveType.Cylinder,
                             new Vector3(0.19f, 1.035f, 0.413f), new Vector3(90f, 0f, 0f), new Vector3(0.16f, 0.004f, 0.16f)),
                     }, new Color(0.49f, 1f, 0.42f)) },
-                { "CaptainBot", (new[] { LightPart.Lens("CaptainBot_Root/Torso_Pivot/Head_Pivot", "Visor_Lens", PrimitiveType.Cube,
-                    new Vector3(0f, 0.455f, 0.337f), Vector3.zero, new Vector3(0.54f, 0.11f, 0.006f)) },
-                    new Color(1f, 0.16f, 0.24f)) },
+                { "CaptainBot", (new[] { LightPart.Existing(CaptainHead + "/Visor") }, CaptainRed) },
             };
 
         // Taking hits: hit points, knock-out seconds (the plan's reassemble times) and whether
@@ -97,13 +105,13 @@ namespace ToyFactory.Editor.Animation
                 { "CaptainBot", (6, 6f, false) },
             };
 
-        // Agents that shoot: their cannon meshes and the damage per hit.
-        static readonly Dictionary<string, (string[] barrels, float damage)> Weapons =
-            new Dictionary<string, (string[], float)>
+        // Agents that shoot: their cannon meshes, the muzzle points shots leave from (null:
+        // the front of the barrel mesh) and the damage per hit.
+        static readonly Dictionary<string, (string[] barrels, string[] muzzles, float damage)> Weapons =
+            new Dictionary<string, (string[], string[], float)>
             {
-                { "GuardBot", (new[] { "GuardBot_Root/Torso_Pivot/CannonArm_R_Pivot/Cannon_Barrel" }, 10f) },
-                { "CaptainBot", (new[] { "CaptainBot_Root/Torso_Pivot/CannonArm_L_Pivot/Cannon_L",
-                                         "CaptainBot_Root/Torso_Pivot/CannonArm_R_Pivot/Cannon_R" }, 15f) },
+                { "GuardBot", (new[] { "GuardBot_Root/Torso_Pivot/CannonArm_R_Pivot/Cannon_Barrel" }, null, 10f) },
+                { "CaptainBot", (new[] { CaptainBarrel + "/Cannon_Barrel" }, new[] { CaptainBarrel + "/Muzzle_Point" }, 15f) },
             };
 
         [MenuItem("Factory Reset/Animation/Build Agent Animations")]
@@ -268,7 +276,7 @@ namespace ToyFactory.Editor.Animation
                 float value = rest;
                 foreach (Wave wave in clip.Waves)
                     if (wave.Path == path && wave.Channel == channel)
-                        value += wave.Offset + wave.Amplitude * Mathf.Sin(2f * Mathf.PI * (wave.Cycles * u + wave.Phase));
+                        value += wave.Evaluate(u);
                 curve.AddKey(new Keyframe(u * clip.Length, value));
             }
             for (int i = 0; i < curve.length; i++)
@@ -395,7 +403,7 @@ namespace ToyFactory.Editor.Animation
                 icon.FindProperty("height").floatValue = height + 0.4f;
                 icon.ApplyModifiedPropertiesWithoutUndo();
 
-                if (Weapons.TryGetValue(spec.Model, out (string[] barrels, float damage) weapon))
+                if (Weapons.TryGetValue(spec.Model, out (string[] barrels, string[] muzzles, float damage) weapon))
                 {
                     var gun = GetOrAdd<AgentWeapon>(root);
                     var gunSettings = new SerializedObject(gun);
@@ -403,10 +411,17 @@ namespace ToyFactory.Editor.Animation
                     barrels.arraySize = weapon.barrels.Length;
                     for (int i = 0; i < weapon.barrels.Length; i++)
                         barrels.GetArrayElementAtIndex(i).objectReferenceValue = model.Find(weapon.barrels[i]).GetComponent<Renderer>();
+                    SerializedProperty muzzles = gunSettings.FindProperty("muzzles");
+                    muzzles.arraySize = weapon.muzzles?.Length ?? 0;
+                    for (int i = 0; i < muzzles.arraySize; i++)
+                        muzzles.GetArrayElementAtIndex(i).objectReferenceValue = Pivot(model, spec.Model, weapon.muzzles[i]);
                     gunSettings.FindProperty("damage").floatValue = weapon.damage;
                     gunSettings.FindProperty("lineMaterial").objectReferenceValue = ShotLineMaterial();
                     gunSettings.ApplyModifiedPropertiesWithoutUndo();
                 }
+
+                if (spec.Model == "CaptainBot")
+                    AddCaptainCannon(root, model);
 
                 if (spec.Model == "TrackerToy")
                 {
@@ -458,6 +473,10 @@ namespace ToyFactory.Editor.Animation
             if (modelName == "TrackerToy")
                 AddExcitement(root, model);
 
+            // The ending films the Captain powering down on its spawn, facing the console.
+            if (modelName == "CaptainBot")
+                GetOrAdd<AgentCutsceneMark>(root);
+
             if (!Lights.TryGetValue(modelName, out (LightPart[] parts, Color colour) light))
                 return;
             var lights = new SerializedObject(GetOrAdd<AgentLights>(root));
@@ -485,17 +504,21 @@ namespace ToyFactory.Editor.Animation
             {
                 case "CaptainBot":
                 {
-                    const string rig = "CaptainBot_Root";
-                    const string legL = rig + "/Leg_L_Pivot", legR = rig + "/Leg_R_Pivot";
+                    const string rig = "CaptainBot_Root", pelvis = rig + "/Pelvis_Pivot";
+                    const string legL = pelvis + "/Leg_L_Pivot", legR = pelvis + "/Leg_R_Pivot";
                     const string kneeL = legL + "/Knee_L_Pivot", kneeR = legR + "/Knee_R_Pivot";
-                    const string torso = rig + "/Torso_Pivot";
+                    const string waist = pelvis + "/Waist_Pivot";
+                    const string shoulderL = CaptainChest + "/Clavicle_L_Pivot/Shoulder_L_Pivot";
+                    const string elbowL = shoulderL + "/Elbow_L_Pivot";
                     SetPivots<AgentKneel>(root, model, modelName,
-                        ("root", rig),
+                        ("root", rig), ("pelvis", pelvis),
                         ("frontHip", legL), ("frontKnee", kneeL), ("frontAnkle", kneeL + "/Ankle_L_Pivot"),
                         ("backHip", legR), ("backKnee", kneeR), ("backAnkle", kneeR + "/Ankle_R_Pivot"),
-                        ("torso", torso), ("head", torso + "/Head_Pivot"),
-                        ("frontArm", torso + "/CannonArm_L_Pivot"), ("backArm", torso + "/CannonArm_R_Pivot"));
-                    return (torso + "/Head_Pivot", new Vector3(0f, 1.25f, 0f));   // above the hat
+                        ("waist", waist), ("chest", CaptainChest), ("neck", CaptainChest + "/Neck_Pivot"), ("head", CaptainHead),
+                        ("frontShoulder", shoulderL), ("frontElbow", elbowL), ("frontWrist", elbowL + "/Wrist_L_Pivot"),
+                        ("backClavicle", CaptainChest + "/Clavicle_R_Pivot"), ("backShoulder", CaptainCannonArm),
+                        ("backElbow", CaptainCannonArm + "/Elbow_R_Pivot"));
+                    return (CaptainHead, new Vector3(0f, 1.05f, 0f));   // above the cap (its top is 0.77 m up)
                 }
                 case "TrackerToy":
                 {
@@ -529,6 +552,45 @@ namespace ToyFactory.Editor.Animation
                 default:
                     return (null, Vector3.zero);
             }
+        }
+
+        // The Captain's arm cannon: the Aim layer brings the arm up level, AgentCannonAim turns
+        // the shoulder onto the target, AgentShotRecoil flicks the forearm and jolts the chest,
+        // and CaptainCannon charges the cell, flashes the muzzle and slams the barrel back.
+        static void AddCaptainCannon(GameObject root, Transform model)
+        {
+            const string elbow = CaptainCannonArm + "/Elbow_R_Pivot";
+
+            // The remake's visor glows itself: remove the lens added inside the old visor frame.
+            foreach (Transform part in model.GetComponentsInChildren<Transform>(true))
+                if (part.name == "Visor_Lens")
+                    Object.DestroyImmediate(part.gameObject);
+
+            var aim = new SerializedObject(GetOrAdd<AgentCannonAim>(root));
+            SetArray(aim.FindProperty("arms"), Pivot(model, "CaptainBot", CaptainCannonArm));
+            aim.ApplyModifiedPropertiesWithoutUndo();
+
+            var recoil = new SerializedObject(GetOrAdd<AgentShotRecoil>(root));
+            SetArray(recoil.FindProperty("arms"), Pivot(model, "CaptainBot", elbow));
+            recoil.FindProperty("torso").objectReferenceValue = Pivot(model, "CaptainBot", CaptainChest);
+            recoil.FindProperty("head").objectReferenceValue = Pivot(model, "CaptainBot", CaptainHead);
+            recoil.ApplyModifiedPropertiesWithoutUndo();
+
+            var cannon = new SerializedObject(GetOrAdd<CaptainCannon>(root));
+            cannon.FindProperty("barrel").objectReferenceValue = Pivot(model, "CaptainBot", CaptainBarrel);
+            cannon.FindProperty("muzzle").objectReferenceValue = Pivot(model, "CaptainBot", CaptainBarrel + "/Muzzle_Point");
+            cannon.FindProperty("cell").objectReferenceValue = Pivot(model, "CaptainBot", elbow + "/Cannon_Cell").GetComponent<Renderer>();
+            cannon.FindProperty("lightMaterial").objectReferenceValue = LightMaterial();
+            cannon.FindProperty("sparkMaterial").objectReferenceValue = SparkMaterial();
+            cannon.FindProperty("colour").colorValue = CaptainRed;
+            cannon.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        static void SetArray(SerializedProperty array, params Object[] values)
+        {
+            array.arraySize = values.Length;
+            for (int i = 0; i < values.Length; i++)
+                array.GetArrayElementAtIndex(i).objectReferenceValue = values[i];
         }
 
         // The Tracker's happy-puppy excitement at a thrown toy.

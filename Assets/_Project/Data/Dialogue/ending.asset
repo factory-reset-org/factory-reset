@@ -17,6 +17,7 @@ MonoBehaviour:
     - speaker: 0
       text: Shutdown... sequence... accepted.
       condition: 0
+  - lines:
     - speaker: 0
       text: Good... night...
       condition: 0
@@ -24,9 +25,14 @@ MonoBehaviour:
     - speaker: 1
       text: You did it! Every toy in the building just yawned and fell asleep.
       condition: 0
+  - lines:
     - speaker: 1
-      text: 'Re-running quality check... Product status: NOT DEFECTIVE.'
+      text: Re-running quality check...
       condition: 0
+    - speaker: 1
+      text: 'Product status: NOT DEFECTIVE.'
+      condition: 0
+  - lines:
     - speaker: 2
       text: Not defective.
       condition: 0

@@ -47,7 +47,7 @@ namespace ToyFactory.Tests
 
         Sprite[] Words()
         {
-            var sprites = new Sprite[4];
+            var sprites = new Sprite[5];
             for (int i = 0; i < sprites.Length; i++)
                 sprites[i] = Track(Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f)));
             return sprites;
@@ -149,6 +149,37 @@ namespace ToyFactory.Tests
             {
                 Object.DestroyImmediate(alarm);
             }
+        }
+
+        /// <summary>Moves the camera at the end of LateUpdate, as the Cinemachine brain does in a cutscene.</summary>
+        [DefaultExecutionOrder(10000)]
+        sealed class LateCameraMove : MonoBehaviour
+        {
+            public Vector3 To;
+            void LateUpdate() => transform.position = To;
+        }
+
+        [UnityTest]
+        public IEnumerator AWordFacesTheCameraThatDrawsItEvenWhenTheCameraMovesLate()
+        {
+            // The gameplay camera sits at the player's eyes; the brain moves it to the shot
+            // after every LateUpdate. Before the fix the word faced the eyes and was seen edge-on.
+            Camera(new Vector3(0f, 1.7f, 0f));
+            Transform camera = UnityEngine.Camera.main.transform;
+            camera.gameObject.AddComponent<LateCameraMove>().To = new Vector3(4f, 2f, 3f);
+            var go = Track(new GameObject("Cutscene Director"));
+            CutsceneCuePlayer cues = go.AddComponent<CutsceneCuePlayer>();
+            SetField(cues, "words", Words());
+            yield return null;
+
+            cues.Play(CutsceneCueKind.Pop, ComicWord.NotDefective, false, new Vector3(0f, 2.6f, 0.2f));
+            for (int frame = 0; frame < 3; frame++)
+                yield return new WaitForEndOfFrame();
+
+            Transform word = go.transform.Find("CutsceneWord");
+            Assert.IsTrue(word.gameObject.activeSelf);
+            float angle = Vector3.Angle(word.forward, word.position - camera.position);
+            Assert.Less(angle, 2f, $"The word faces the camera where it renders ({camera.position}), not the eyes; {angle:F0}° off.");
         }
 
         static int Crossings(float[] data, int start, int length)

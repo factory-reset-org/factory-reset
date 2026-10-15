@@ -90,6 +90,7 @@ namespace ToyFactory.Tests.EditMode
         [TestCase("M_Char_Steel", "#B8C4D6")]
         [TestCase("M_Char_Black", "#1D1A2A")]
         [TestCase("M_Char_SaboteurBody", "#8F6BFF")]
+        [TestCase("M_Char_Grape", "#8F6BFF")]
         public void PaletteColoursMatchTheReferenceSheets(string name, string hex)
         {
             var material = AssetDatabase.LoadAssetAtPath<Material>(MaterialFolder + name + ".mat");
@@ -265,13 +266,73 @@ namespace ToyFactory.Tests.EditMode
                 Assert.IsFalse(material.IsKeywordEnabled("_EMISSION"), material.name);
         }
 
+        // ---- Unit 047's decals
+
+        const string DecalTexture = "Assets/_Project/Textures/Characters/T_Char_Unit047Decals.png";
+
+        [Test]
+        public void UnitDecalsSitOnTheTagAndStickerPlatesOnly()
+        {
+            var decals = AssetDatabase.LoadAssetAtPath<Material>(MaterialFolder + "M_Char_Unit047Decals.mat");
+            Assert.IsNotNull(decals);
+            Assert.AreSame(AssetDatabase.LoadAssetAtPath<Texture2D>(DecalTexture), decals.GetTexture("_BaseMap"));
+
+            GameObject unit = Load("Assets/_Project/Prefabs/Characters/Unit047.prefab");
+            foreach (Renderer renderer in Renderers(unit))
+            {
+                bool plate = renderer.name == "Chest_Tag" || renderer.name == "Sticker";
+                Assert.AreEqual(plate, renderer.sharedMaterials.Contains(decals), renderer.name);
+            }
+        }
+
+        [TestCase("Chest_Tag", 0f, 0.5f)]
+        [TestCase("Sticker", 0.5f, 1f)]
+        public void EachPlateShowsItsOwnHalfOfTheDecalTexture(string plate, float uMin, float uMax)
+        {
+            GameObject unit = Load("Assets/_Project/Prefabs/Characters/Unit047.prefab");
+            Mesh mesh = Renderers(unit).OfType<MeshRenderer>().First(r => r.name == plate).GetComponent<MeshFilter>().sharedMesh;
+            Vector2[] uv = mesh.uv;
+            Assert.IsNotEmpty(uv, plate);
+            foreach (Vector2 p in uv)
+                Assert.That(p.x, Is.InRange(uMin, uMax), $"{plate} reads from the other decal.");
+        }
+
+        [TestCase("Chest_Tag")]
+        [TestCase("Sticker")]
+        public void TheDecalsReadLeftToRightWhenSeenFromTheFront(string plate)
+        {
+            GameObject unit = Load("Assets/_Project/Prefabs/Characters/Unit047.prefab");
+            Mesh mesh = Renderers(unit).OfType<MeshRenderer>().First(r => r.name == plate).GetComponent<MeshFilter>().sharedMesh;
+            Vector3[] vertices = mesh.vertices;
+            Vector3[] normals = mesh.normals;
+            Vector2[] uv = mesh.uv;
+
+            // Seen from +Z, where the model faces, the viewer's right is -X, so U must grow as X falls:
+            // a plate mapped the other way shows its lettering back to front.
+            int[] front = Enumerable.Range(0, vertices.Length).Where(i => normals[i].z > 0.99f).ToArray();
+            Assert.IsNotEmpty(front, plate);
+            int leftmost = front.OrderBy(i => vertices[i].x).First();
+            int rightmost = front.OrderByDescending(i => vertices[i].x).First();
+            Assert.Greater(uv[leftmost].x, uv[rightmost].x, plate + " is mirrored.");
+        }
+
+        [Test]
+        public void DecalTextureIsPowerOfTwoAndCompressedBc7()
+        {
+            var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(DecalTexture);
+            Assert.IsTrue(Mathf.IsPowerOfTwo(texture.width) && Mathf.IsPowerOfTwo(texture.height), $"{texture.width} x {texture.height}");
+            TextureImporterPlatformSettings standalone = ((TextureImporter)AssetImporter.GetAtPath(DecalTexture)).GetPlatformTextureSettings("Standalone");
+            Assert.IsTrue(standalone.overridden);
+            Assert.AreEqual(TextureImporterFormat.BC7, standalone.format);
+        }
+
         // ---- Budgets and shape are unchanged
 
         [TestCase("TrackerToy", 3000)]
         [TestCase("SaboteurBot", 4000)]
         [TestCase("GuardBot", 4000)]
         [TestCase("CaptainBot", 4500)]
-        [TestCase("Unit047", 3500)]
+        [TestCase("Unit047", 2500)]
         public void TriangleCountsStayUnderTheArtBibleBudgets(string model, int budget)
         {
             GameObject prefab = Load($"Assets/_Project/Prefabs/Characters/{model}.prefab");

@@ -6,7 +6,8 @@ namespace ToyFactory.Journey.Cutscenes
     /// <summary>
     /// Unit 047 as the cutscenes see it. The player is a first-person camera with no body, so
     /// while a cutscene plays this shows the Unit 047 model where the player stands, facing
-    /// the way the player faces, and hides it again when the cutscene ends.
+    /// the way the player faces, and hides it again when the cutscene ends. A cutscene with
+    /// fixed cameras (the ending) puts it on its mark instead (<see cref="CutsceneShotPlan.TryGetActorMark"/>).
     /// </summary>
     /// <remarks>
     /// Lives in the Agents scene under the cutscene director. The follow cameras of the
@@ -50,7 +51,12 @@ namespace ToyFactory.Journey.Cutscenes
         void HandleStarted(string cutsceneId)
         {
             IPlayerState player = PlayerState.Current;
-            if (player != null)
+            if (CutsceneShotPlan.TryGetActorMark(cutsceneId, out Vector3 mark, out float yaw))
+            {
+                // A cutscene filmed with fixed cameras (the ending) puts 047 on its mark.
+                transform.SetPositionAndRotation(mark, Quaternion.Euler(0f, yaw, 0f));
+            }
+            else if (player != null)
             {
                 Vector3 facing = player.Forward;
                 facing.y = 0f;

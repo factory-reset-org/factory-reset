@@ -26,7 +26,9 @@ namespace ToyFactory.Editor.World
         public static class M
         {
             public static Material White, Grey, Blue, Red, Yellow, Purple, Chrome, Hazard, Glow, Amber;
-            public static Material Mint, Orange, Bubble, Plum, Window;
+            public static Material Mint, Orange, Bubble, Plum, Window, Glass;
+            /// <summary>Painted steel for machines, pipes, tanks and cabinets (the photographed brushed metal, painted).</summary>
+            public static Material MachineWhite, MachineYellow, MachineBlue, MachineRed, MachineMint;
             public static Mesh Ball;
         }
 
@@ -35,7 +37,12 @@ namespace ToyFactory.Editor.World
         /// <paramref name="face"/>, facing into the room along <paramref name="facing"/>: a thick
         /// grey ring with eight chrome bolts round a round pane showing the daylight view.
         /// </summary>
-        public static void Porthole(Transform parent, Vector3 face, Quaternion facing, float radius)
+        /// <param name="open">
+        /// A real round window: the wall's square opening (cut by <see cref="WallCutter"/>, 2 x radius
+        /// across) is filled back in round the circle by a plug of <paramref name="wall"/>, with clear
+        /// glass in the middle, so the real sky shows and the sun comes in round.
+        /// </param>
+        public static void Porthole(Transform parent, Vector3 face, Quaternion facing, float radius, bool open = false, Material wall = null)
         {
             Vector3 normal = facing * Vector3.forward;
             Transform porthole = Group(parent, "Porthole", face);
@@ -71,7 +78,16 @@ namespace ToyFactory.Editor.World
                 disc.RecalculateTangents();
                 return disc;
             });
-            Part(porthole, "Pane", pane, M.Window, face + normal * 0.02f, facing);
+            if (open)
+            {
+                Part(porthole, "Wall_Plug", RoundOpening(radius, radius, 0.5f), wall != null ? wall : M.White, face - normal * 0.25f, facing);
+                // The steel plate the porthole is bolted to, covering the opening's square corners.
+                Part(porthole, "Mount_Plate", RoundOpening(radius, radius + 0.1f, 0.03f), M.MachineWhite, face + normal * 0.015f, facing);
+                GameObject glass = Part(porthole, "Glass", pane, M.Glass, face - normal * 0.25f, facing, moving: true);
+                glass.GetComponent<MeshRenderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            }
+            else
+                Part(porthole, "Pane", pane, M.Window, face + normal * 0.02f, facing);
             Part(porthole, "Frame", Ring(radius - 0.02f, radius + 0.16f, 0.14f, 32), M.Grey, face, axisOut);
             Part(porthole, "Frame_Lip", Ring(radius - 0.06f, radius + 0.02f, 0.06f, 32), M.White, face + normal * 0.12f, axisOut);
             for (int b = 0; b < 8; b++)
@@ -117,6 +133,15 @@ namespace ToyFactory.Editor.World
             w.RoundRect(new RectInt(190, 146, 34, 10), 4f, Tomato);
             Texture2D sky = w.Save(WindowPath);
             M.Window = Plastic("Window", Color.white, 0.9f, sky, new Color(0.9f, 0.9f, 0.9f), sky);
+
+            // Surface textures: moulded grain on the plastics, brushed metal on the grey.
+            PhotoTextures.ApplyPalette();
+            M.Glass = Glass();
+            M.MachineWhite = Machine("White", Hex("E3E7EE"));
+            M.MachineYellow = Machine("Yellow", Hex("F2B82E"));
+            M.MachineBlue = Machine("Blue", Hex("3D63C9"));
+            M.MachineRed = Machine("Red", Hex("D9483C"));
+            M.MachineMint = Machine("Mint", Hex("3CC9A2"));
         }
 
         // A light probe inside a solid prop samples darkness and makes the moving parts near it
@@ -216,19 +241,152 @@ namespace ToyFactory.Editor.World
             Box(parent, $"{name}_Header", alongZ ? new Vector3(0.32f, 0.4f, 3.8f) : new Vector3(3.8f, 0.4f, 0.32f),
                 M.Grey, centre + Vector3.up * 5.2f);
         }
+        // A square plate 2 x 'half' across and 'thickness' deep (local XY, centred, Z through the
+        // wall) with a round hole of 'radius' through it: front and back faces between the square
+        // and the circle, the inside of the hole, and (on a plate bigger than the hole) the edges.
+        // UV-mapped in metres.
+        static Mesh RoundOpening(float radius, float half, float thickness)
+        {
+            string name = $"Plate_RoundOpening_r{radius:0.##}_s{half:0.##}_t{thickness:0.###}";
+            return Custom(name, () =>
+            {
+                const int segments = 32;
+                float h = thickness * 0.5f;
+                var vertices = new List<Vector3>();
+                var normals = new List<Vector3>();
+                var uvs = new List<Vector2>();
+                var triangles = new List<int>();
+                foreach (float side in new[] { 1f, -1f })   // front (room side, +Z), then back
+                {
+                    int start = vertices.Count;
+                    for (int i = 0; i <= segments; i++)
+                    {
+                        float a = i * Mathf.PI * 2f / segments;
+                        var dir = new Vector2(Mathf.Cos(a), Mathf.Sin(a));
+                        Vector2 inner = dir * radius, outer = dir * half / Mathf.Max(Mathf.Abs(dir.x), Mathf.Abs(dir.y));
+                        vertices.Add(new Vector3(inner.x, inner.y, side * h));
+                        vertices.Add(new Vector3(outer.x, outer.y, side * h));
+                        normals.Add(Vector3.forward * side);
+                        normals.Add(Vector3.forward * side);
+                        uvs.Add(inner);
+                        uvs.Add(outer);
+                    }
+                    for (int i = 0; i < segments; i++)
+                    {
+                        int p = start + i * 2, q = p + 1, pn = p + 2, qn = p + 3;
+                        if (side > 0f)
+                            triangles.AddRange(new[] { p, q, pn, pn, q, qn });
+                        else
+                            triangles.AddRange(new[] { p, pn, q, pn, qn, q });
+                    }
+                }
+                int wallStart = vertices.Count;
+                for (int i = 0; i <= segments; i++)
+                {
+                    float a = i * Mathf.PI * 2f / segments;
+                    var dir = new Vector3(Mathf.Cos(a), Mathf.Sin(a), 0f);
+                    foreach (float side in new[] { 1f, -1f })
+                    {
+                        vertices.Add(dir * radius + Vector3.forward * side * h);
+                        normals.Add(-dir);
+                        uvs.Add(new Vector2(a * radius, side * h));
+                    }
+                }
+                for (int i = 0; i < segments; i++)
+                {
+                    int front = wallStart + i * 2, back = front + 1, frontNext = front + 2, backNext = front + 3;
+                    triangles.AddRange(new[] { front, frontNext, back, frontNext, backNext, back });
+                }
+                if (half > radius + 0.001f)
+                    foreach (Vector3 edge in new[] { Vector3.right, Vector3.left, Vector3.up, Vector3.down })
+                    {
+                        Vector3 along = Vector3.Cross(Vector3.forward, edge) * half, depth = Vector3.forward * h;
+                        int b = vertices.Count;
+                        foreach (Vector3 q in new[] { edge * half + along - depth, edge * half - along - depth, edge * half - along + depth, edge * half + along + depth })
+                        {
+                            vertices.Add(q);
+                            normals.Add(edge);
+                            uvs.Add(new Vector2(Vector3.Dot(q, along.normalized), q.z));
+                        }
+                        triangles.AddRange(new[] { b, b + 2, b + 1, b, b + 3, b + 2 });
+                    }
+                var mesh = new Mesh { name = name };
+                mesh.SetVertices(vertices);
+                mesh.SetNormals(normals);
+                mesh.SetUVs(0, uvs);
+                mesh.SetTriangles(triangles, 0);
+                mesh.RecalculateBounds();
+                mesh.RecalculateTangents();
+                return mesh;
+            });
+        }
+
         public static void Move(string path, Vector3 position)
         {
             GameObject target = GameObject.Find(path);
             if (target != null)
                 target.transform.position = position;
         }
+        /// <summary>
+        /// Painted steel in <paramref name="colour"/> (<c>M_Env_Machine_&lt;name&gt;</c>): the photographed
+        /// brushed metal, tinted. For machines, pipes, tanks, tins and cabinets, so they read as
+        /// real painted metal next to the photographed walls and floors rather than as toy plastic.
+        /// </summary>
+        public static Material Machine(string name, Color colour)
+        {
+            Material machine = Plastic("Machine_" + name, colour, 1f);
+            PhotoTextures.Apply(machine, PhotoTextures.Kind.Metal);
+            return machine;
+        }
+
+        /// <summary>The painted-steel version of a palette plastic, or the material itself if it has none.</summary>
+        public static Material AsMachine(Material plastic)
+        {
+            if (plastic == M.White) return M.MachineWhite;
+            if (plastic == M.Yellow) return M.MachineYellow;
+            if (plastic == M.Blue) return M.MachineBlue;
+            if (plastic == M.Red) return M.MachineRed;
+            if (plastic == M.Mint) return M.MachineMint;
+            if (plastic == M.Bubble) return Machine("Bubble", Bubble);
+            if (plastic == M.Purple) return Machine("Purple", Grape);
+            if (plastic == M.Orange) return Machine("Orange", Orange);
+            return plastic;
+        }
+
+        // Clear, faintly blue glass (URP Lit, transparent). Its panes cast no shadow, so the sun
+        // and the sky shine through them, in real time and in the bake.
+        static Material Glass()
+        {
+            Material glass = Plastic("Glass", new Color(0.82f, 0.92f, 1f, 0.16f), 0.96f);
+            glass.SetFloat("_Surface", 1f);
+            glass.SetFloat("_Blend", 0f);
+            glass.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            glass.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            glass.SetFloat("_ZWrite", 0f);
+            glass.SetOverrideTag("RenderType", "Transparent");
+            glass.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            glass.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            EditorUtility.SetDirty(glass);
+            return glass;
+        }
+
         // A 2.2 x 1.6 m window on the wall face at 'face', facing into the room along 'facing'.
-        public static void Window(Transform parent, Vector3 face, Quaternion facing)
+        // Open: real glass in the middle of the wall (whose opening WallCutter cuts) instead of the
+        // painted sky, so the real sky and the sun come through.
+        public static void Window(Transform parent, Vector3 face, Quaternion facing, bool open = false)
         {
             Vector3 normal = facing * Vector3.forward, right = facing * Vector3.right;
             bool sideWall = Mathf.Abs(normal.x) > 0.5f;   // an east or west wall: the window runs along Z
             Transform window = Group(parent, "Window", face);
-            Part(window, "Pane", Quad("Window_2x1.4", new Vector2(2f, 1.4f), new Rect(0f, 0f, 1f, 1f)), M.Window, face + normal * 0.02f, facing);
+            Mesh pane = Quad("Window_2x1.4", new Vector2(2f, 1.4f), new Rect(0f, 0f, 1f, 1f));
+            if (open)
+            {
+                // Moving: not merged, not lightmapped, casting no shadow.
+                GameObject glass = Part(window, "Glass", pane, M.Glass, face - normal * 0.25f, facing, moving: true);
+                glass.GetComponent<MeshRenderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            }
+            else
+                Part(window, "Pane", pane, M.Window, face + normal * 0.02f, facing);
             Vector3 Horizontal(float w) => sideWall ? new Vector3(0.1f, 0.12f, w) : new Vector3(w, 0.12f, 0.1f);
             Vector3 Vertical(float h) => sideWall ? new Vector3(0.1f, h, 0.12f) : new Vector3(0.12f, h, 0.1f);
             Box(window, "Frame_Top", Horizontal(2.2f), M.Grey, face + normal * 0.05f + Vector3.up * 0.76f);
