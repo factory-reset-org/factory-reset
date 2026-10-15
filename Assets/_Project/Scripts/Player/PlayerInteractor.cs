@@ -33,6 +33,9 @@ namespace ToyFactory.Player
 
         [SerializeField, Min(0.1f)] float reach = 2.5f;
 
+        [Tooltip("How close the player must be before the prompt line shows, in metres. Using a prop still works out to Reach.")]
+        [SerializeField, Min(0.1f)] float promptReach = 1.8f;
+
         [Tooltip("How far off the exact centre of the view a usable thing may be, in metres.")]
         [SerializeField, Min(0.01f)] float aimRadius = 0.35f;
 
@@ -40,6 +43,7 @@ namespace ToyFactory.Player
         [SerializeField] LayerMask interactMask = Physics.DefaultRaycastLayers;
 
         readonly RaycastHit[] _hits = new RaycastHit[16];
+        PlayerBody _body;
         InputAction _interactAction;
 
         // What is being held, and the collider the sweep found it by.
@@ -49,6 +53,7 @@ namespace ToyFactory.Player
 
         void Awake()
         {
+            _body = GetComponent<PlayerBody>();
             InputActionMap map = inputActions.FindActionMap("Player");
             _interactAction = map.FindAction("Interact");
             map.Enable();
@@ -81,9 +86,16 @@ namespace ToyFactory.Player
         {
             _held = null;
 
-            IInteractable target = FindTarget(out Collider found);
+            IInteractable target = FindTarget(out Collider found, out _);
             if (target == null)
                 return;
+
+            // A box is slid by the player's hand: it reaches out and the shove lands as it arrives.
+            if (target is PushableBox box && _body != null)
+            {
+                _body.Thrust(box.Interact);
+                return;
+            }
 
             target.Interact();
             _held = target as IHoldable;
@@ -91,9 +103,10 @@ namespace ToyFactory.Player
         }
 
         // The nearest usable thing the sweep touches that is also in plain sight, or null.
-        IInteractable FindTarget(out Collider found)
+        IInteractable FindTarget(out Collider found, out float distance)
         {
             found = null;
+            distance = 0f;
             Vector3 origin = aim.position;
             int count = Physics.SphereCastNonAlloc(origin, aimRadius, aim.forward, _hits, reach, interactMask,
                 QueryTriggerInteraction.Collide);
@@ -111,6 +124,7 @@ namespace ToyFactory.Player
                     continue;
 
                 found = _hits[i].collider;
+                distance = _hits[i].distance;
                 return target;
             }
 
@@ -138,11 +152,11 @@ namespace ToyFactory.Player
             string text = string.Empty;
             if (_held == null)
             {
-                IInteractable target = FindTarget(out Collider _);
-                if (target != null)
+                IInteractable target = FindTarget(out Collider _, out float distance);
+                if (target != null && distance <= promptReach)
                 {
-                    string what = target is IInteractionPrompt p && !string.IsNullOrEmpty(p.PromptText) ? p.PromptText : "Use";
-                    text = target is IHoldable ? $"Hold [E]  {what}" : $"[E]  {what}";
+                    string what = target is IInteractionPrompt p && !string.IsNullOrEmpty(p.PromptText) ? p.PromptText : "use it";
+                    text = target is IHoldable ? $"Hold E to {what}" : $"Press E to {what}";
                 }
             }
 
