@@ -127,6 +127,9 @@ namespace ToyFactory.Tests
             AgentSpawner agents = AgentSpawner.Instance;
 
             // ---- Intro, then Chapter 1. The Control Room is locked and the Captain asleep.
+            // Bootstrap waits on the title screen; this is the player pressing Start.
+            if (GameClock.Current != null)
+                GameClock.Current.RequestState(GameState.Playing);
             yield return SkipWhenItStarts("intro");
             Assert.AreEqual(1, flow.CurrentChapter);
             Assert.AreEqual(GameState.Playing, GameClock.Current.State);

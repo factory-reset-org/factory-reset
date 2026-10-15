@@ -81,6 +81,9 @@ namespace ToyFactory.Tests
             yield return Until(() => AgentSpawner.Instance != null && AgentSpawner.Instance.SpawnedAgents.Count == 7
                 && CutsceneDirector.Current != null && PlayerState.Current != null && GridManager.Current != null,
                 LoadTimeout, "Bootstrap to spawn every agent");
+            // Bootstrap waits on the title screen; this is the player pressing Start.
+            if (GameClock.Current != null)
+                GameClock.Current.RequestState(GameState.Playing);
             yield return Until(() => CutsceneDirector.Current.IsPlaying, 10f, "the intro");
             CutsceneDirector.Current.Skip();
             yield return Until(() => GameClock.Current != null && GameClock.Current.State == GameState.Playing, 10f, "Playing");

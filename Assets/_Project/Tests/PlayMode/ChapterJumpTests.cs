@@ -76,6 +76,8 @@ namespace ToyFactory.Tests
             yield return Until(() => ChapterManager.Current != null && ChapterManager.Current.Flow != null && ChapterManager.Current.Flow.HasBegun
                 && Object.FindAnyObjectByType<ChapterJump>() != null && AgentSpawner.Instance != null && PlayerState.Current != null,
                 30f, "Bootstrap to load every scene and begin the journey");
+            // Bootstrap now waits on the title screen; this is the player pressing Start.
+            GameClock.Current?.RequestState(GameState.Playing);
             ChapterFlow flow = ChapterManager.Current.Flow;
             ChapterJump jump = Object.FindAnyObjectByType<ChapterJump>();
 
