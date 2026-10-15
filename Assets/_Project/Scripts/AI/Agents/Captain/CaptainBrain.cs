@@ -81,18 +81,20 @@ namespace ToyFactory.AI.Agents.Captain
         public const float CloseBehindMax = 2.3f;
         public const float CloseBehindPlayerClearance = 3f;
 
-        // Vision: a fight starts when the player is in view within 10 m.
-        public const float EngageRange = 10f;
+        // Vision: a fight starts when the player is in view within 18 m. It was 10 m, so in a
+        // long room the Captain looked straight at a player it could shoot (its cannon reaches
+        // 20 m) and only watched.
+        public const float EngageRange = 18f;
         public const float VisionHalfAngle = 70f;
         public const float ProximityRange = 2.5f;        // felt all round at close range
         public const float SightEndInset = 0.8f;         // same grid line-of-sight rule as the Tracker
 
-        // Staying in a fight (hysteresis, so the edge of the 10 m range cannot flip it on and
+        // Staying in a fight (hysteresis, so the edge of the 18 m range cannot flip it on and
         // off): once fighting, the Captain keeps contact with the player in line of sight out
-        // to 14 m in any direction, stays engaged for at least 2 s, and only after 0.7 s with
-        // no contact goes to where it last saw them. It searches there briefly, then predicts
-        // again.
-        public const float KeepContactRange = 14f;
+        // to 20 m (its cannon's reach) in any direction, stays engaged for at least 2 s, and
+        // only after 0.7 s with no contact goes to where it last saw them. It searches there
+        // briefly, then predicts again.
+        public const float KeepContactRange = 20f;
         public const float MinEngageTime = 2f;
         public const float LoseSightDelay = 0.7f;
         public const float PursueTimeout = 5f;
@@ -173,7 +175,7 @@ namespace ToyFactory.AI.Agents.Captain
         AgentContext _ctx;
         float Now => _ctx.Time;
 
-        // Perception. Seeing starts a fight; contact (line of sight within 14 m, any
+        // Perception. Seeing starts a fight; contact (line of sight within 20 m, any
         // direction) keeps one going.
         bool _seesPlayer;
         bool _inContact;
@@ -247,11 +249,11 @@ namespace ToyFactory.AI.Agents.Captain
             Rule(rules, null, _stunned, 100, "stunned (first tick after the reboot)",
                 b => b._stunPending && b._machine.Current != b._stunned && b._machine.Current != b._dormant);
             Rule(rules, _stunned, _reassess, 90, "stun over: the old prediction is stale", b => !b._stunPending);
-            Rule(rules, _observe, _engage, 80, "player visible within 10 m", b => b._seesPlayer);
-            Rule(rules, _intercept, _engage, 80, "player visible within 10 m", b => b._seesPlayer);
-            Rule(rules, _ambush, _engage, 80, "player visible within 10 m", b => b._seesPlayer);
-            Rule(rules, _converge, _engage, 80, "player visible within 10 m", b => b._seesPlayer);
-            Rule(rules, _pursue, _engage, 80, "contact again (line of sight within 14 m)", b => b._inContact);
+            Rule(rules, _observe, _engage, 80, "player visible within 18 m", b => b._seesPlayer);
+            Rule(rules, _intercept, _engage, 80, "player visible within 18 m", b => b._seesPlayer);
+            Rule(rules, _ambush, _engage, 80, "player visible within 18 m", b => b._seesPlayer);
+            Rule(rules, _converge, _engage, 80, "player visible within 18 m", b => b._seesPlayer);
+            Rule(rules, _pursue, _engage, 80, "contact again (line of sight within 20 m)", b => b._inContact);
             Rule(rules, _engage, _reassess, 75, "the player is gone (dead or missing)", b => !b.PlayerAvailable());
             Rule(rules, _engage, _pursue, 70, "no contact for 0.7 s, after at least 2 s engaged",
                 b => b.EngagedFor(MinEngageTime) && b.LostContactFor(LoseSightDelay));
@@ -499,8 +501,8 @@ namespace ToyFactory.AI.Agents.Captain
             _lastContactHeading = heading.sqrMagnitude > 1e-4f ? heading.normalized : Vector3.zero;
         }
 
-        // Keeping track of a player already being fought: line of sight within 14 m, in any
-        // direction (the Captain has turned to them), unlike the 10 m view cone that starts a fight.
+        // Keeping track of a player already being fought: line of sight within 20 m, in any
+        // direction (the Captain has turned to them), unlike the 18 m view cone that starts a fight.
         bool InContact()
         {
             if (!PlayerAvailable())
