@@ -234,8 +234,9 @@ namespace ToyFactory.Runtime.Agents
                     // The four Saboteurs share one squad through the blackboard's claims and one
                     // detour cache; the squad slot is the letter. They attack a player in sight
                     // within 8 m (the Guard's physics sight check), run from a player who aims at them
-                    // once they are hurt, and close doors that lengthen the player's route; the
-                    // controller carries the door out and answers through IActionFeedback. Without a grid, or a spawn point with no squad slot (A-D), it
+                    // once they are hurt, close doors that lengthen the player's route, arm traps on it
+                    // and take batteries from a player short of ammunition; the controller carries
+                    // each of them out and answers through IActionFeedback. Without a grid, or a spawn point with no squad slot (A-D), it
                     // falls back to the mock.
                     if (setup.HasGrid && setup.Identity.IsInSquad && setup.Identity.SquadIndex <= (int)SaboteurLetter.D)
                     {
@@ -243,7 +244,9 @@ namespace ToyFactory.Runtime.Agents
                         var candidates = new CompositeCandidateSource(
                             new AttackPlayerSource(new CoverVisibilitySight(new PhysicsCoverVisibility(setup.Grid))),
                             new FleeSource(new CoverVisibilitySight(new PhysicsCoverVisibility(setup.Grid))),
-                            new CloseDoorSource(detours));
+                            new CloseDoorSource(detours),
+                            new ArmTrapSource(setup.Grid, detours),
+                            new StealBatterySource(setup.Grid));
                         return new SaboteurBrain(
                             new SaboteurIdentity(setup.Identity.Id, (SaboteurLetter)setup.Identity.SquadIndex),
                             setup.Grid, setup.Pathfinder, setup.Blackboard.Claims, setup.PatrolPoints, null, 0,

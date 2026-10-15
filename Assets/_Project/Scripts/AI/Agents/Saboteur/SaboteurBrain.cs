@@ -34,6 +34,15 @@ namespace ToyFactory.AI.Agents.Saboteur
         public const float CloseDoorTimeoutSeconds = 3f;
 
         /// <summary>
+        /// Ground distance, in metres, from the (walkable) cell of a trap or battery within which the
+        /// Saboteur can arm or take it. The controller then acts within its own, larger reach of the object itself.
+        /// </summary>
+        public const float FactReachMetres = 1.5f;
+
+        /// <summary>Seconds the Saboteur keeps asking to arm a trap or take a battery before it gives up on it.</summary>
+        public const float FactTimeoutSeconds = 3f;
+
+        /// <summary>
         /// Seconds between two claw swipes while attacking: the swipe interval on the Saboteur
         /// prefab (<c>AgentClawSwipe</c>, 1.2 s start to start), so a request never lands on a swipe
         /// that is still playing.
@@ -129,6 +138,16 @@ namespace ToyFactory.AI.Agents.Saboteur
         bool _doorInReach;
         float _doorReachedAt;
         List<Vector2Int> _doorRoute;
+
+        // ArmTrap and StealBattery: the plan for the selected trap or battery, one at a time like a door.
+        // Travel sends one route, then the Saboteur stops within reach and asks until the runtime answers.
+        bool _factActive;
+        bool _factResolved;
+        bool _factRouteSent;
+        bool _factInReach;
+        float _factReachedAt;
+        ActionKey _factKey;
+        List<Vector2Int> _factRoute;
 
         // AttackPlayer: whether an attack is under way (so the patrol is routed again afterwards),
         // whether the body has been stopped inside melee reach, the chase route toward the player
@@ -264,6 +283,11 @@ namespace ToyFactory.AI.Agents.Saboteur
                 && TryCloseDoor(ctx, out AgentIntent closeDoor))
                 return closeDoor;
 
+            if (ctx.World != null && _selector.HasCurrent
+                && (_selector.Current.Kind == SaboteurActionKind.ArmTrap || _selector.Current.Kind == SaboteurActionKind.StealBattery)
+                && TryFactAction(ctx, out AgentIntent factAction))
+                return factAction;
+
             if (ctx.World != null && _selector.HasCurrent && _selector.Current.Kind == SaboteurActionKind.Flee
                 && TryFlee(ctx, out AgentIntent flee))
                 return flee;
@@ -275,7 +299,7 @@ namespace ToyFactory.AI.Agents.Saboteur
                 return Attack(ctx, playerDistance);
 
             // Back to patrolling after an attack, a flight or a door: the body was stopped or sent elsewhere, so route again.
-            if (_attacking || _doorActive || _fleeing)
+            if (_attacking || _doorActive || _fleeing || _factActive)
             {
                 // The selection can end before TryCloseDoor sees the door shut, because a closed door
                 // stops being a candidate. A close this Saboteur had asked for still earns the cooldown.
@@ -286,6 +310,7 @@ namespace ToyFactory.AI.Agents.Saboteur
                 ResetAttackPlan();
                 ResetFleePlan();
                 ResetDoorPlan();
+                ResetFactPlan();
                 _needsRoute = true;
                 _holdSent = false;
             }
@@ -310,6 +335,18 @@ namespace ToyFactory.AI.Agents.Saboteur
                     if (_doorRoute.Contains(changedCells[i]))
                     {
                         _doorRouteSent = false;
+                        break;
+                    }
+                }
+            }
+
+            if (_factRoute != null)
+            {
+                for (int i = 0; i < changedCells.Count; i++)
+                {
+                    if (_factRoute.Contains(changedCells[i]))
+                    {
+                        _factRouteSent = false;
                         break;
                     }
                 }
@@ -348,6 +385,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             ResetAttackPlan();
             ResetFleePlan();
             ResetDoorPlan();
+            ResetFactPlan();
         }
 
         /// <inheritdoc />
@@ -383,17 +421,40 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// </summary>
         public void OnActionResolved(AgentAction action, int targetId, bool success)
         {
-            if (_destroyed || action != AgentAction.CloseDoor)
+            if (_destroyed)
                 return;
 
-            var key = new ActionKey(SaboteurActionKind.CloseDoor, targetId);
+            SaboteurActionKind kind;
+            switch (action)
+            {
+                case AgentAction.CloseDoor:
+                    kind = SaboteurActionKind.CloseDoor;
+                    break;
+                case AgentAction.ArmTrap:
+                    kind = SaboteurActionKind.ArmTrap;
+                    break;
+                case AgentAction.StealBattery:
+                    kind = SaboteurActionKind.StealBattery;
+                    break;
+                default:
+                    return;
+            }
+
+            var key = new ActionKey(kind, targetId);
             if (success)
                 _selector.NotifySuccess(key, _lastTime);
             else
                 _selector.NotifyFailure(key, _lastTime);
 
-            if (_doorActive && _doorKey.Equals(key))
-                _doorResolved = true;
+            if (kind == SaboteurActionKind.CloseDoor)
+            {
+                if (_doorActive && _doorKey.Equals(key))
+                    _doorResolved = true;
+            }
+            else if (_factActive && _factKey.Equals(key))
+            {
+                _factResolved = true;
+            }
         }
 
         /// <inheritdoc />
@@ -741,6 +802,130 @@ namespace ToyFactory.AI.Agents.Saboteur
             _doorRouteSent = true;
             intent = Move(route, "CloseDoor");
             return true;
+        }
+
+        void ResetFactPlan()
+        {
+            _factActive = false;
+            _factResolved = false;
+            _factRouteSent = false;
+            _factInReach = false;
+            _factRoute = null;
+        }
+
+        // Carries out the selected ArmTrap or StealBattery: walk to the object's walkable cell, stop
+        // within reach and ask the runtime to act on it until it answers or the time is up. Returns false
+        // when the plan has ended (the runtime answered, the object is gone or taken, the Saboteur could
+        // not get there), so the caller falls back to patrolling. A target that vanished simply stops
+        // being a candidate; one the Saboteur could not reach starts the failure cooldown.
+        bool TryFactAction(in AgentContext ctx, out AgentIntent intent)
+        {
+            intent = default;
+            ActionKey key = _selector.Current;
+
+            // The runtime has already answered this request (the cooldown is set); end the plan.
+            if (_factResolved)
+            {
+                EndFactPlan(key, ctx.Time, false);
+                return false;
+            }
+
+            if (!TryFindFact(ctx.World, key, out SabotageFact fact) || !fact.Available
+                || !SabotageTargetCells.TrySnap(_grid, fact.Cell, out Vector2Int cell))
+            {
+                EndFactPlan(key, ctx.Time, false);
+                return false;
+            }
+
+            _factActive = true;
+            _factKey = key;
+            bool arming = key.Kind == SaboteurActionKind.ArmTrap;
+            string state = arming ? "ArmTrap" : "StealBattery";
+            Vector3 target = _grid.CellToWorld(cell);
+            float dx = target.x - ctx.Position.x;
+            float dz = target.z - ctx.Position.z;
+
+            if (dx * dx + dz * dz <= FactReachMetres * FactReachMetres)
+            {
+                List<Vector3> stop = null;
+                if (!_factInReach)
+                {
+                    _factInReach = true;
+                    _factReachedAt = ctx.Time;
+                    stop = new List<Vector3>();
+                }
+                else if (ctx.Time - _factReachedAt > FactTimeoutSeconds)
+                {
+                    EndFactPlan(key, ctx.Time, true);
+                    return false;
+                }
+
+                intent = new AgentIntent
+                {
+                    Path = stop,
+                    DesiredSpeed = MoveSpeed,
+                    LookTarget = target,
+                    Action = arming ? AgentAction.ArmTrap : AgentAction.StealBattery,
+                    ActionTargetId = key.TargetId,
+                    DebugState = state
+                };
+                return true;
+            }
+
+            _factInReach = false;
+            if (_factRouteSent)
+            {
+                // The body stops short of the last waypoint, so a finished route that is still out of
+                // reach means the object cannot be got to; do not stand there.
+                if (HasArrivedAt(_factRoute, ctx.Position))
+                {
+                    EndFactPlan(key, ctx.Time, true);
+                    return false;
+                }
+
+                intent = Keep(state);
+                return true;
+            }
+
+            if (!TryRoute(ctx.Cell, cell, out List<Vector2Int> route))
+            {
+                EndFactPlan(key, ctx.Time, true);
+                return false;
+            }
+
+            _factRoute = route;
+            _factRouteSent = true;
+            intent = Move(route, state);
+            return true;
+        }
+
+        static bool TryFindFact(WorldBlackboard world, ActionKey key, out SabotageFact fact)
+        {
+            SabotageFactKind kind = key.Kind == SaboteurActionKind.ArmTrap ? SabotageFactKind.Trap : SabotageFactKind.Battery;
+            IReadOnlyList<SabotageFact> facts = world.SabotageFacts;
+            for (int i = 0; i < facts.Count; i++)
+            {
+                if (facts[i].Id == key.TargetId && facts[i].Kind == kind)
+                {
+                    fact = facts[i];
+                    return true;
+                }
+            }
+
+            fact = default;
+            return false;
+        }
+
+        void EndFactPlan(ActionKey key, float now, bool failed)
+        {
+            if (failed)
+                _selector.NotifyFailure(key, now);
+
+            _selector.CancelCurrent();
+            _squad.EndPlan(_identity.AgentId);
+            ResetFactPlan();
+            _needsRoute = true;
+            _holdSent = false;
         }
 
         void EndDoorPlan(ActionKey key, float now, bool succeeded, bool failed)
