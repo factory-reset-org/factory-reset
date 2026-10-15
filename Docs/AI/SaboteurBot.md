@@ -103,6 +103,24 @@ The brain carries it out in two phases, only when it was given the shared `Detou
 
 Wired into the level through `AgentSpawner.CreateBrain` (see Spawn hookup): the controller carries `CloseDoor` out and answers through `IActionFeedback`. `CompositeCandidateSource` combines it with `AttackPlayerSource`.
 
+### ArmTrap and StealBattery
+
+Two candidate sources read S2's trap and battery facts (`world.SabotageFacts`: id, cell, kind, available) the way `CloseDoorSource` reads the door detours. Ids are unique across doors (1-4), traps (11-14) and batteries (21-26), which the claims need because `TargetClaims` keys on the id alone. A fact that is missing, or not available (a trap already armed, a battery already taken), is not a candidate. Both sources move the fact's cell to the nearest walkable cell within 4 cells (`SabotageTargetCells.TrySnap`; traps and batteries can stand in props or on shelves) and skip a cell outside the grid. The squad layer then vetoes a target another Saboteur has claimed.
+
+**ArmTrap(t)** (`ArmTrapSource`). Eligible when the player is alive and the squad's `DetourCache` has their route to the objective (the cache now keeps that route, `DetourCache.PlayerRoute`), the route passes within 2 cells of the trap, and the player gets there within 10 s at their top speed (the earliest they can arrive). The Saboteur must also be able to arrive first: a trap the player will already have passed is not worth arming. Two considerations, both through `ResponseCurve.Inverse`: the seconds until the player passes over the 10 s horizon (the sooner, the higher) and the straight octile distance to the trap over 30 m.
+
+**StealBattery(b)** (`StealBatterySource`). Eligible when the player is alive and the Saboteur's walk (octile distance over 4.3 m/s, at most 30 m) is shorter than the player's straight walk to the battery at their top speed. Two considerations: the player's loaded ammunition fraction through `Inverse` (the emptier, the higher; a full battery scores 0 and vetoes the theft, because it would not hurt) and the distance over 30 m.
+
+**Reachability.** Like doors, the walk is a straight octile distance, not a search: it only ranks targets, so it stays cheap for four Saboteurs deciding at 4 Hz. The brain finds the real route when it commits, and a target it cannot reach ends the plan as a failure.
+
+**In the brain** (`TryFactAction`, the same shape as CloseDoor):
+
+- **Travel.** One A* route to the target's walkable cell, sent again if a changed cell lies on it. A route that cannot be found, or ends out of reach, ends the plan as a failure.
+- **Execute.** Within `FactReachMetres` (1.5 m) of that cell the body stops once and each tick the intent is `AgentAction.ArmTrap` or `StealBattery` with `ActionTargetId` = the fact id, looking at the target. The controller acts within its own 2.5 m reach of the object and answers once through `IActionFeedback`.
+- **End.** The runtime's answer starts the cooldown and ends the plan on the next tick. A target that vanishes or becomes unavailable ends the plan with no cooldown. A request still unanswered `FactTimeoutSeconds` (3 s) after the Saboteur reached it is a failure. Stun drops the plan. The cooldown is new: `SelectorSettings.FactCooldownSeconds` (10 s, a starting value like the door's), so an unreachable trap or battery is not chosen again at every decision.
+
+**Departures from the design tables above, to tune in play (C2).** The design scores a battery on a logistic of the ammunition deficit, the arrival advantage and its distance from the player's route; the source scores the linear ammunition deficit and the Saboteur's distance, and uses the arrival advantage only as an eligibility rule. It does not use the Captain's `PredictedGoal` for the trap route beyond what `DetourCache` already does. Taking a battery does not yet make the Saboteur carry it, so a destroyed Saboteur drops no battery (`ItemDropKind.Battery` stays unused; the battery pickup contract is S2's). Whether the executor's arming and taking look right on screen has not been looked at.
+
 ### Permanent destruction
 
 `IAgentBrain.OnDestroyed()` is called by `AgentController.Scrap` before `AgentEvents.OnDestroyed`, and there is no reboot. The brain:
@@ -246,7 +264,7 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | Player state (position, cell, ammo, overcharge, alive, aiming), door/trap/battery state | S2 | Not on the blackboard. Fake snapshots in tests. |
 | Pathfinder, grid and instance identity (letter, claim id, keycard carrier) given at spawn; an id on `IAgentState` | S4 (with S1 `GridManager`) | Done: `BrainSetup` and `AgentIdentity` (`IAgentState.Identity`); see Spawn hookup. |
 | Action execution and success/failure feedback | S4 controller, S2 targets | Done (S4, #217): `AgentController` carries out door, trap and battery actions through `SabotageTargets` and answers through `IActionFeedback`; the brain uses it for door cooldowns. It also tells the brain its health through `IHealthAware`. |
-| `ISabotageable` on traps and batteries | S2 | `Door` only. |
+| `ISabotageable` on traps and batteries; their facts on the blackboard | S2 | Done: traps and batteries are executable targets, and `world.SabotageFacts` lists each one's id, cell, kind and availability. |
 | `ObjectiveTargets`; `PredictedGoal` with confidence | S1; S4 | Not published. Fixed test objective. |
 | Game time in `AgentContext` | S4 / S2 | `Time.time` today. |
 | Infinite-cost step behaviour in `AStarSearch` | S2 | Tested, no change needed (see Hypothetical door closure); S2's confirmation outstanding. |
@@ -265,7 +283,7 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | Saboteur layer on the F3 debug overlay: each Saboteur's squad row (letter, action, health, destroyed) and its latest decision | Implemented; registers itself, no edit to the overlay. Shows each action's raw and final score and why it lost, not the individual considerations | `UtilityDecisionText`, `SaboteurOverlayLayer`; `UtilityDecisionTextTests`, `SaboteurOverlayLayerTests` |
 | Squad scenario: four Saboteurs, two doors, a way round each, with the real sources, cache, claims and A*; searches for one and four instances; tick cost; anti-dithering | Implemented, measured | `SaboteurSquadScenarioTests`, `Test_SquadClaims.unity`, `SquadClaimsSceneTests`, `SquadScenarioObjective`; results in `Docs/AIPerformanceLog.md` |
 | Detour cache spread over ticks (one A* search per call, results published together after the last) | Implemented, measured | `DetourCache.SearchesPerCall`; worst call on a level-sized grid 8.09 ms -> 4.69 ms; see `Docs/AIPerformanceLog.md` |
-| ArmTrap, StealBattery | Not started | Need the blackboard facts in the handoff table |
+| ArmTrap, StealBattery | Implemented, tested and wired into the level through `AgentSpawner.CreateBrain`; they use `IActionFeedback`. Scores are starting values; no battery is carried or dropped | `ArmTrapSource`, `StealBatterySource`, `SabotageTargetCells`, `DetourCache.PlayerRoute`, `SaboteurBrain`; `SaboteurTrapBatteryTests`, `SaboteurBatterySceneTests` |
 | Squad layer: claim on commit, "not claimed" veto, displacement check, release, attack saturation, tick stagger | Implemented in the brain: claims on commit, the veto and saturation applied to every candidate, stagger by letter, release on stun and destruction. The candidates come from an `ICandidateSource`; `AttackPlayerSource` is the first | `SquadCoordinator`, `ICandidateSource`, `SaboteurBrain`; `SquadClaimTests`, `SaboteurSquadTests` |
 | Keycard drop through `IDropsItems` | Implemented; the battery drop waits for StealBattery | `IDropsItems`, `SaboteurBrain.GetDrops`; `SaboteurDropTests` |
 | `DetourCache` and `DoorClosureCostModel` | Implemented and tested; refresh at most every 0.5 s, searches only for doors on the route, `AI.Saboteur.Detour` profiler marker | `DetourCache`, `DoorClosureCostModel`; `SaboteurDetourTests` |
@@ -317,7 +335,7 @@ Stun calls `EndPlan` and destruction calls `OnDestroyed`, so a stunned or destro
   - `DebugState` stays `AttackPlayer` in both phases. The attack score and its 8 m range are unchanged: the Saboteur still decides to attack from 8 m, it just walks the distance first.
   - A cornered Saboteur (Flee selected, no refuge) swipes only if the player is within 2 m; farther away it holds, since a swipe would not reach.
 
-**Limits.** In the level the candidates are Idle, AttackPlayer and CloseDoor; ArmTrap and StealBattery wait on S2's trap and battery facts on the blackboard. Flee is offered whenever the player faces a hurt Saboteur it can see, so in play it shows once the Saboteur has taken a hit. **Every door in the level is the only link between its two rooms** (probed on 10 October: closing door 1 or door 2 leaves the player no route, for every player and objective position tested), so a closure is always a lockout and CloseDoor is never offered in the level as built. It needs a second route around at least one door (a loop in the level, S1's area). `SaboteurDoorSceneTests` proves the chain end to end by cutting a gap through the wall next to door 1. The claim behaviour is exercised in `SaboteurSquadTests`, `SaboteurDetourTests` and `SaboteurFeedbackTests`.
+**Limits.** In the level the candidates are Idle, AttackPlayer, Flee, CloseDoor, ArmTrap and StealBattery. Flee is offered whenever the player faces a hurt Saboteur it can see, so in play it shows once the Saboteur has taken a hit. **Every door in the level is the only link between its two rooms** (probed on 10 October: closing door 1 or door 2 leaves the player no route, for every player and objective position tested), so a closure is always a lockout and CloseDoor is never offered in the level as built. It needs a second route around at least one door (a loop in the level, S1's area). `SaboteurDoorSceneTests` proves the chain end to end by cutting a gap through the wall next to door 1. The claim behaviour is exercised in `SaboteurSquadTests`, `SaboteurDetourTests` and `SaboteurFeedbackTests`.
 
 ### Spawn hookup
 

@@ -1,0 +1,100 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+using ToyFactory.AI.Core;
+using ToyFactory.AI.Core.Blackboard;
+using ToyFactory.AI.Core.Grid;
+
+namespace ToyFactory.AI.Agents.Saboteur
+{
+    /// <summary>
+    /// Offers ArmTrap(t) for every unarmed trap the player is about to walk over. Two
+    /// considerations: how soon the player passes it (sooner is more worth it) and how near the
+    /// Saboteur is to it.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Eligibility.</b> The trap's fact is on the blackboard and available (not armed yet);
+    /// the player is alive and the squad's <see cref="DetourCache"/> has their route to the objective;
+    /// that route passes within <see cref="RouteClearanceCells"/> of the trap, no more than
+    /// <see cref="PassHorizonSeconds"/> from now at the player's top speed (the earliest they can
+    /// arrive); the Saboteur's walk is no longer than <see cref="MaxTravelMetres"/> and ends before the
+    /// player gets there, since arming a trap the player has already passed does nothing. A missing
+    /// fact is not a trap, so it is not offered.</para>
+    /// <para><b>Reachability.</b> The walk is the straight octile distance, as for doors: it only
+    /// ranks traps, so it stays cheap for four Saboteurs deciding at 4 Hz. The brain finds the real
+    /// route once it commits, and a trap it cannot reach starts the failure cooldown. The trap's cell is
+    /// moved to the nearest walkable cell (traps can stand inside props) and a cell outside the grid
+    /// is skipped. The squad layer then vetoes a trap another Saboteur has claimed.</para>
+    /// </remarks>
+    public sealed class ArmTrapSource : ICandidateSource
+    {
+        /// <summary>Seconds ahead in which the player must be expected to pass the trap.</summary>
+        public const float PassHorizonSeconds = 10f;
+
+        /// <summary>Cells either side of the route within which the player triggers a trap (about 1 m).</summary>
+        public const int RouteClearanceCells = 2;
+
+        /// <summary>Travel distance, in metres, at which a trap is too far to be worth it.</summary>
+        public const float MaxTravelMetres = 30f;
+
+        readonly GridGraph _grid;
+        readonly DetourCache _detours;
+        readonly UtilityAction _action;
+        readonly float[] _inputs = new float[2];
+
+        /// <summary>Creates the source over the level grid and the squad's shared detour cache.</summary>
+        public ArmTrapSource(GridGraph grid, DetourCache detours)
+        {
+            _grid = grid ?? throw new ArgumentNullException(nameof(grid));
+            _detours = detours ?? throw new ArgumentNullException(nameof(detours));
+            _action = new UtilityAction(SaboteurActionKind.ArmTrap,
+                new Consideration("PassSoon", ResponseCurve.Inverse),
+                new Consideration("TrapDistance", ResponseCurve.Inverse));
+        }
+
+        /// <inheritdoc />
+        public void AddCandidates(in AgentContext ctx, SaboteurIdentity identity, List<ActionCandidate> candidates)
+        {
+            if (ctx.World == null)
+                return;
+
+            PlayerSnapshot player = ctx.World.Player;
+            if (!player.IsKnown || !player.IsAlive || player.SprintSpeed <= 0f)
+                return;
+
+            IReadOnlyList<SabotageFact> facts = ctx.World.SabotageFacts;
+            if (facts.Count == 0)
+                return;
+
+            _detours.Refresh(ctx.World, ctx.Time);
+            if (!_detours.HasObjective)
+                return;
+
+            IReadOnlyList<Vector2Int> route = _detours.PlayerRoute;
+            for (int i = 0; i < facts.Count; i++)
+            {
+                SabotageFact fact = facts[i];
+                if (fact.Kind != SabotageFactKind.Trap || !fact.Available)
+                    continue;
+                if (!SabotageTargetCells.TrySnap(_grid, fact.Cell, out Vector2Int cell))
+                    continue;
+                if (!SabotageTargetCells.TryMetresAlong(route, cell, RouteClearanceCells, out float routeMetres))
+                    continue;
+
+                float playerSeconds = routeMetres / player.SprintSpeed;
+                if (playerSeconds >= PassHorizonSeconds)
+                    continue;
+
+                float travel = SabotageTargetCells.OctileMetres(ctx.Cell, cell);
+                if (travel > MaxTravelMetres || travel / SaboteurBrain.MoveSpeed >= playerSeconds)
+                    continue;
+
+                _inputs[0] = playerSeconds / PassHorizonSeconds;
+                _inputs[1] = travel / MaxTravelMetres;
+                ActionScore score = _action.Evaluate(_inputs);
+                if (!score.Vetoed)
+                    candidates.Add(new ActionCandidate(new ActionKey(SaboteurActionKind.ArmTrap, fact.Id), score.BaseScore));
+            }
+        }
+    }
+}

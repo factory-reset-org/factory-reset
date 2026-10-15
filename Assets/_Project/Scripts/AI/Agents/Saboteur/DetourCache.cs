@@ -93,6 +93,8 @@ namespace ToyFactory.AI.Agents.Saboteur
         readonly List<DoorDetour> _results = new List<DoorDetour>();
         readonly Dictionary<int, int> _resultIndex = new Dictionary<int, int>();
         readonly HashSet<Vector2Int> _routeNeighbourhood = new HashSet<Vector2Int>();
+        readonly List<Vector2Int> _route = new List<Vector2Int>();
+        readonly List<Vector2Int> _stagingRoute = new List<Vector2Int>();
 
         // A refresh in progress. Its results are built here and published together when the last search
         // is done, so a reader never sees half a refresh.
@@ -135,6 +137,13 @@ namespace ToyFactory.AI.Agents.Saboteur
 
         /// <summary>True when the latest refresh found a player, an objective and a route between them.</summary>
         public bool HasObjective { get; private set; }
+
+        /// <summary>
+        /// The player's open route from the latest refresh, from the player's cell to the objective, so
+        /// the trap source can predict which traps the player will pass and when. Empty while
+        /// <see cref="HasObjective"/> is false. It is up to <see cref="RefreshSeconds"/> old.
+        /// </summary>
+        public IReadOnlyList<Vector2Int> PlayerRoute => _route;
 
         /// <summary>The cell the latest refresh measured the player's route to.</summary>
         public Vector2Int ObjectiveCell { get; private set; }
@@ -255,6 +264,8 @@ namespace ToyFactory.AI.Agents.Saboteur
             }
 
             MarkRouteNeighbourhood(route);
+            _stagingRoute.Clear();
+            _stagingRoute.AddRange(route);
             _nextEntry = 0;
             _inProgress = true;
             Continue(now, 1);
@@ -304,6 +315,10 @@ namespace ToyFactory.AI.Agents.Saboteur
                 _resultIndex[_staging[i].DoorId] = _results.Count;
                 _results.Add(_staging[i]);
             }
+
+            _route.Clear();
+            if (hasObjective)
+                _route.AddRange(_stagingRoute);
 
             HasObjective = hasObjective;
             if (hasObjective)
