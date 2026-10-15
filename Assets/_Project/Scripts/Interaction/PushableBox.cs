@@ -28,6 +28,9 @@ namespace ToyFactory.Interaction
         [Tooltip("Friction between the box and what it rests on. Low enough that a shove glides before it stops. Applied at start unless the collider already has its own material.")]
         [SerializeField, Range(0.05f, 1f)] float slideFriction = 0.35f;
 
+        [Tooltip("How far, in metres, must be clear for a way to count as free when sliding.")]
+        [SerializeField, Min(0.05f)] float slideClearance = 0.3f;
+
         [Tooltip("A box faster than this (m/s) is still sliding and ignores another shove.")]
         [SerializeField, Min(0f)] float reshoveBelowSpeed = 1f;
 
@@ -83,12 +86,34 @@ namespace ToyFactory.Interaction
             if (_rb.linearVelocity.sqrMagnitude > reshoveBelowSpeed * reshoveBelowSpeed)
                 return;
 
+            // Away from the player along one of the four axes; if that way is blocked (a wall, another
+            // box), the free way closest to it, so a box in a corner slides out along the wall.
             Vector3 away = transform.position - player.Position;
-            away.y = 0f;
-            if (away.sqrMagnitude < 1e-4f)
+            if (!BoxShove.TryChoose(away, CanSlide, out Vector3 direction))
                 return;
 
-            _rb.linearVelocity = away.normalized * slideSpeed;
+            _rb.linearVelocity = direction * slideSpeed;
+        }
+
+        // True if the box can move a little way along direction: nothing solid in its way. Shrunk a
+        // touch so the floor and a wall it already rests against do not count as a hit.
+        bool CanSlide(Vector3 direction)
+        {
+            if (_collider == null)
+                return true;
+
+            Bounds bounds = _collider.bounds;
+            Vector3 half = bounds.extents - new Vector3(0.02f, 0.05f, 0.02f);
+            int mask = LayerMask.GetMask("Default", "Environment", "Pushable", "TaskProp", "Agents");
+            RaycastHit[] hits = Physics.BoxCastAll(bounds.center, half, direction, Quaternion.identity,
+                slideClearance, mask, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < hits.Length; i++)
+            {
+                if (hits[i].collider != _collider && !hits[i].collider.isTrigger)
+                    return false;
+            }
+
+            return true;
         }
 
         // A box placed in the scene starts at rest. The grid keeps the request if it is not built yet.
