@@ -132,6 +132,8 @@ namespace ToyFactory.Player
             // The view's bob and shake. Added here so no prefab has to carry it.
             if (!TryGetComponent(out PlayerCameraEffects _))
                 gameObject.AddComponent<PlayerCameraEffects>();
+            if (!TryGetComponent(out PlayerHudFeed _))
+                gameObject.AddComponent<PlayerHudFeed>();
 
             SetCursorLocked(true);
             PlayerState.Publish(this);

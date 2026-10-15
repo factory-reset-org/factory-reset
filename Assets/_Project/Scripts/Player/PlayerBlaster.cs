@@ -77,6 +77,9 @@ namespace ToyFactory.Player
         /// <summary>Raised for every shot fired, after its hit has been applied.</summary>
         public event Action OnFired;
 
+        /// <summary>Raised when a shot hit something that takes hits, for the HUD's hit marker.</summary>
+        public event Action OnHitLanded;
+
         static float Now => GameClock.Current != null ? GameClock.Current.GameTime : Time.time;
 
         void Awake()
@@ -173,7 +176,12 @@ namespace ToyFactory.Player
                 end = hit.point;
                 normal = hit.normal;
                 hitSomething = true;
-                hit.collider.GetComponentInParent<IDamageable>()?.TakeHit();
+                IDamageable target = hit.collider.GetComponentInParent<IDamageable>();
+                if (target != null)
+                {
+                    target.TakeHit();
+                    OnHitLanded?.Invoke();
+                }
             }
 
             GameSfx.Play(Sfx.Shot);
