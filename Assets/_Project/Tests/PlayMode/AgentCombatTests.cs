@@ -252,6 +252,66 @@ namespace ToyFactory.Tests
             Assert.IsFalse(agent.IsAttacking, "The aim is over.");
         }
 
+        // A body whose cannon is held out 1.5 m in front at chest height, off to its right, as
+        // the Captain's is in its aim pose: well past the edge of its capsule.
+        AgentWeapon HeldOutCannon(out AgentController agent)
+        {
+            var go = new GameObject("Captain");
+            _created.Add(go);
+            go.SetActive(false);
+            go.layer = LayerMask.NameToLayer("Agents");
+            go.AddComponent<CharacterController>().center = new Vector3(0f, 1f, 0f);
+            agent = go.AddComponent<AgentController>();
+            var cannon = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            _created.Add(cannon);
+            Object.DestroyImmediate(cannon.GetComponent<Collider>());
+            cannon.transform.SetParent(go.transform, false);
+            cannon.transform.localPosition = new Vector3(0.7f, 1.9f, 1.1f);
+            cannon.transform.localScale = new Vector3(0.2f, 0.2f, 0.8f);   // along +Z: the tip at z 1.5
+            AgentWeapon weapon = go.AddComponent<AgentWeapon>();
+            SetField(weapon, "barrels", new[] { cannon.GetComponent<Renderer>() });
+            go.SetActive(true);
+            agent.Initialise(new AgentIdentity(AgentType.Captain, 6), new IdleBrain(), new WorldBlackboard());
+            return weapon;
+        }
+
+        [UnityTest]
+        public IEnumerator ACannonHeldOutIntoACrateCannotShootThroughIt()
+        {
+            AgentWeapon weapon = HeldOutCannon(out _);
+            // A crate round the cannon's tip, clear of the body's capsule: the muzzle is inside it.
+            GameObject crate = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            _created.Add(crate);
+            crate.transform.position = new Vector3(0.7f, 1.6f, 1.6f);
+            crate.transform.localScale = Vector3.one;
+            FakeShotPlayer player = Player(new Vector3(0.7f, 0f, 8f));   // in plain view past the crate
+            LineRenderer line = weapon.GetComponentInChildren<LineRenderer>();
+            Vector3 end = default;
+            weapon.Fired += _ => end = line.GetPosition(1);
+
+            weapon.RequestShot();
+            yield return Seconds(0.4f);
+
+            Assert.AreEqual(1, weapon.ShotsFired);
+            Assert.IsFalse(weapon.LastShotHit, "The crate round its cannon takes the shot.");
+            Assert.AreEqual(0, player.Damage.Count);
+            Assert.Less(end.z, 2.2f, $"The tracer stops at the crate, not at the player: {end}.");
+        }
+
+        [UnityTest]
+        public IEnumerator ACannonHeldOutPastAnOpenSpaceStillHits()
+        {
+            AgentWeapon weapon = HeldOutCannon(out _);
+            FakeShotPlayer player = Player(new Vector3(0.7f, 0f, 8f));
+
+            weapon.RequestShot();
+            yield return Seconds(0.4f);
+
+            Assert.AreEqual(1, weapon.ShotsFired);
+            Assert.IsTrue(weapon.LastShotHit, "Nothing round the cannon: it hits.");
+            Assert.AreEqual(1, player.Damage.Count);
+        }
+
         [UnityTest]
         public IEnumerator EachShotKicksTheArmOfTheCannonThatFired()
         {
