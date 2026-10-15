@@ -44,7 +44,7 @@ The Captain is a finite-state machine built on the shared FSM framework: each st
 | **Intercept** | Confident about `g*`, or guarding it. Picks the first chokepoint on the player's predicted route it can reach at least 1 s before them, and walks there with A*. If no cell qualifies, it heads to `g*` itself to defend it, but only if it can reach `g*`. If it has no route yet (a door was still shut), it asks again at every decision. If it does not move for 2 s, it gives the cell up (see Getting unstuck). |
 | **Ambush** | At the intercept cell. Stands still, facing the player's predicted route 3 m before the cell (the body turns to the brain's look target while standing, so it can see them coming). Not the next route cell: the body stops up to 0.6 m off its cell, and coming from the player's side it can stand past that cell and would face the wrong way. Holds its ground while the cell is still ahead of the player on their predicted route. |
 | **Converge** | The player is busy at a goal they reached (a task, the console hold) and nothing else is predicted. Closes in on them at intercept speed until they are in view, then fights. Gives up for 10 s if it gets stuck on the way. |
-| **Engage** | Starts when the player is in view within 10 m (a 70° half-angle cone, or anywhere within 2.5 m, with line of sight traced on the grid). Faces the player and asks for a shot every 1.2 s while in contact; the body's weapon aims for 0.3 s (the telegraph, the same for every agent) before each hitscan shot. Once started, contact (line of sight within 14 m, in any direction) keeps it going, and it lasts at least 2 s. Out of contact it faces where it last saw the player and holds fire. |
+| **Engage** | Starts when the player is in view within 18 m (a 70° half-angle cone, or anywhere within 2.5 m, with line of sight traced on the grid). Faces the player and asks for a shot every 1.2 s while in contact; the body's weapon aims for 0.3 s (the telegraph, the same for every agent) before each hitscan shot. Once started, contact (line of sight within 20 m, its cannon's reach, in any direction) keeps it going, and it lasts at least 2 s. Out of contact it faces where it last saw the player and holds fire. |
 | **Pursue** | Lost contact for 0.7 s mid-fight. Walks at intercept speed to where it last saw the player, then stands there for 1 s looking the way they were heading. Contact again returns it to Engage; otherwise it predicts again (Reassess), after that look or 5 s at most. |
 | **Reassess** | Something invalidated the plan. Discards the current intercept cell, re-runs goal inference immediately, then hands over to Observe or Intercept. Lasts one decision tick. |
 | **Stunned** | Knocked out. The controller owns the 6 s reboot and does not tick the brain meanwhile; the brain drops its plan and prediction at once. On the first tick after the reboot it passes straight through to Reassess. |
@@ -64,8 +64,8 @@ Higher priority wins when several conditions are true on the same tick.
 | Dormant | Observe | Wake signal received | 110 |
 | Any except Dormant | Stunned | Hit points reach 0 | 100 |
 | Stunned | Reassess | Stun timer ends | 90 |
-| Observe, Intercept, Ambush, Converge | Engage | Player visible within 10 m | 80 |
-| Pursue | Engage | Contact again (line of sight within 14 m) | 80 |
+| Observe, Intercept, Ambush, Converge | Engage | Player visible within 18 m | 80 |
+| Pursue | Engage | Contact again (line of sight within 20 m) | 80 |
 | Engage | Reassess | Player dead or missing | 75 |
 | Engage | Pursue | No contact for 0.7 s, after at least 2 s engaged | 70 |
 | Pursue | Reassess | Looked round the last-seen spot for 1 s, 5 s passed, no route there, stuck for 2 s, or the player is gone | 65 |
@@ -94,13 +94,15 @@ Higher priority wins when several conditions are true on the same tick.
    │  ▼
   Engage ── no contact for 0.7 s (after at least 2 s) ──▶ Pursue
      ▲
-     └── any of Observe / Intercept / Ambush: player visible within 10 m
+     └── any of Observe / Intercept / Ambush: player visible within 18 m
 ```
 
 **Why the fight has hysteresis.** At first Engage started at 10 m in view and ended after 0.7 s out of view at the same 10 m. A player walking in and out of 10 m switched it on and off: Engage, then Observe backing off to 8 m, then Engage again, which looked irrational. Now starting and keeping a fight use different thresholds, as a thermostat does:
-- It starts at 10 m in view and keeps going out to 14 m with line of sight, so a 4 m band separates the two.
+- It starts at 18 m in view and keeps going out to 20 m with line of sight, so a 2 m band separates the two. (The first version used 10 m and 14 m; see the next paragraph for why the range grew.)
 - It lasts at least 2 s once started.
 - When contact is lost, it goes where it last saw the player instead of backing off.
+
+**Why the fight range is 18 m.** With a 10 m range, in a long room the Captain looked straight at a player 12–17 m away, well inside its cannon's 20 m reach, and only watched. In play that read as a bug: it can see you and could hit you, so it should fight. The start range is now 18 m and the keep range is the cannon's 20 m, so the Captain never stays in a fight it cannot shoot in. Starting still needs the player inside the 70° view cone with grid line of sight, so a player behind it or behind a wall is not seen. The 2 m band is narrower than the old 4 m one, but together with the 2 s minimum it still stops the flipping (`SteppingInAndOutOfEighteenMetresDoesNotFlipTheFight`).
 
 **Why committing has hysteresis too.** The same edge problem existed for the plan: it was made at confidence ≥ 0.5 and dropped below 0.5. A player weaving between two goals kept the confidence near 0.5. In a scripted run that caused three switches between Intercept and Observe in 13 s, each one a dead stop mid-route, including a turn back towards the other goal. Now a plan is made at 0.5 but kept down to 0.4. While committed, the Captain keeps planning for its goal unless another goal leads it by 0.15. The prediction it publishes for the Saboteurs is still the true most likely goal. The same run now commits once.
 
@@ -159,7 +161,7 @@ The gameplay need is a boss that feels smart without cheating: it must anticipat
 
 ### What the Captain knows about the player
 
-**The fact:** the Captain reads the player's cell from the blackboard at every decision (2 Hz), also when the player is out of sight. Seeing (line of sight within 10 m in its view, 14 m to keep a fight) only decides whether it fights, shoots or searches.
+**The fact:** the Captain reads the player's cell from the blackboard at every decision (2 Hz), also when the player is out of sight. Seeing (line of sight within 18 m in its view, 20 m to keep a fight) only decides whether it fights, shoots or searches.
 
 **In the story:** the Captain is wired into Factory OS, which watches the whole factory through its cameras (the Control Room screens), counts the switches as they fall ("Two switches lost") and wakes the Captain to deal with 047. The building knows where 047 is; the Captain is its enforcer.
 
@@ -311,7 +313,7 @@ Once confidence ≥ 0.5, the Captain picks where to wait.
 | Observe's back-off step blocked by a body in the aisle | Dropped after 2 s with no movement; the spot is avoided for 10 s; standing, it turns to the player. | `CaptainRobustnessTests.ABackOffStepItCannotFinishIsDroppedAndNotRetried` |
 | Stopped short of the ambush cell on the player's side | Faces the route 3 m back, so still the way the player comes. | `CaptainBrainTests.StoppedShortOnThePlayersSideItStillFacesThePlayersWay` |
 | Route blocked by a pushed box or closed door | Repair the stale goal fields in place, one per frame (predicted goal first), and decide again at once. If the intercept cell is blocked, Reassess. | `DijkstraFieldRepairTests`, `GoalInferenceTests.TheLastPredictedGoalsFieldIsRebuiltFirst` |
-| Player steps in and out of the 10 m range | The fight keeps going while in line of sight within 14 m, lasts at least 2 s, and then goes to the last-seen spot instead of backing off. | `CaptainBrainTests.SteppingInAndOutOfTenMetresDoesNotFlipTheFight` |
+| Player steps in and out of the 18 m range | The fight keeps going while in line of sight within 20 m, lasts at least 2 s, and then goes to the last-seen spot instead of backing off. | `CaptainBrainTests.SteppingInAndOutOfEighteenMetresDoesNotFlipTheFight` |
 | Player ducks out of sight mid-fight | Hold fire, face the last-seen spot, then Pursue there; contact resumes the fight; give up after a 1 s look or 5 s. | `CaptainBrainTests.AFightLastsAtLeastTwoSecondsThenPursuesToTheLastSeenSpot`, `ContactDuringThePursuitResumesTheFight`, `PursuitGivesUpAfterFiveSecondsIfItNeverGetsThere` |
 | Player dies mid-fight | Leave Engage at once, despite the 2 s minimum. | `CaptainBrainTests.ADeadPlayerEndsTheFightAtOnce` |
 | Goal unreachable (walled off) | Its field cost is infinite, so it is left out of the candidate set. | `GoalInferenceTests.UnreachableGoalIsLeftOut` |
@@ -391,7 +393,7 @@ Implemented: `CaptainBrainTests` (16 tests), on a three-room level with two goal
 | `AmbushHoldsWhileTheCellIsStillAheadOfThePlayer` | No creeping towards the player while waiting |
 | `TaskCompletedMidInterceptDropsThePlanAndRepredicts` | A goal leaving the objectives sends the Captain to Reassess and onto the other goal |
 | `PlayerInViewWithinTenMetresIsEngagedOneShotPerInterval` | Engage asks for a shot at once (the body adds the 0.3 s telegraph), then one per 1.2 s |
-| `PlayerOutOfRangeOrBehindAWallIsNotEngaged` | The 10 m range and grid line of sight |
+| `PlayerOutOfRangeOrBehindAWallIsNotEngaged` | The 18 m range (a player 19.5 m away down a hall) and grid line of sight |
 | `LosingSightForLongerThanTheDelayEndsTheEngagement` | Engage → Reassess after 0.7 s out of sight |
 | `StunDropsThePredictionAndReassessesAfterTheReboot` | Stunned and Reassess pass straight through after the reboot |
 | `DormantCaptainIsNotStunnedAwake` | A stun cannot replace the wake |
