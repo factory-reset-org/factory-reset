@@ -199,8 +199,12 @@ namespace ToyFactory.Tests.EditMode
         public void ShutInTheCaptainOpensTheDoorAndGoesThrough()
         {
             // Chapter 3 before the cutscene's door has opened, or a door the player shut on it.
-            var world = new World(TwoRooms(doorClosed: true, gap: false),
-                captain: new Vector2Int(20, 22), player: new Vector2Int(52, 30), goal: new Vector2Int(55, 30));
+            // The player waits behind a wall in the east room: seen through the open doorway
+            // (within the 18 m fight range) the Captain would stop in it and fight.
+            GridGraph grid = TwoRooms(doorClosed: true, gap: false);
+            for (int y = 22; y <= 38; y++)
+                grid.SetWalkable(new Vector2Int(40, y), false);
+            var world = new World(grid, captain: new Vector2Int(20, 22), player: new Vector2Int(52, 30), goal: new Vector2Int(55, 30));
 
             for (float t = 0f; t < 10f && world.Captain.x < world.Grid.CellToWorld(new Vector2Int(33, 0)).x; t += Dt)
                 world.Tick(t);
