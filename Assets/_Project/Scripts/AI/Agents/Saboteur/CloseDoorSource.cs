@@ -51,11 +51,16 @@ namespace ToyFactory.AI.Agents.Saboteur
             if (ctx.World == null)
                 return;
 
+            // The cache is up to half a second old: a player who has just died or gone missing must not
+            // keep earning detour scores from its last result.
+            PlayerSnapshot player = ctx.World.Player;
+            if (!player.IsKnown || !player.IsAlive)
+                return;
+
             _detours.Refresh(ctx.World, ctx.Time);
             if (!_detours.HasObjective)
                 return;
 
-            PlayerSnapshot player = ctx.World.Player;
             IReadOnlyList<DoorDetour> doors = _detours.Doors;
             for (int i = 0; i < doors.Count; i++)
             {
