@@ -198,6 +198,28 @@ Four instances are still one agent type: one brain class, one set of curves, one
 | Cutscene or pause mid-action | No ticks; timers resume from the same values because they use `AgentContext.Time`. |
 | Missing, dead or unreachable player | Player-dependent actions ineligible; sabotage and Idle stay valid. |
 
+### Edge-case sweep (15 October 2026)
+
+Each case above has a test. The new ones are in `SaboteurEdgeCaseTests` (EditMode) and `SaboteurEdgeSceneTests` (PlayMode, the real level); the others were already covered, as listed.
+
+| Case | Covered by |
+| --- | --- |
+| Door closed by someone else before the Saboteur gets there: plan ends, claim released, no cooldown, door offered again when reopened | `SaboteurEdgeCaseTests` |
+| Player steps into the doorway while the Saboteur is walking, or already asking to close: the close is withdrawn on that tick, claim released, no cooldown; offered again once they leave | `SaboteurEdgeCaseTests`, and `SaboteurDetourTests` for the source rule |
+| All scores below Idle: Idle wins, patrols, no claim; a candidate just above Idle still wins | `SaboteurEdgeCaseTests` |
+| No blackboard, unknown player, dead player (during a door plan, a trap walk, and for a stale detour cache): every player-dependent source is silent, plans end, the Saboteur patrols | `SaboteurEdgeCaseTests`, `SaboteurDetourTests`, `SaboteurTrapBatteryTests` |
+| No objective | `SaboteurDetourTests`, `SaboteurTrapBatteryTests` |
+| Battery collected or trap armed on the way | `SaboteurTrapBatteryTests` |
+| Claim holder destroyed on the way to a trap or battery: claim released at once, the next instance takes it; in the level, Saboteur A scrapped while holding a battery claim releases it and drops the keycard once on a walkable cell | `SaboteurEdgeCaseTests`, `SaboteurEdgeSceneTests`, `SaboteurSquadTests` |
+| Keycard next to a box, nothing walkable nearby, destroyed before the first tick | `SaboteurDropTests` |
+| All four destroyed: claims released, destroyed brains only return a stop and never ask the detour cache again, only A drops the keycard (once), the all-Saboteurs bonus is awarded once, the other agents and the game carry on | `SaboteurEdgeCaseTests`, `SaboteurEdgeSceneTests` |
+| Destroyed twice, or stunned, resolved or told of a graph change afterwards: nothing changes, the drop stays where it was fixed | `SaboteurEdgeCaseTests` |
+| Cutscene or pause mid-action: a request in reach is not timed out by the pause, attack pacing resumes from the same game time, a repeated tick at the same time neither swipes nor decides twice; in the level, a cutscene mid-attack freezes the body and the brain and it carries on after | `SaboteurEdgeCaseTests`, `SaboteurEdgeSceneTests`, `GuardFreezeTests` (the freeze) |
+
+**Two defects the sweep found and fixed.** (1) `TryCloseDoor` checked the doorway only when a decision was made (4 Hz), so a player who stepped into a doorway just after the Saboteur had started asking could still have the door shut on them; it now checks on every tick and ends the plan without a cooldown. (2) `CloseDoorSource` read the detour cache without checking the player, and the cache is up to half a second old, so a door kept being offered for up to 0.5 s after the player died or went missing; it now offers nothing for a dead or unknown player, like the other sources.
+
+**Left open, with their owner.** A close request the Saboteur has already sent stays open in `AgentController` until it is carried out or given up, even if the brain has since withdrawn it, so a Saboteur that walks back into reach of that door could still close it on a player standing in it. The brain does not know this; whether the controller should drop a request when the brain stops asking is S4's decision.
+
 ## Heuristics and response curves
 
 Every consideration maps an observed value into `[0, 1]`, where higher means more desirable. Clamp valid numerical inputs at their defined boundary; reject missing or non-finite inputs. Distances used for action range are in metres and arrival times are in seconds; route costs use the shared search cost model's units.
