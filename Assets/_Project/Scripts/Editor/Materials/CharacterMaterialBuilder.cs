@@ -19,15 +19,16 @@ namespace ToyFactory.Editor.Materials
     /// reads each part's original slots from the FBX, so it gives the same result however often it runs,
     /// and sets the materials on the character prefab variants, where a few parts differ from their
     /// zone's colour (the Tracker's gold key, the Guard's cyan visor, the Saboteur's steel arms).</para>
-    /// <para><b>Saboteur.</b> The body's first slot is <see cref="Key.SaboteurBody"/>, which
-    /// <c>SaboteurTint</c> overrides per squad letter with a MaterialPropertyBlock; every other part keeps
-    /// one colour for all four.</para>
+    /// <para><b>Saboteur.</b> The first slot of the body, the shoulder pads and the forearms is
+    /// <see cref="Key.SaboteurBody"/>, which <c>SaboteurTint</c> overrides per squad letter with a
+    /// MaterialPropertyBlock; every other part keeps one colour for all four.</para>
     /// <para><b>Guard treads.</b> Their dark zone has its own material with a tileable tread texture, so
     /// S4 can scroll <c>_BaseMap</c> with the body's speed.</para>
     /// <para><b>Unit 047's decals.</b> The <c>Chest_Tag</c> and <c>Sticker</c> plates share one textured
     /// material: their front faces are UV-mapped onto the 047 tag and the DEFECTIVE sticker in
     /// <see cref="DecalTexturePath"/>, a painted texture kept in the project, and their edges onto its plain
-    /// white and red. Its blaster takes the first-person blaster's purple, steel and black.</para>
+    /// white and red. Its blaster is the first-person blaster's model in that blaster's colours, as opaque
+    /// character plastics.</para>
     /// </remarks>
     public static class CharacterMaterialBuilder
     {
@@ -50,7 +51,8 @@ namespace ToyFactory.Editor.Materials
         public enum Key
         {
             Red, Cream, PinkSoft, Pink, Gold, Black, Blue, Navy, White, Grey, Steel,
-            Cyan, VisorCyan, VisorBlue, SaboteurBody, GuardTread, Unit047Eyes, Grape, Unit047Decals
+            Cyan, VisorCyan, VisorBlue, SaboteurBody, GuardTread, Unit047Eyes, Grape, Unit047Decals,
+            BlasterOrange, BlasterEnergy
         }
 
         readonly struct Spec
@@ -88,7 +90,11 @@ namespace ToyFactory.Editor.Materials
             { Key.GuardTread, new Spec("M_Char_GuardTread", "#FFFFFF", 0.7f) },
             { Key.Unit047Eyes, new Spec("M_Char_Unit047Eyes", "#BFF3FF", 0.9f) },
             { Key.Grape, new Spec("M_Char_Grape", "#8F6BFF", 0.8f) },
-            { Key.Unit047Decals, new Spec("M_Char_Unit047Decals", "#FFFFFF", 0.8f) }
+            { Key.Unit047Decals, new Spec("M_Char_Unit047Decals", "#FFFFFF", 0.8f) },
+            // The first-person blaster's orange, and its energy parts in the lit magenta of Unit 047's reference
+            // sheet (opaque, no emission: only the eyes glow).
+            { Key.BlasterOrange, new Spec("M_Char_BlasterOrange", "#FF7A1A", 0.8f) },
+            { Key.BlasterEnergy, new Spec("M_Char_BlasterEnergy", "#FF78DC", 0.9f) }
         };
 
         /// <summary>One model: its prefab, its FBX and what each of its three zones becomes.</summary>
@@ -138,19 +144,24 @@ namespace ToyFactory.Editor.Materials
             Add("TrackerToy", "Ear_R", Key.Red, Key.PinkSoft);
             Add("TrackerToy", "Muzzle", Key.Cream, Key.Black);
 
-            // Saboteur: steel arms and joints, a black goggle strap, pale lenses (S4's glow sits over them).
-            Add("SaboteurBot", "Body", Key.SaboteurBody, Key.Black);
-            Add("SaboteurBot", "Goggle_Rim_L", Key.Black, Key.White);
-            Add("SaboteurBot", "Goggle_Rim_R", Key.Black, Key.White);
-            Add("SaboteurBot", "Neck_Post", Key.Steel);
-            Add("SaboteurBot", "ShoulderBall_L", Key.Steel);
-            Add("SaboteurBot", "ShoulderBall_R", Key.Steel);
+            // Saboteur: body, shoulder pads and forearms in the tinted body colour; grey goggle frames,
+            // fork plate and crate; steel upper arms, elbows, fork struts and wrist hinges; pale lenses
+            // (S4's glow sits over them).
+            Add("SaboteurBot", "Body", Key.SaboteurBody);
+            Add("SaboteurBot", "Goggle_Rim_L", Key.Grey);
+            Add("SaboteurBot", "Goggle_Rim_R", Key.Grey);
+            Add("SaboteurBot", "Lens_L", Key.White);
+            Add("SaboteurBot", "Lens_R", Key.White);
+            Add("SaboteurBot", "Fork", Key.Steel, Key.Grey);
+            Add("SaboteurBot", "Crate", Key.Grey);
+            Add("SaboteurBot", "ShoulderPad_L", Key.SaboteurBody);
+            Add("SaboteurBot", "ShoulderPad_R", Key.SaboteurBody);
             Add("SaboteurBot", "ElbowBall_L", Key.Steel);
             Add("SaboteurBot", "ElbowBall_R", Key.Steel);
             Add("SaboteurBot", "UpperArm_L", Key.Steel);
             Add("SaboteurBot", "UpperArm_R", Key.Steel);
-            Add("SaboteurBot", "Forearm_L", Key.Steel, Key.Black);
-            Add("SaboteurBot", "Forearm_R", Key.Steel, Key.Black);
+            Add("SaboteurBot", "Forearm_L", Key.SaboteurBody, Key.Steel);
+            Add("SaboteurBot", "Forearm_R", Key.SaboteurBody, Key.Steel);
             Add("SaboteurBot", "Battery", Key.Steel, Key.Gold);
 
             // Guard: navy hip, steel balls and cannon with a red ring, cyan visor, yellow-tipped antenna,
@@ -182,24 +193,27 @@ namespace ToyFactory.Editor.Materials
             Add("CaptainBot", "Cannon_Ring", Key.Pink);
 
             // Unit 047: cyan body (its speaker colour), gold key, the 047 tag and DEFECTIVE sticker decals,
-            // glowing eyes, and the first-person blaster's colours on the blaster in its hand.
+            // glowing eyes, and the first-person blaster in its hand: the same model, so the same slots
+            // (orange, white, slate, pink, steel on the body; the energy parts on the barrel).
             Add("Unit047", "Key_Bar", Key.Gold);
             Add("Unit047", "Key_Shaft", Key.Gold);
             Add("Unit047", "Sticker", Key.Unit047Decals);
             Add("Unit047", "Chest_Tag", Key.Unit047Decals);
-            Add("Unit047", "Blaster_Body", Key.Grape, Key.Steel, Key.Black);
-            Add("Unit047", "Blaster_Barrel", Key.Grape, Key.Steel, Key.Black);
+            Add("Unit047", "Blaster_Body", Key.BlasterOrange, Key.White, Key.Grey, Key.Pink, Key.Steel);
+            Add("Unit047", "Blaster_Barrel", Key.BlasterEnergy);
             Add("Unit047", "Antenna_Bulb", Key.Gold);
             Add("Unit047", "Antenna_Stem", Key.Black);
             Add("Unit047", "Visor", Key.Black);
             Add("Unit047", "Eyes", Key.Unit047Eyes);
-            Add("Unit047", "Leg_L", Key.Grey);
-            Add("Unit047", "Leg_R", Key.Grey);
-            Add("Unit047", "Foot_L", Key.Black);
-            Add("Unit047", "Foot_R", Key.Black);
-            Add("Unit047", "ShoulderBall_L", Key.Steel);
-            Add("Unit047", "ShoulderBall_R", Key.Steel);
-            Add("Unit047", "Neck", Key.Steel);
+            // As on its reference sheet: navy-grey legs with white hip and knee balls, navy-grey boots, white
+            // shoulder balls and a navy neck.
+            Add("Unit047", "Leg_L", Key.Grey, Key.White);
+            Add("Unit047", "Leg_R", Key.Grey, Key.White);
+            Add("Unit047", "Foot_L", Key.Grey);
+            Add("Unit047", "Foot_R", Key.Grey);
+            Add("Unit047", "ShoulderBall_L", Key.White);
+            Add("Unit047", "ShoulderBall_R", Key.White);
+            Add("Unit047", "Neck", Key.Navy);
 
             return o;
         }

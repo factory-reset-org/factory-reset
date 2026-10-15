@@ -51,11 +51,27 @@ PrefabInstance:
     - target: {fileID: -5241717415550292975, guid: 50718b5547160184a8ff58b20f8d7ccf, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
-      objectReference: {fileID: 2100000, guid: 94a5bbe7d3af6d24f8c318622b43c4ee, type: 2}
+      objectReference: {fileID: 2100000, guid: a9778f7cc64c8c149a83133858418210, type: 2}
+    - target: {fileID: -5241717415550292975, guid: 50718b5547160184a8ff58b20f8d7ccf, type: 3}
+      propertyPath: 'm_Materials.Array.data[1]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 5db9e8055a09e2849adb3a0765c90077, type: 2}
+    - target: {fileID: -5241717415550292975, guid: 50718b5547160184a8ff58b20f8d7ccf, type: 3}
+      propertyPath: 'm_Materials.Array.data[2]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 396d3eeb35307e945811d8f1881bdbe9, type: 2}
+    - target: {fileID: -5241717415550292975, guid: 50718b5547160184a8ff58b20f8d7ccf, type: 3}
+      propertyPath: 'm_Materials.Array.data[3]'
+      value: 
+      objectReference: {fileID: 2100000, guid: fc13cce20f7d1fe4aaf8fb17bb3355b8, type: 2}
+    - target: {fileID: -5241717415550292975, guid: 50718b5547160184a8ff58b20f8d7ccf, type: 3}
+      propertyPath: 'm_Materials.Array.data[4]'
+      value: 
+      objectReference: {fileID: 2100000, guid: a1a316006b8739443907811ff44f3eeb, type: 2}
     - target: {fileID: -4855364887239464769, guid: 50718b5547160184a8ff58b20f8d7ccf, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
-      objectReference: {fileID: 2100000, guid: 5e81322525163d84b96f40ed483576a9, type: 2}
+      objectReference: {fileID: 2100000, guid: 3bddec2398f34aa4eaaaaa11325993c5, type: 2}
     - target: {fileID: 919132149155446097, guid: 50718b5547160184a8ff58b20f8d7ccf, type: 3}
       propertyPath: m_Name
       value: BlasterModel_Root

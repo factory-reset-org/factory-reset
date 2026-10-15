@@ -51,7 +51,19 @@ PrefabInstance:
     - target: {fileID: -5174998623976215188, guid: 556bdb55339659e44a5f0c2a87131c77, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
-      objectReference: {fileID: 2100000, guid: 94a5bbe7d3af6d24f8c318622b43c4ee, type: 2}
+      objectReference: {fileID: 2100000, guid: 5d914da1335e64045ac23bfba9be8986, type: 2}
+    - target: {fileID: -5174998623976215188, guid: 556bdb55339659e44a5f0c2a87131c77, type: 3}
+      propertyPath: 'm_Materials.Array.data[1]'
+      value: 
+      objectReference: {fileID: 2100000, guid: f3f1fc4a44eb01a448e500f5141780c4, type: 2}
+    - target: {fileID: -5174998623976215188, guid: 556bdb55339659e44a5f0c2a87131c77, type: 3}
+      propertyPath: 'm_Materials.Array.data[2]'
+      value: 
+      objectReference: {fileID: 2100000, guid: a1a316006b8739443907811ff44f3eeb, type: 2}
+    - target: {fileID: -5174998623976215188, guid: 556bdb55339659e44a5f0c2a87131c77, type: 3}
+      propertyPath: 'm_Materials.Array.data[3]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 5db9e8055a09e2849adb3a0765c90077, type: 2}
     - target: {fileID: 919132149155446097, guid: 556bdb55339659e44a5f0c2a87131c77, type: 3}
       propertyPath: m_Name
       value: Battery_Root

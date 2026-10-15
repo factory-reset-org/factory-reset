@@ -51,7 +51,39 @@ PrefabInstance:
     - target: {fileID: -1552669529660318256, guid: 63cc3d8d2fac1be499981814c787ec7f, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
-      objectReference: {fileID: 2100000, guid: a4b556ec8f96dfe458d8712d42fd4e85, type: 2}
+      objectReference: {fileID: 2100000, guid: 396d3eeb35307e945811d8f1881bdbe9, type: 2}
+    - target: {fileID: -1552669529660318256, guid: 63cc3d8d2fac1be499981814c787ec7f, type: 3}
+      propertyPath: 'm_Materials.Array.data[1]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 17eed53d06c47344a95d059703038bd5, type: 2}
+    - target: {fileID: -1552669529660318256, guid: 63cc3d8d2fac1be499981814c787ec7f, type: 3}
+      propertyPath: 'm_Materials.Array.data[2]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 5db9e8055a09e2849adb3a0765c90077, type: 2}
+    - target: {fileID: -1552669529660318256, guid: 63cc3d8d2fac1be499981814c787ec7f, type: 3}
+      propertyPath: 'm_Materials.Array.data[3]'
+      value: 
+      objectReference: {fileID: 2100000, guid: bc0b754eb6d34f944bf0e42ef084a7a0, type: 2}
+    - target: {fileID: -1552669529660318256, guid: 63cc3d8d2fac1be499981814c787ec7f, type: 3}
+      propertyPath: 'm_Materials.Array.data[4]'
+      value: 
+      objectReference: {fileID: 2100000, guid: f3f1fc4a44eb01a448e500f5141780c4, type: 2}
+    - target: {fileID: -1552669529660318256, guid: 63cc3d8d2fac1be499981814c787ec7f, type: 3}
+      propertyPath: 'm_Materials.Array.data[5]'
+      value: 
+      objectReference: {fileID: 2100000, guid: fc13cce20f7d1fe4aaf8fb17bb3355b8, type: 2}
+    - target: {fileID: -1552669529660318256, guid: 63cc3d8d2fac1be499981814c787ec7f, type: 3}
+      propertyPath: 'm_Materials.Array.data[6]'
+      value: 
+      objectReference: {fileID: 2100000, guid: ed4ffd94528b3c749a10411157bee91d, type: 2}
+    - target: {fileID: -1552669529660318256, guid: 63cc3d8d2fac1be499981814c787ec7f, type: 3}
+      propertyPath: 'm_Materials.Array.data[7]'
+      value: 
+      objectReference: {fileID: 2100000, guid: b3ff13a8892706645aa9fd7f8beb0a34, type: 2}
+    - target: {fileID: -1552669529660318256, guid: 63cc3d8d2fac1be499981814c787ec7f, type: 3}
+      propertyPath: 'm_Materials.Array.data[8]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 27ae47e49e23c41479d7f407b230d06a, type: 2}
     - target: {fileID: 919132149155446097, guid: 63cc3d8d2fac1be499981814c787ec7f, type: 3}
       propertyPath: m_Name
       value: Terminal_Root
