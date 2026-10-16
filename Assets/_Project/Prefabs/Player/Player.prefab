@@ -331,7 +331,6 @@ MonoBehaviour:
   modelPrefab: {fileID: 3129044021387983766, guid: 2ac2a448e1f36664d86fdaa86ebd827d, type: 3}
   legSwingDegrees: 28
   cyclesPerMetre: 0.45
-  bodyBackOffset: 0.12
 --- !u!1 &5810225151088404182
 GameObject:
   m_ObjectHideFlags: 0
