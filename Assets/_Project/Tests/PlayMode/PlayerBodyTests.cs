@@ -14,7 +14,7 @@ using ToyFactory.Runtime.Agents;
 namespace ToyFactory.Tests
 {
     /// <summary>
-    /// The player's own legs, the hand that slides a box, and boxes that stay upright, in the real
+    /// The player's shadow body, never drawn for the camera, and boxes that stay upright, in the real
     /// level. The body and box types are in the default assembly, so they are reached by name.
     /// </summary>
     public sealed class PlayerBodyTests
@@ -65,53 +65,41 @@ namespace ToyFactory.Tests
         }
 
         // Counts the parts of the body that the camera draws: a part cast as shadow only is not drawn.
-        static int Drawn(Transform body, out int drawnNames)
+        static int Drawn(Transform body)
         {
             int drawn = 0;
-            drawnNames = 0;
             foreach (Renderer r in body.GetComponentsInChildren<Renderer>(true))
             {
-                if (r.shadowCastingMode == ShadowCastingMode.ShadowsOnly)
-                    continue;
-                drawn++;
-                if (r.name.StartsWith("Leg_") || r.name.StartsWith("Foot_"))
-                    drawnNames++;
+                if (r.shadowCastingMode != ShadowCastingMode.ShadowsOnly)
+                    drawn++;
             }
             return drawn;
         }
 
         [UnityTest]
-        public IEnumerator TheLegsAreDrawnOnlyWhenThePlayerLooksDown_AndNothingElseOfTheBodyIsEver()
+        public IEnumerator TheBodyOnlyCastsAShadow_NoPartOfItIsEverDrawnForTheCamera()
         {
             yield return LoadLevelAndStart();
             Transform player = ((Component)PlayerState.Current).transform;
 
-            Transform body = player.Find("Body (own legs)");
-            Assert.IsNotNull(body, "the player stands in Unit 047's body");
+            Transform body = player.Find("Body (shadow)");
+            Assert.IsNotNull(body, "the player has Unit 047's body for a shadow");
             Assert.AreEqual(0, body.GetComponentsInChildren<Collider>(true).Length, "the body cannot touch physics");
-            Assert.Greater(body.GetComponentsInChildren<Renderer>(true).Length, 15, "it is the whole model, as a shadow");
+            Assert.Greater(body.GetComponentsInChildren<Renderer>(true).Length, 15, "it is the whole model");
 
             // The controller sets the camera's pitch from its own field every frame, so that is what is set.
             Component controller = player.GetComponent("PlayerController");
             Assert.IsNotNull(controller, "the player has a PlayerController");
             FieldInfo pitch = controller.GetType().GetField("_pitch", BindingFlags.NonPublic | BindingFlags.Instance);
             Assert.IsNotNull(pitch, "the controller keeps its pitch in _pitch");
-            pitch.SetValue(controller, 0f);
-            yield return null;
-            yield return null;
-            Assert.AreEqual(0, Drawn(body, out int _), "looking ahead, no part of the body is drawn");
 
-            pitch.SetValue(controller, 65f);
-            yield return null;
-            yield return null;
-            int total = Drawn(body, out int legParts);
-            Assert.AreEqual(4, total, "looking down, two legs and two feet are drawn and nothing else (not the pelvis)");
-            Assert.AreEqual(4, legParts, "they are the legs and feet");
-
-            pitch.SetValue(controller, 10f);
-            yield return null;
-            yield return null;
-            Assert.AreEqual(0, Drawn(body, out int _), "looking up again, they go away");
+            foreach (float angle in new[] { 0f, 40f, 65f, 80f })
+            {
+                pitch.SetValue(controller, angle);
+                yield return null;
+                yield return null;
+                Assert.AreEqual(0, Drawn(body), "no part of the body is drawn when looking " + angle + " degrees down");
+            }
         }
 
         [UnityTest]
