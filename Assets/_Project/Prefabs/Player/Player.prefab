@@ -333,13 +333,6 @@ MonoBehaviour:
   legSwingDegrees: 28
   cyclesPerMetre: 0.45
   bodyBackOffset: 0.12
-  reachSeconds: 0.12
-  holdSeconds: 0.06
-  returnSeconds: 0.22
-  restPosition: {x: -0.3, y: -0.42, z: 0.1}
-  reachPosition: {x: -0.16, y: -0.22, z: 0.52}
-  handScale: 1.2
-  handAngles: {x: -78, y: 10, z: 0}
 --- !u!1 &5810225151088404182
 GameObject:
   m_ObjectHideFlags: 0
