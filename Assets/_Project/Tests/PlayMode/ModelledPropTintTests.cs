@@ -88,6 +88,22 @@ namespace ToyFactory.Tests
                 Assert.IsTrue(own == null || !own.enabled, prop.name + "'s own primitive is hidden");
             }
 
+            // Every crate looks as wide as it pushes: the model is not smaller than its collider.
+            foreach (string crateName in new[] { "Crate_1", "Crate_2", "Crate_3", "PaintCrate_1", "PaintCrate_2", "PaintCrate_3" })
+            {
+                GameObject crate = GameObject.Find(crateName);
+                Assert.IsNotNull(crate, crateName);
+                Bounds shown = default;
+                bool first = true;
+                foreach (Renderer each in crate.GetComponentsInChildren<Renderer>())
+                {
+                    if (first) { shown = each.bounds; first = false; }
+                    else shown.Encapsulate(each.bounds);
+                }
+                float pushes = crate.GetComponent<Collider>().bounds.size.x;
+                Assert.AreEqual(pushes, shown.size.x, 0.1f, crateName + " is drawn as wide as its collider");
+            }
+
             // The plate is red until a crate rests on it, and the red is on the model's top.
             var block = new MaterialPropertyBlock();
             Field(plate, "body").GetPropertyBlock(block);
