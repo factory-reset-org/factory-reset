@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -13,7 +14,7 @@ using ToyFactory.Runtime.Agents;
 namespace ToyFactory.Tests
 {
     /// <summary>
-    /// The player's own legs, the hand that slides a box, and boxes that stay upright, in the real
+    /// The player's shadow body, never drawn for the camera, and boxes that stay upright, in the real
     /// level. The body and box types are in the default assembly, so they are reached by name.
     /// </summary>
     public sealed class PlayerBodyTests
@@ -64,55 +65,54 @@ namespace ToyFactory.Tests
         }
 
         [UnityTest]
-        public IEnumerator ThePlayerHasLegsThatTheCameraSeesAndNothingAboveThem()
+        public IEnumerator TheBodyIsOnlyAShadow_AndTheArmsHoldTheGunOnTheViewModelLayer()
         {
             yield return LoadLevelAndStart();
             Transform player = ((Component)PlayerState.Current).transform;
 
-            Transform body = player.Find("Body (own legs)");
-            Assert.IsNotNull(body, "the player stands in Unit 047's body");
+            // The shadow body: the whole model, never drawn for the camera.
+            Transform body = player.Find("Body");
+            Assert.IsNotNull(body, "the player has Unit 047's body for a shadow");
             Assert.AreEqual(0, body.GetComponentsInChildren<Collider>(true).Length, "the body cannot touch physics");
-
-            int legs = 0, hidden = 0;
+            Assert.Greater(body.GetComponentsInChildren<Renderer>(true).Length, 15, "it is the whole model");
             foreach (Renderer r in body.GetComponentsInChildren<Renderer>(true))
+                Assert.AreEqual(ShadowCastingMode.ShadowsOnly, r.shadowCastingMode, r.name + " casts a shadow and is not drawn");
+
+            // The arms: a copy under the gun, on the overlay camera's layer, only the arms and hands drawn.
+            Transform arms = player.Find("CameraPivot/Camera/BlasterViewModel/Model/Arms");
+            Assert.IsNotNull(arms, "the player's arms are under the first-person gun");
+            Assert.AreEqual(0, arms.GetComponentsInChildren<Collider>(true).Length, "the arms cannot touch physics");
+            Assert.AreEqual(0, arms.GetComponentsInChildren<MonoBehaviour>(true).Length, "the model's own motion scripts are not on the arms");
+
+            int viewLayer = LayerMask.NameToLayer("ViewModel");
+            var drawn = new System.Collections.Generic.List<string>();
+            foreach (Renderer r in arms.GetComponentsInChildren<Renderer>(true))
             {
-                bool lower = r.name.StartsWith("Leg_") || r.name.StartsWith("Foot_") || r.name == "Pelvis";
-                if (lower)
+                Assert.AreEqual(viewLayer, r.gameObject.layer, r.name + " is on the ViewModel layer");
+                if (r.enabled)
                 {
-                    legs++;
-                    Assert.AreEqual(ShadowCastingMode.On, r.shadowCastingMode, r.name + " is drawn for the camera");
-                }
-                else
-                {
-                    hidden++;
-                    Assert.AreEqual(ShadowCastingMode.ShadowsOnly, r.shadowCastingMode, r.name + " is not drawn for the camera");
+                    drawn.Add(r.name);
+                    Assert.IsFalse(r.forceRenderingOff, r.name + " is shown while playing, with the gun");
                 }
             }
 
-            Assert.AreEqual(5, legs, "two legs, two feet and the pelvis");
-            Assert.Greater(hidden, 10, "the rest of the model is only a shadow");
-        }
+            drawn.Sort();
+            Assert.AreEqual("Arm_L,Arm_R,Hand_L,Hand_R,ShoulderBall_L,ShoulderBall_R", string.Join(",", drawn),
+                "only the arms, hands and shoulders are drawn, not the model's head, chest, legs or its own gun");
 
-        [UnityTest]
-        public IEnumerator TheHandReachesOutCallsBackOnArrivalAndGoesAway()
-        {
-            yield return LoadLevelAndStart();
-            Component player = (Component)PlayerState.Current;
-            Type bodyType = Type.GetType("ToyFactory.Player.PlayerBody, Assembly-CSharp");
-            Component body = player.GetComponent(bodyType);
-            Assert.IsNotNull(body, "the player has a PlayerBody");
-
-            int arrived = 0;
-            object accepted = bodyType.GetMethod("Thrust").Invoke(body, new object[] { (Action)(() => arrived++) });
-            Assert.IsTrue((bool)accepted);
-            var isReaching = bodyType.GetProperty("IsReaching");
-            Assert.IsTrue((bool)isReaching.GetValue(body), "the hand is out");
-            Assert.IsFalse((bool)bodyType.GetMethod("Thrust").Invoke(body, new object[] { (Action)(() => arrived += 100) }),
-                "a second reach is refused while the first is under way");
-
-            yield return Until(() => arrived > 0, 2f, "the hand to arrive");
-            yield return Until(() => !(bool)isReaching.GetValue(body), 2f, "the hand to go back");
-            Assert.AreEqual(1, arrived, "the callback ran once");
+            // The arms are laid over the gun: the model's gun, hidden, sits where the first-person gun is.
+            Renderer gun = player.Find("CameraPivot/Camera/BlasterViewModel/Model/BlasterModel").GetComponent<Renderer>();
+            Bounds modelGun = default;
+            bool first = true;
+            foreach (Renderer r in arms.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r.name != "Blaster_Body" && r.name != "Blaster_Barrel")
+                    continue;
+                if (first) { modelGun = r.bounds; first = false; }
+                else modelGun.Encapsulate(r.bounds);
+            }
+            Assert.IsFalse(first, "the model has its own gun parts to line up with");
+            Assert.Less(Vector3.Distance(modelGun.center, gun.bounds.center), 0.03f, "the model's gun sits on the first-person gun");
         }
 
         [UnityTest]

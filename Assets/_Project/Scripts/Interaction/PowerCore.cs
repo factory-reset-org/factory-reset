@@ -28,13 +28,15 @@ namespace ToyFactory.Interaction
         [Tooltip("The shield visual, hidden when the shields drop. Optional.")]
         [SerializeField] GameObject shield;
 
+        [Tooltip("The part that flashes white when hit. Left empty, the first renderer that is not the shield.")]
+        [SerializeField] Renderer body;
+
         [SerializeField] float spinDegreesPerSecond = 80f;
 
         [Tooltip("How long a hit lights the core up.")]
         [SerializeField, Min(0.02f)] float flashSeconds = 0.12f;
 
         int _hits;
-        Renderer _body;
         Renderer _shieldRenderer;
         float _flashUntil;
         bool _flashing;
@@ -46,12 +48,15 @@ namespace ToyFactory.Interaction
         void Awake()
         {
             _shieldRenderer = shield != null ? shield.GetComponent<Renderer>() : null;
-            foreach (Renderer each in GetComponentsInChildren<Renderer>())
+            if (body == null)
             {
-                if (each != _shieldRenderer)
+                foreach (Renderer each in GetComponentsInChildren<Renderer>())
                 {
-                    _body = each;
-                    break;
+                    if (each != _shieldRenderer)
+                    {
+                        body = each;
+                        break;
+                    }
                 }
             }
         }
@@ -101,12 +106,12 @@ namespace ToyFactory.Interaction
 
             // Only touches the renderer when the flash starts or ends.
             bool flashing = Time.time < _flashUntil;
-            if (_body != null && flashing != _flashing)
+            if (body != null && flashing != _flashing)
             {
                 if (flashing)
-                    PropTint.Set(_body, Color.white);
+                    PropTint.Set(body, Color.white);
                 else
-                    PropTint.Clear(_body);
+                    PropTint.Clear(body);
             }
             _flashing = flashing;
 

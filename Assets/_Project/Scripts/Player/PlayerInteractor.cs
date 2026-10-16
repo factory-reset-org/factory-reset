@@ -43,7 +43,6 @@ namespace ToyFactory.Player
         [SerializeField] LayerMask interactMask = Physics.DefaultRaycastLayers;
 
         readonly RaycastHit[] _hits = new RaycastHit[16];
-        PlayerBody _body;
         InputAction _interactAction;
 
         // What is being held, and the collider the sweep found it by.
@@ -53,7 +52,6 @@ namespace ToyFactory.Player
 
         void Awake()
         {
-            _body = GetComponent<PlayerBody>();
             InputActionMap map = inputActions.FindActionMap("Player");
             _interactAction = map.FindAction("Interact");
             map.Enable();
@@ -89,13 +87,6 @@ namespace ToyFactory.Player
             IInteractable target = FindTarget(out Collider found, out _);
             if (target == null)
                 return;
-
-            // A box is slid by the player's hand: it reaches out and the shove lands as it arrives.
-            if (target is PushableBox box && _body != null)
-            {
-                _body.Thrust(box.Interact);
-                return;
-            }
 
             target.Interact();
             _held = target as IHoldable;
