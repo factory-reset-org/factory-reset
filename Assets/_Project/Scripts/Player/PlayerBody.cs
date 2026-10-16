@@ -5,18 +5,19 @@ using UnityEngine.Rendering;
 namespace ToyFactory.Player
 {
     /// <summary>
-    /// The player's shadow: Unit 047's model under the player, never drawn for the camera, so the
-    /// player has a shadow on the floor and walls and the view is never blocked by the player's own body.
+    /// The player's own legs, the way a first-person shooter shows them: looking down, the player sees
+    /// their legs and feet, and they step as the player walks.
     /// </summary>
     /// <remarks>
-    /// Every part of the model is set to cast shadows only. Its colliders are removed so it cannot touch
-    /// physics, and its legs swing along the way the player moves, so the shadow walks. The legs were
-    /// once drawn when the player looked down; from the camera they were two detached blobs, so they
-    /// are not.
+    /// Unit 047's model stands a little in front of the camera. Its legs and feet are drawn for the camera
+    /// and are only in view when the player looks down past about 50 degrees. The hips, chest, head,
+    /// arms and blaster are not drawn (the gun is the first-person model), but every part still casts
+    /// a shadow. Colliders are removed so it cannot
+    /// touch physics, and the legs swing along the way the player moves.
     /// </remarks>
     public sealed class PlayerBody : MonoBehaviour
     {
-        [Tooltip("The model that casts the shadow: Unit 047.")]
+        [Tooltip("The model used for the body: Unit 047.")]
         [SerializeField] GameObject modelPrefab;
 
         [Header("Legs")]
@@ -26,8 +27,8 @@ namespace ToyFactory.Player
         [Tooltip("Leg swing cycles per metre walked.")]
         [SerializeField, Min(0.1f)] float cyclesPerMetre = 0.45f;
 
-        [Tooltip("How far behind the camera the shadow body stands.")]
-        [SerializeField, Min(0f)] float bodyBackOffset = 0.12f;
+        [Tooltip("How far behind the camera the body stands; negative is in front of it. In front, the legs and feet come into view at about 50 degrees of look down.")]
+        [SerializeField] float bodyBackOffset = -0.30f;
 
         [Tooltip("How high a foot lifts at the top of a step, in metres.")]
         [SerializeField, Min(0f)] float footLift = 0.06f;
@@ -53,7 +54,7 @@ namespace ToyFactory.Player
         void BuildBody()
         {
             GameObject body = Instantiate(modelPrefab, transform);
-            body.name = "Body (shadow)";
+            body.name = "Body";
             body.transform.localPosition = new Vector3(0f, 0f, -bodyBackOffset);
             body.transform.localRotation = Quaternion.identity;
 
@@ -61,7 +62,7 @@ namespace ToyFactory.Player
                 Destroy(c);
 
             foreach (Renderer r in body.GetComponentsInChildren<Renderer>(true))
-                r.shadowCastingMode = ShadowCastingMode.ShadowsOnly;
+                r.shadowCastingMode = IsSeen(r.name) ? ShadowCastingMode.On : ShadowCastingMode.ShadowsOnly;
 
             _legL = FindDeep(body.transform, "Leg_L_Pivot");
             _legR = FindDeep(body.transform, "Leg_R_Pivot");
@@ -70,6 +71,11 @@ namespace ToyFactory.Player
             if (_legR != null)
                 _legRBase = _legR.localPosition;
         }
+
+        // What the player sees of themselves: the legs and the feet. Seen from above, the hips and chest are
+        // big flat slabs, so they are not drawn.
+        static bool IsSeen(string partName) =>
+            partName.StartsWith("Leg_", StringComparison.Ordinal) || partName.StartsWith("Foot_", StringComparison.Ordinal);
 
         static Transform FindDeep(Transform root, string name)
         {
