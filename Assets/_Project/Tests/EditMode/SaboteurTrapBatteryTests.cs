@@ -503,5 +503,34 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual(0f, settings.CooldownSeconds(SaboteurActionKind.Flee));
             Assert.Throws<System.ArgumentOutOfRangeException>(() => new SelectorSettings(factCooldownSeconds: -1f));
         }
+
+        [Test]
+        public void ABatteryWalkThatGetsNowhereIsSentAgainOnceThenGivenUpWithTheCooldown()
+        {
+            SetPlayer(new Vector2Int(10, 30), ammo: 0.2f);
+            _world.SetSabotageFacts(new[] { Battery(21, 30, 40) });
+            SaboteurBrain brain = Brain(SaboteurLetter.A);
+            Assert.AreEqual("StealBattery", brain.Tick(Ctx(new Vector2Int(30, 30))).DebugState);
+
+            int sentAgain = 0;
+            float gaveUpAt = -1f;
+            AgentIntent intent = default;
+            for (float t = 0.5f; t <= 12f; t += 0.5f)
+            {
+                intent = brain.Tick(Ctx(new Vector2Int(30, 30), t));
+                if (intent.DebugState == "StealBattery" && intent.Path != null)
+                    sentAgain++;
+                if (intent.DebugState != "StealBattery" && gaveUpAt < 0f)
+                    gaveUpAt = t;
+            }
+
+            Assert.AreEqual(1, sentAgain, "The route is sent again once, after being stuck.");
+            Assert.Greater(gaveUpAt, SaboteurBrain.TravelStuckSeconds);
+            Assert.AreEqual("Patrol", intent.DebugState);
+            Assert.IsNull(_claims.ClaimedBy(21), "The claim is released.");
+
+            for (float t = 12f; t < 16f; t += 0.25f)
+                Assert.AreNotEqual("StealBattery", brain.Tick(Ctx(new Vector2Int(30, 30), t)).DebugState, $"Cooldown at {t:F2}.");
+        }
     }
 }

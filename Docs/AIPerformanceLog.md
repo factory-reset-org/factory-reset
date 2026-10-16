@@ -345,9 +345,9 @@ The scenario is `SaboteurSquadScenarioTests` (EditMode) and `Test_SquadClaims.un
 | Measure | One Saboteur | Four Saboteurs |
 | --- | --- | --- |
 | Detour cache searches | 120 | 120 |
-| Routes the Saboteurs planned to the door they chose | 1 | 2 |
+| Routes the Saboteurs planned to the door they chose (16 October, bodies walking: see below) | 4 | 10 |
 
-The cache does three searches (the open route and one for each of the two doors on it) every half second, and four Saboteurs asking cost exactly what one does. The extra route searches belong to the two Saboteurs that picked a door. With the player moving every frame the count stays at 120 (6.0 a second), because the cache refreshes on a timer, not on every change.
+The cache does three searches (the open route and one for each of the two doors on it) every half second, and four Saboteurs asking cost exactly what one does. The route searches belong to the Saboteurs that picked a door and are their own work, not shared. **Changed on 16 October:** the 15 October figures (1 and 2) were measured with the bodies standing still at their start cells, which the brain now treats as being stuck and gives up on after 8 s, so the run now walks each body toward the door it chose, one cell every eighth of a second. A walking Saboteur whose best door changes as it moves plans another route, which is why the counts are higher (4 and 10 in 20 s); the cache figure is unchanged at 120 for one and for four. Each door plan also makes one fresh lockout search just before it closes its door (`DetourCache.LockoutChecks`, one search per plan whoever asks); it runs on the cache's pathfinder but is not a refresh, so it is counted apart and not included in the 120. With the player moving every frame the count stays at 120 (6.0 a second), because the cache refreshes on a timer, not on every change.
 
 **Cost of the squad's ticks (4 Saboteurs, 20 s, 5,120 ticks).**
 

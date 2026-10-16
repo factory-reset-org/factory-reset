@@ -159,8 +159,14 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// <summary>Refreshes done so far, for tests and the evidence log.</summary>
         public int Refreshes { get; private set; }
 
-        /// <summary>Searches made so far (the route plus one per door on it), for tests and the evidence log.</summary>
+        /// <summary>Searches made so far by refreshes (the route plus one per door on it), for tests and the evidence log.</summary>
         public int Searches { get; private set; }
+
+        /// <summary>
+        /// Fresh searches made by <see cref="WouldLockPlayerOut"/> so far: one per door plan that reached its
+        /// door. They are not refresh searches, so they are counted apart from <see cref="Searches"/>.
+        /// </summary>
+        public int LockoutChecks { get; private set; }
 
         /// <summary>
         /// Brings the results up to date for game time <paramref name="now"/>. Cheap when nothing
@@ -225,6 +231,41 @@ namespace ToyFactory.AI.Agents.Saboteur
 
             cells = null;
             return false;
+        }
+
+        /// <summary>
+        /// True when closing door <paramref name="doorId"/> right now would leave the player no route to
+        /// the objective. Unlike <see cref="TryGet"/> this searches fresh against the grid as it is at
+        /// this moment, so a door another Saboteur has just shut is already counted. The brain asks it
+        /// once, just before it sends the close request: two doors that are each safe alone can be
+        /// together a lockout (the two entrances of one room), and the cache's results can be half a
+        /// second old. A door with no known cells, or no player, objective or route to compare, is not
+        /// a lockout. The grid is never changed.
+        /// </summary>
+        public bool WouldLockPlayerOut(WorldBlackboard world, int doorId)
+        {
+            if (world == null)
+                throw new ArgumentNullException(nameof(world));
+            if (!TryGetCells(doorId, out IReadOnlyList<Vector2Int> cells) || cells.Count == 0)
+                return false;
+
+            PlayerSnapshot player = world.Player;
+            if (!player.IsKnown || !player.IsAlive)
+                return false;
+            if (!Snap(player.Cell, out Vector2Int start) || !TryPickObjective(world, start, out Vector2Int objective)
+                || !Snap(objective, out Vector2Int goal) || start == goal)
+                return false;
+
+            using (Marker.Auto())
+            {
+                LockoutChecks++;
+                _closure.SetClosed(cells);
+                PathResult result = _pathfinder.FindPath(start, goal, _closure);
+                bool lockout = !result.Found || result.Cells == null
+                    || float.IsInfinity(DoorClosureCostModel.PathCost(result.Cells, _closure));
+                _closure.Clear();
+                return lockout;
+            }
         }
 
         /// <summary>
