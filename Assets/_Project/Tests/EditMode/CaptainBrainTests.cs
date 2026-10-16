@@ -249,7 +249,7 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void PlayerInViewWithinTenMetresIsEngagedOneShotPerInterval()
+        public void PlayerInViewIsEngagedOneShotPerInterval()
         {
             CaptainBrain brain = Captain();
             Vector2Int captain = new Vector2Int(22, 3);
@@ -267,37 +267,71 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual(AgentAction.Shoot, next.Action);
         }
 
+        // A long open hall, 25 m (50 cells) by 2.5 m, for the vision ranges. The Captain stands
+        // at the east end facing west; the player is somewhere down the hall.
+        static readonly Vector2Int HallCaptain = new Vector2Int(47, 3);
+
+        CaptainBrain HallBrain(out GridGraph hall)
+        {
+            hall = new GridGraph(50, 7, Vector3.zero);
+            for (int x = 0; x < 50; x++)
+            {
+                hall.SetWalkable(new Vector2Int(x, 0), false);
+                hall.SetWalkable(new Vector2Int(x, 6), false);
+            }
+            return new CaptainBrain(hall, new AStarSearch(hall), _world, startAwake: true);
+        }
+
+        AgentIntent HallTick(CaptainBrain brain, GridGraph hall, float time) =>
+            brain.Tick(new AgentContext(HallCaptain, hall.CellToWorld(HallCaptain), Vector3.left, time, _world, default(SensorSnapshot)));
+
+        void PlaceHallPlayer(GridGraph hall, Vector2Int cell) =>
+            _world.SetPlayer(new PlayerSnapshot(true, cell, hall.CellToWorld(cell), Vector3.zero, Vector3.right,
+                5f, true, 1f, 1f, false, 0f, -1f));
+
+        [Test]
+        public void APlayerInViewAcrossALongRoomIsEngaged()
+        {
+            // At 17 m in plain view: it used to watch a player this far away (the fight started
+            // at 10 m) although its cannon reaches 20 m.
+            CaptainBrain brain = HallBrain(out GridGraph hall);
+            PlaceHallPlayer(hall, new Vector2Int(13, 3));   // 34 cells west: 17 m
+            AgentIntent intent = HallTick(brain, hall, 0f);
+            Assert.AreEqual("Engage", brain.StateName);
+            Assert.AreEqual(AgentAction.Shoot, intent.Action);
+        }
+
         [Test]
         public void PlayerOutOfRangeOrBehindAWallIsNotEngaged()
         {
-            CaptainBrain brain = Captain();
-            PlacePlayer(new Vector2Int(5, 3));   // 11 m west, down the open corridor row
-            Tick(brain, new Vector2Int(27, 3), 0f, Vector3.left);
-            Assert.AreNotEqual("Engage", brain.StateName);
+            CaptainBrain hallBrain = HallBrain(out GridGraph hall);
+            PlaceHallPlayer(hall, new Vector2Int(8, 3));   // 39 cells west: 19.5 m, past the 18 m range
+            HallTick(hallBrain, hall, 0f);
+            Assert.AreNotEqual("Engage", hallBrain.StateName);
 
+            CaptainBrain brain = Captain();
             PlacePlayer(new Vector2Int(18, 1));   // 2 m away but behind the wall between rooms
             Tick(brain, new Vector2Int(22, 1), 0.5f, Vector3.left);
             Assert.AreNotEqual("Engage", brain.StateName);
         }
 
         [Test]
-        public void SteppingInAndOutOfTenMetresDoesNotFlipTheFight()
+        public void SteppingInAndOutOfEighteenMetresDoesNotFlipTheFight()
         {
-            // The old rule left Engage after 0.7 s beyond 10 m, so this walk switched it on and
-            // off. Contact out to 14 m keeps the fight going.
-            CaptainBrain brain = Captain();
-            Vector2Int captain = new Vector2Int(27, 3);
-            Vector2Int near = new Vector2Int(8, 3);   // 9.5 m west, down the open row
-            Vector2Int far = new Vector2Int(5, 3);    // 11 m
-            PlacePlayer(near);
-            Tick(brain, captain, 0f, Vector3.left);
+            // A fight that ended at the range it started at switched on and off as the player
+            // walked along its edge. Contact out to 20 m keeps it going.
+            CaptainBrain brain = HallBrain(out GridGraph hall);
+            Vector2Int near = new Vector2Int(12, 3);   // 17.5 m west, down the hall
+            Vector2Int far = new Vector2Int(8, 3);     // 19.5 m
+            PlaceHallPlayer(hall, near);
+            HallTick(brain, hall, 0f);
             Assert.AreEqual("Engage", brain.StateName);
 
             for (float t = 0.25f; t < 6f; t += 0.25f)
             {
                 // About 1 s out, 0.25 s in, over and over.
-                PlacePlayer(t % 1.25f < 1f ? far : near);
-                Tick(brain, captain, t, Vector3.left);
+                PlaceHallPlayer(hall, t % 1.25f < 1f ? far : near);
+                HallTick(brain, hall, t);
                 Assert.AreEqual("Engage", brain.StateName, $"t = {t}");
             }
         }

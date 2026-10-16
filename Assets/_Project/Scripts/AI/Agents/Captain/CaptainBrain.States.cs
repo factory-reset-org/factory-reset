@@ -174,8 +174,8 @@ namespace ToyFactory.AI.Agents.Captain
         /// <summary>
         /// A fight: stands, faces the player and asks for a shot every 1.2 s while in contact.
         /// The body's weapon aims for 0.3 s (the telegraph) before each shot, so the player can
-        /// react. Starts when the player is seen within 10 m and lasts at least 2 s; contact
-        /// (line of sight within 14 m) keeps it going, so stepping in and out of 10 m does not
+        /// react. Starts when the player is seen within 18 m and lasts at least 2 s; contact
+        /// (line of sight within 20 m) keeps it going, so stepping in and out of 18 m does not
         /// switch it on and off.
         /// </summary>
         sealed class EngageState : CaptainState

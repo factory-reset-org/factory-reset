@@ -208,18 +208,21 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void PushedOffItsAmbushCellTheCaptainPlansAgain()
         {
+            // The player waits in a pen behind a wall at x = 10 (open only at its north end), out
+            // of sight: one goal, so the Captain is sure at once and holds the pen's opening. In
+            // the open it would see them within its 18 m fight range and fight instead of waiting.
             GridGraph grid = Room(100, 60);
+            for (int y = 1; y <= 50; y++)
+                grid.SetWalkable(new Vector2Int(10, y), false);
             WorldBlackboard world = World(new ObjectiveTarget(1, new Vector2Int(95, 30), ObjectiveTargetKind.Task));
             CaptainBrain brain = Captain(grid, world);
             var body = new Body(grid, new Vector2Int(45, 55));
             Vector3 player = grid.CellToWorld(new Vector2Int(5, 30));
-            Vector3 toGoal = (grid.CellToWorld(new Vector2Int(95, 30)) - player).normalized * 1.5f;
 
             float t = 0f;
             for (; t < 15f && brain.StateName != "Ambush"; t += Dt)
             {
-                player += toGoal * Dt;
-                PlacePlayer(world, grid, player, toGoal);
+                PlacePlayer(world, grid, player, Vector3.zero);
                 body.Tick(brain, world, t);
             }
             Assert.AreEqual("Ambush", brain.StateName);
@@ -228,8 +231,7 @@ namespace ToyFactory.Tests.EditMode
             bool replanned = false;
             for (float end = t + 1.5f; t < end && !replanned; t += Dt)
             {
-                player += toGoal * Dt;
-                PlacePlayer(world, grid, player, toGoal);
+                PlacePlayer(world, grid, player, Vector3.zero);
                 body.Tick(brain, world, t);
                 replanned = brain.StateName != "Ambush";
             }
@@ -344,6 +346,16 @@ namespace ToyFactory.Tests.EditMode
 
         // Three goals of one kind: a player standing still is equally likely to want each, so
         // the Captain is never confident (1/3 each).
+        // A player hiding in the south-east corner: a wall along row 15 from x = 60 to 90 hides
+        // them from the room (the Captain's contact range, 20 m, would otherwise reach them from
+        // its routes), with an opening at the east end, so the core at (90, 50) stays the
+        // nearest goal to them on foot.
+        static void HidingCorner(GridGraph grid)
+        {
+            for (int x = 60; x <= 90; x++)
+                grid.SetWalkable(new Vector2Int(x, 15), false);
+        }
+
         static WorldBlackboard ThreeTasks() => World(
             new ObjectiveTarget(1, new Vector2Int(10, 50), ObjectiveTargetKind.Task),
             new ObjectiveTarget(2, new Vector2Int(90, 50), ObjectiveTargetKind.Task),
@@ -358,7 +370,7 @@ namespace ToyFactory.Tests.EditMode
             WorldBlackboard world = ThreeTasks();
             CaptainBrain brain = Captain(grid, world);
             var body = new Body(grid, new Vector2Int(50, 45));
-            Vector3 player = grid.CellToWorld(new Vector2Int(50, 5));   // 20 m away: no contact
+            Vector3 player = grid.CellToWorld(new Vector2Int(50, 1));   // 22 m away: beyond the 20 m contact range
 
             float t = 0f;
             for (; t < 2.5f; t += Dt)
@@ -395,10 +407,11 @@ namespace ToyFactory.Tests.EditMode
             // the first goal in the list wherever the player was. Here the player hides in the
             // east, nearest goal 2 (the second in the list).
             GridGraph grid = Room(100, 60);
+            HidingCorner(grid);
             WorldBlackboard world = ThreeTasks();
             CaptainBrain brain = Captain(grid, world);
             var body = new Body(grid, new Vector2Int(10, 10));
-            Vector3 player = grid.CellToWorld(new Vector2Int(85, 5));   // over 14 m from the Captain's routes: never in contact
+            Vector3 player = grid.CellToWorld(new Vector2Int(85, 5));   // behind the corner's wall: never in contact
 
             for (float t = 0f; t < 20f && brain.StateName != "Ambush"; t += Dt)
             {
@@ -451,6 +464,7 @@ namespace ToyFactory.Tests.EditMode
             // The first decision after the reboot runs before the machine leaves the old state;
             // it used to see the old guard as still held and keep it, whatever had changed.
             GridGraph grid = Room(100, 60);
+            HidingCorner(grid);
             WorldBlackboard world = ThreeTasks();
             CaptainBrain brain = Captain(grid, world);
             var body = new Body(grid, new Vector2Int(10, 10));
@@ -469,13 +483,13 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void WhileThePlayerIsInContactAnUnsureCaptainOnlyWatches()
         {
-            // 12 m away in the open: in contact (line of sight within 14 m) but not close enough
-            // to fight. There is something to watch, so no guarding.
+            // 19 m away in the open: in contact (line of sight within 20 m) but beyond the 18 m
+            // fight range. There is something to watch, so no guarding.
             GridGraph grid = Room(100, 60);
             WorldBlackboard world = ThreeTasks();
             CaptainBrain brain = Captain(grid, world);
             var body = new Body(grid, new Vector2Int(50, 30));
-            Vector3 player = grid.CellToWorld(new Vector2Int(26, 30));
+            Vector3 player = grid.CellToWorld(new Vector2Int(12, 30));
 
             for (float t = 0f; t < 8f; t += Dt)
             {

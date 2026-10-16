@@ -135,18 +135,19 @@ namespace ToyFactory.Tests
             Assert.AreEqual(1, counting);
         }
 
-        // Three rooms joined by doorways at x = 10 and 20 (as in CaptainBrainTests).
+        // Three rooms joined by doorways at x = 10 and 20 (as in CaptainBrainTests), the last
+        // one long enough to keep the player beyond the Captain's 20 m reach.
         static GridGraph ThreeRooms()
         {
             string[] rows =
             {
-                "##############################",
-                "#.........#.........#........#",
-                "#.........#.........#........#",
-                "#............................#",
-                "#.........#.........#........#",
-                "#.........#.........#........#",
-                "##############################",
+                "##################################################",
+                "#.........#.........#............................#",
+                "#.........#.........#............................#",
+                "#................................................#",
+                "#.........#.........#............................#",
+                "#.........#.........#............................#",
+                "##################################################",
             };
             var grid = new GridGraph(rows[0].Length, rows.Length, Vector3.zero);
             for (int y = 0; y < rows.Length; y++)
@@ -163,13 +164,13 @@ namespace ToyFactory.Tests
             var world = new WorldBlackboard();
             world.SetObjectiveTargets(new[]
             {
-                new ObjectiveTarget(1, new Vector2Int(27, 3), ObjectiveTargetKind.Task),
+                new ObjectiveTarget(1, new Vector2Int(47, 3), ObjectiveTargetKind.Task),
                 new ObjectiveTarget(2, new Vector2Int(2, 3), ObjectiveTargetKind.Task),
             });
             var brain = new CaptainBrain(grid, new AStarSearch(grid), world, startAwake: true);
-            // More than 10 m from the player: it watches them (it turns to its look target)
-            // but does not start a fight, so the overlay still shows the intercept.
-            AgentController captain = Agent(AgentType.Captain, brain, grid.CellToWorld(new Vector2Int(28, 3)), grid, world);
+            // More than 20 m from the player: beyond its fight range, so it does not start a
+            // fight and the overlay still shows the intercept.
+            AgentController captain = Agent(AgentType.Captain, brain, grid.CellToWorld(new Vector2Int(48, 3)), grid, world);
             AgentDebugOverlay overlay = Overlay();
 
             // The player walks east towards goal 1, one decision apart.
