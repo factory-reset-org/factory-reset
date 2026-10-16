@@ -5,18 +5,18 @@ using UnityEngine.Rendering;
 namespace ToyFactory.Player
 {
     /// <summary>
-    /// The player's own body, seen from inside: Unit 047's legs and feet when the player looks down.
+    /// The player's shadow: Unit 047's model under the player, never drawn for the camera, so the
+    /// player has a shadow on the floor and walls and the view is never blocked by the player's own body.
     /// </summary>
     /// <remarks>
-    /// <para>The legs are Unit 047's model, made once at start under the player. Every part is set to
-    /// cast shadows only, so the camera never sees the torso, head or arms from inside them, and the
-    /// body still has a shadow. The legs and feet are drawn only while the player looks well down,
-    /// the way a shooter shows its legs, and swing along the way the player is moving, with the foot
-    /// kept flat and lifted. The colliders are removed so it cannot touch physics.</para>
+    /// Every part of the model is set to cast shadows only. Its colliders are removed so it cannot touch
+    /// physics, and its legs swing along the way the player moves, so the shadow walks. The legs were
+    /// once drawn when the player looked down; from the camera they were two detached blobs, so they
+    /// are not.
     /// </remarks>
     public sealed class PlayerBody : MonoBehaviour
     {
-        [Tooltip("The model whose legs are used: Unit 047.")]
+        [Tooltip("The model that casts the shadow: Unit 047.")]
         [SerializeField] GameObject modelPrefab;
 
         [Header("Legs")]
@@ -26,11 +26,8 @@ namespace ToyFactory.Player
         [Tooltip("Leg swing cycles per metre walked.")]
         [SerializeField, Min(0.1f)] float cyclesPerMetre = 0.45f;
 
-        [Tooltip("How far behind the camera the body stands, so the knees are not in the view.")]
+        [Tooltip("How far behind the camera the shadow body stands.")]
         [SerializeField, Min(0f)] float bodyBackOffset = 0.12f;
-
-        [Tooltip("The legs are drawn once the player looks down further than this, in degrees. They go again a little above it.")]
-        [SerializeField, Range(10f, 80f)] float showLegsBelowDegrees = 38f;
 
         [Tooltip("How high a foot lifts at the top of a step, in metres.")]
         [SerializeField, Min(0f)] float footLift = 0.06f;
@@ -43,9 +40,6 @@ namespace ToyFactory.Player
         Vector3 _stepAxis = Vector3.right;
         float _stride;
         float _phase;
-        Renderer[] _lowerBody;
-        bool _legsShown;
-        Transform _pivot;
 
         void Start()
         {
@@ -59,23 +53,16 @@ namespace ToyFactory.Player
         void BuildBody()
         {
             GameObject body = Instantiate(modelPrefab, transform);
-            body.name = "Body (own legs)";
+            body.name = "Body (shadow)";
             body.transform.localPosition = new Vector3(0f, 0f, -bodyBackOffset);
             body.transform.localRotation = Quaternion.identity;
 
             foreach (Collider c in body.GetComponentsInChildren<Collider>(true))
                 Destroy(c);
 
-            var lower = new System.Collections.Generic.List<Renderer>();
             foreach (Renderer r in body.GetComponentsInChildren<Renderer>(true))
-            {
                 r.shadowCastingMode = ShadowCastingMode.ShadowsOnly;
-                if (IsLowerBody(r.name))
-                    lower.Add(r);
-            }
 
-            _lowerBody = lower.ToArray();
-            _pivot = transform.Find("CameraPivot");
             _legL = FindDeep(body.transform, "Leg_L_Pivot");
             _legR = FindDeep(body.transform, "Leg_R_Pivot");
             if (_legL != null)
@@ -83,11 +70,6 @@ namespace ToyFactory.Player
             if (_legR != null)
                 _legRBase = _legR.localPosition;
         }
-
-        // The pelvis stays out of the view: from above it is a big dark block in the middle of the screen.
-        static bool IsLowerBody(string partName) =>
-            partName.StartsWith("Leg_", StringComparison.Ordinal)
-            || partName.StartsWith("Foot_", StringComparison.Ordinal);
 
         static Transform FindDeep(Transform root, string name)
         {
@@ -111,8 +93,6 @@ namespace ToyFactory.Player
         {
             if (_legL == null || _legR == null || _controller == null)
                 return;
-
-            ShowLegsWhenLookingDown();
 
             Vector3 v = _controller.velocity;
             v.y = 0f;
@@ -146,24 +126,6 @@ namespace ToyFactory.Player
             Transform foot = leg.childCount > 0 ? leg.GetChild(0) : null;
             if (foot != null && foot.name.StartsWith("Foot_", StringComparison.Ordinal))
                 foot.localRotation = Quaternion.AngleAxis(-swing * 0.6f, _stepAxis);
-        }
-
-        // Drawn only when the player looks down past the threshold, with a small gap so it does not
-        // flicker at the edge.
-        void ShowLegsWhenLookingDown()
-        {
-            if (_lowerBody == null || _pivot == null)
-                return;
-
-            float pitch = Mathf.DeltaAngle(0f, _pivot.localEulerAngles.x);
-            bool show = _legsShown ? pitch > showLegsBelowDegrees - 6f : pitch > showLegsBelowDegrees;
-            if (show == _legsShown)
-                return;
-
-            _legsShown = show;
-            ShadowCastingMode mode = show ? ShadowCastingMode.On : ShadowCastingMode.ShadowsOnly;
-            for (int i = 0; i < _lowerBody.Length; i++)
-                _lowerBody[i].shadowCastingMode = mode;
         }
     }
 }
