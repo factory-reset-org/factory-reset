@@ -64,57 +64,55 @@ namespace ToyFactory.Tests
             yield return Until(() => GameClock.Current.State == GameState.Playing, 10f, "Playing");
         }
 
-        // The parts of the body that the camera draws: a part cast as shadow only is not drawn.
-        static string DrawnParts(Transform body)
-        {
-            var names = new System.Collections.Generic.List<string>();
-            foreach (Renderer r in body.GetComponentsInChildren<Renderer>(true))
-            {
-                if (r.shadowCastingMode != ShadowCastingMode.ShadowsOnly)
-                    names.Add(r.name);
-            }
-            names.Sort();
-            return string.Join(",", names);
-        }
-
         [UnityTest]
-        public IEnumerator OnlyTheLegsAndFeetAreDrawn_AheadOfThePlayer_AndOnlyInViewWhenLookingDown()
+        public IEnumerator TheBodyIsOnlyAShadow_AndTheArmsHoldTheGunOnTheViewModelLayer()
         {
             yield return LoadLevelAndStart();
             Transform player = ((Component)PlayerState.Current).transform;
 
+            // The shadow body: the whole model, never drawn for the camera.
             Transform body = player.Find("Body");
-            Assert.IsNotNull(body, "the player has Unit 047's body");
+            Assert.IsNotNull(body, "the player has Unit 047's body for a shadow");
             Assert.AreEqual(0, body.GetComponentsInChildren<Collider>(true).Length, "the body cannot touch physics");
-            Assert.Greater(body.GetComponentsInChildren<Renderer>(true).Length, 15, "it is the whole model, as a shadow");
-            Assert.AreEqual("Foot_L,Foot_R,Leg_L,Leg_R", DrawnParts(body), "only the legs and feet are drawn, not the hips, chest or head");
-            Assert.Greater(body.localPosition.z, 0.1f, "the legs stand ahead of the camera, so they come into view when looking down");
+            Assert.Greater(body.GetComponentsInChildren<Renderer>(true).Length, 15, "it is the whole model");
+            foreach (Renderer r in body.GetComponentsInChildren<Renderer>(true))
+                Assert.AreEqual(ShadowCastingMode.ShadowsOnly, r.shadowCastingMode, r.name + " casts a shadow and is not drawn");
 
-            Camera camera = player.GetComponentInChildren<Camera>();
-            Transform foot = null;
-            foreach (Transform t in body.GetComponentsInChildren<Transform>(true))
+            // The arms: a copy under the gun, on the overlay camera's layer, only the arms and hands drawn.
+            Transform arms = player.Find("CameraPivot/Camera/BlasterViewModel/Model/Arms");
+            Assert.IsNotNull(arms, "the player's arms are under the first-person gun");
+            Assert.AreEqual(0, arms.GetComponentsInChildren<Collider>(true).Length, "the arms cannot touch physics");
+            Assert.AreEqual(0, arms.GetComponentsInChildren<MonoBehaviour>(true).Length, "the model's own motion scripts are not on the arms");
+
+            int viewLayer = LayerMask.NameToLayer("ViewModel");
+            var drawn = new System.Collections.Generic.List<string>();
+            foreach (Renderer r in arms.GetComponentsInChildren<Renderer>(true))
             {
-                if (t.name == "Foot_L")
-                    foot = t;
+                Assert.AreEqual(viewLayer, r.gameObject.layer, r.name + " is on the ViewModel layer");
+                if (r.enabled)
+                {
+                    drawn.Add(r.name);
+                    Assert.IsFalse(r.forceRenderingOff, r.name + " is shown while playing, with the gun");
+                }
             }
-            Assert.IsNotNull(foot);
 
-            // The controller sets the camera's pitch from its own field every frame, so that is what is set.
-            Component controller = player.GetComponent("PlayerController");
-            FieldInfo pitch = controller.GetType().GetField("_pitch", BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.IsNotNull(pitch, "the controller keeps its pitch in _pitch");
+            drawn.Sort();
+            Assert.AreEqual("Arm_L,Arm_R,Hand_L,Hand_R,ShoulderBall_L,ShoulderBall_R", string.Join(",", drawn),
+                "only the arms, hands and shoulders are drawn, not the model's head, chest, legs or its own gun");
 
-            pitch.SetValue(controller, 10f);
-            yield return null;
-            yield return null;
-            Vector3 view = camera.WorldToViewportPoint(foot.position);
-            Assert.IsTrue(view.y < 0f || view.z < 0f, "looking ahead, the feet are below the screen: " + view);
-
-            pitch.SetValue(controller, 70f);
-            yield return null;
-            yield return null;
-            view = camera.WorldToViewportPoint(foot.position);
-            Assert.IsTrue(view.z > 0f && view.x > 0f && view.x < 1f && view.y > 0f && view.y < 1f, "looking well down, a foot is on the screen: " + view);
+            // The arms are laid over the gun: the model's gun, hidden, sits where the first-person gun is.
+            Renderer gun = player.Find("CameraPivot/Camera/BlasterViewModel/Model/BlasterModel").GetComponent<Renderer>();
+            Bounds modelGun = default;
+            bool first = true;
+            foreach (Renderer r in arms.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r.name != "Blaster_Body" && r.name != "Blaster_Barrel")
+                    continue;
+                if (first) { modelGun = r.bounds; first = false; }
+                else modelGun.Encapsulate(r.bounds);
+            }
+            Assert.IsFalse(first, "the model has its own gun parts to line up with");
+            Assert.Less(Vector3.Distance(modelGun.center, gun.bounds.center), 0.03f, "the model's gun sits on the first-person gun");
         }
 
         [UnityTest]
