@@ -109,7 +109,7 @@ Level grid with the prototype rooms (`Env.unity`, 83 x 83 cells of 0.5 m, 4,963 
 | --- | --- | --- | --- | --- |
 | Tracker (S1) | 0.011 | 0.020 | 0.082 | 0 |
 | Guard (S2) | 0.071 | 3.052 | 11.790 | 83 |
-| Saboteur x4 (S3, placeholder brain) | 0.002 | 0.004 | 0.047 | 0 |
+| Saboteur x4 (S3, placeholder brain; the real brain is measured in the 2026-10-16 re-run below) | 0.002 | 0.004 | 0.047 | 0 |
 | Captain (S4) | 0.095 | 4.967 | 14.007 | 67 |
 
 | Search marker | Avg ms / frame | Worst | Frames over 1 ms |
@@ -211,6 +211,42 @@ The last three rows are from one editor session; the first is the earlier sessio
 - **The worst frames are unchanged, as predicted:** they are single Guard route searches (the Guard's worst tick was 2.9 to 7.7 ms) that are longer than the whole budget on their own. Only splitting the Guard's search over several ticks (S2's brain) would cut those.
 - **The cost is small:** 85 and 121 decisions in about 3,000 frames waited one frame (under 4%), always within the 2-frame limit, and the frame rate is the same.
 - **Variance:** a single earlier run that day with the scheduler on gave p99 2.007 ms and a worst frame of 11.3 ms (the Guard's tick). Run-to-run differences come mostly from when the Guard searches, so compare runs within one session, as here. Editor timings, one machine.
+
+### Re-run with the real Saboteur brain (S3, 2026-10-16)
+
+The 2026-10-09 stress table above was taken when the Saboteurs ran a placeholder brain (0.002 ms a frame), so it said nothing about the squad. This is the same test, `Test_FourAgentsStress`, on `develop` at `cf1fabd`: all six Saboteur actions (Attack with the chase, CloseDoor, Flee, ArmTrap, StealBattery and Idle), the shared `DetourCache`, the Guard and Captain fixes, the path request scheduler (2 ms brain budget), and Chapter 4 with every door open, so a Saboteur can close doors. Two runs, 30 s each after a 3 s warm-up.
+
+**Machine and method.** AMD Ryzen 7 5800H (16 threads), 27.9 GB, Windows 11, Unity 6000.6.2f1, Mono. Run in batch mode with `-nographics` on a copy of the project, so **nothing is rendered**: the frame times below leave out rendering and are not comparable with the 2026-10-09 frame times (an Editor window with graphics). The per-brain times are `ProfilerRecorder` readings of the `AI.Brain.Tick.*` markers and are comparable. The test passed in both runs (the Captain's p99 check is the only hard one).
+
+| Date | Build | Avg FPS | Frame ms (avg / p99 / worst) | AI ms / frame (avg / p99 / worst) | Frames over 2 ms (AI total) | GC allocated in frame, everything (avg / p99) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-16, run 1 | Editor (Mono, no graphics), 12,390 frames | 413.0 | 2.42 / 4.66 / 15.60 | 0.050 / 0.141 / 3.149 | 16 | 2.18 KB / 2.23 KB |
+| 2026-10-16, run 2 | Editor (Mono, no graphics), 13,890 frames | 463.0 | 2.16 / 3.63 / 13.09 | 0.042 / 0.110 / 3.731 | 16 | 2.15 KB / 2.23 KB |
+
+**By brain** (scheduler on, run 1 / run 2):
+
+| Brain | Avg ms / frame | p99 | Worst | Frames over 1 ms |
+| --- | --- | --- | --- | --- |
+| Tracker (S1) | 0.015 / 0.013 | 0.032 / 0.026 | 0.480 / 0.310 | 0 / 0 |
+| Guard (S2) | 0.008 / 0.007 | 0.018 / 0.015 | 0.287 / 0.209 | 0 / 0 |
+| **Saboteur x4 (S3, real brain)** | **0.013 / 0.011** | **0.054 / 0.046** | **2.766 / 3.712** | **16 / 15** |
+| Captain (S4) | 0.014 / 0.011 | 0.032 / 0.022 | 3.091 / 2.229 | 7 / 7 |
+
+| Search marker (run 1 / run 2) | Avg ms / frame | Worst | Frames over 1 ms |
+| --- | --- | --- | --- |
+| `AI.AStarSearch.FindPath` | 0.003 / 0.003 | 2.648 / 2.510 | 14 / 14 |
+| `AI.DijkstraField.Compute` | 0.0001 / 0.0001 | 0.133 / 0.126 | 0 / 0 |
+| `AI.OneToOneCost.Compute` | 0.0005 / 0.0004 | 0.519 / 0.516 | 0 / 0 |
+
+With the scheduler off (the comparison run in the same session): Saboteurs avg 0.011 / 0.015, p99 0.049 / 0.051, worst 2.311 / 6.217 ms, frames over 1 ms 18 / 23; `FindPath` worst 2.216 / 6.048 ms. With it on, 31 and 36 brain decisions were deferred to a later frame.
+
+**What it shows:**
+- **On average the squad is cheap:** 0.011 to 0.013 ms a frame for all four Saboteurs, under 0.1% of a 16.7 ms frame, and the whole AI (seven agents) averages 0.042 to 0.050 ms. At p99 the Saboteurs cost 0.046 to 0.054 ms and the whole AI 0.11 to 0.14 ms, far under the 2 ms budget.
+- **But about 0.1% of frames (15 or 16 of 12,390 and 13,890) go over 1 ms in the Saboteur brains, up to 2.8 and 3.7 ms.** That is over the 2 ms search budget on those frames. The slow frames line up with `AStarSearch.FindPath` (14 frames over 1 ms, worst 2.5 to 2.6 ms), which fits one closed-door search in the detour cache on this 83 x 83 grid, already measured at about 2.5 ms in the squad scenario above. The test does not break the Saboteur frames down by cause, so this is the likely cause, not a proven one.
+- **The refresh is already spread** (one search per call), so no tick pays for more than one search. Going lower needs a pausable A* from S2; it is not changed here.
+- **The whole-AI total went over 2 ms in 16 frames in each run** (about 0.1% of frames, worst 3.1 and 3.7 ms), split between the Saboteurs and the Captain (7 frames over 1 ms each run), so neither is alone.
+- **Compared with 2026-10-09** the whole-AI p99 fell from 5.191 to 0.110 to 0.141 ms and the average from 0.179 to 0.042 to 0.050 ms. That is mostly the Guard and Captain fixes in this log, not the Saboteur change (the Saboteurs went from a placeholder to the real brain and cost slightly more).
+- **Limits:** two runs on one machine; Editor timings with Mono and no rendering, so frame times are not what a player sees (the Windows build measurements belong to the final playthroughs); the GC figure is everything in the frame, about 2.2 KB every frame, and is not attributed to the Saboteurs (their own allocation is not measured separately); the player is walked on a loop at 4 m/s and kept alive, so a hurt player, a fight and an actual door closing are not exercised here.
 
 ## Captain prediction and intercept in the real level (S4, 2026-10-10)
 
