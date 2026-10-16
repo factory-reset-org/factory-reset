@@ -97,17 +97,6 @@ namespace ToyFactory.Interaction
                 return;
 
             _rb.linearVelocity = direction * slideSpeed;
-            ShowImpact(direction);
-        }
-
-        // A puff of sparks and a word where the hand met the box, on the side facing the player.
-        void ShowImpact(Vector3 direction)
-        {
-            Vector3 centre = _collider != null ? _collider.bounds.center : transform.position;
-            float reach = _collider != null ? _collider.bounds.extents.x : 0.5f;
-            Vector3 contact = centre - direction * reach;
-            PropEffects.Spark(contact, new Color(1f, 0.92f, 0.65f));
-            PropEffects.Word("shove", contact + Vector3.up * 0.7f, 0.7f);
         }
 
         // True if the box can move a little way along direction: nothing solid in its way. Shrunk a

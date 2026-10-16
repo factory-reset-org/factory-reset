@@ -329,7 +329,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Player.PlayerBody
   modelPrefab: {fileID: 3129044021387983766, guid: 2ac2a448e1f36664d86fdaa86ebd827d, type: 3}
-  viewCamera: {fileID: 4922832602558203308}
   legSwingDegrees: 28
   cyclesPerMetre: 0.45
   bodyBackOffset: 0.12
