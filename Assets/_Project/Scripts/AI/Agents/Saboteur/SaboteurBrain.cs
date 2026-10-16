@@ -43,6 +43,17 @@ namespace ToyFactory.AI.Agents.Saboteur
         public const float FactTimeoutSeconds = 3f;
 
         /// <summary>
+        /// Game seconds a Saboteur walking to a door, trap or battery may go without getting
+        /// <see cref="TravelProgressMetres"/> closer before its route is sent again; stuck again for as long, and
+        /// it gives the target up. Shoved aside, carried off, teleported or wedged against something the grid
+        /// does not know about, it would otherwise hold its claim and keep "walking" for ever.
+        /// </summary>
+        public const float TravelStuckSeconds = 4f;
+
+        /// <summary>Metres closer to the target that count as progress for <see cref="TravelStuckSeconds"/>.</summary>
+        public const float TravelProgressMetres = 0.5f;
+
+        /// <summary>
         /// Seconds between two claw swipes while attacking: the swipe interval on the Saboteur
         /// prefab (<c>AgentClawSwipe</c>, 1.2 s start to start), so a request never lands on a swipe
         /// that is still playing.
@@ -87,6 +98,13 @@ namespace ToyFactory.AI.Agents.Saboteur
         public const int PatrolSnapRadius = 2;
 
         /// <summary>
+        /// How far, in cells, the Saboteur's own cell may be snapped to a free one when it plans a route. The
+        /// controller passes the cell under the body, which can be a blocked cell: against a wall, a box or a
+        /// corner it was wedged into. Without this it could plan nothing and would hold there for ever.
+        /// </summary>
+        public const int StartSnapRadius = 4;
+
+        /// <summary>
         /// Ground-plane distance, in metres, at which the last waypoint counts as reached.
         /// The body stops within 0.3 m of it, so a slightly larger radius never misses it.
         /// </summary>
@@ -100,6 +118,38 @@ namespace ToyFactory.AI.Agents.Saboteur
         public const int DropSearchRadius = 8;
 
         static readonly ActionKey IdleKey = new ActionKey(SaboteurActionKind.Idle);
+
+        enum TravelCheck { Fine, SendAgain, GiveUp }
+
+        // Watches a walk to a target for progress, in game time, so a pause never counts as being stuck.
+        struct TravelWatch
+        {
+            bool _started;
+            bool _sentAgain;
+            float _best;
+            float _improvedAt;
+
+            public TravelCheck Check(float distance, float now)
+            {
+                if (!_started || distance <= _best - TravelProgressMetres + 0.001f)
+                {
+                    _started = true;
+                    _best = distance;
+                    _improvedAt = now;
+                    return TravelCheck.Fine;
+                }
+
+                if (now - _improvedAt < TravelStuckSeconds)
+                    return TravelCheck.Fine;
+                if (_sentAgain)
+                    return TravelCheck.GiveUp;
+
+                _sentAgain = true;
+                _best = distance;
+                _improvedAt = now;
+                return TravelCheck.SendAgain;
+            }
+        }
 
         readonly SaboteurIdentity _identity;
         readonly GridGraph _grid;
@@ -138,6 +188,7 @@ namespace ToyFactory.AI.Agents.Saboteur
         bool _doorInReach;
         float _doorReachedAt;
         List<Vector2Int> _doorRoute;
+        TravelWatch _doorTravel;
 
         // ArmTrap and StealBattery: the plan for the selected trap or battery, one at a time like a door.
         // Travel sends one route, then the Saboteur stops within reach and asks until the runtime answers.
@@ -148,6 +199,7 @@ namespace ToyFactory.AI.Agents.Saboteur
         float _factReachedAt;
         ActionKey _factKey;
         List<Vector2Int> _factRoute;
+        TravelWatch _factTravel;
 
         // AttackPlayer: whether an attack is under way (so the patrol is routed again afterwards),
         // whether the body has been stopped inside melee reach, the chase route toward the player
@@ -689,6 +741,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             _doorEmitted = false;
             _doorInReach = false;
             _doorRoute = null;
+            _doorTravel = default;
         }
 
         // Carries out the selected CloseDoor: walk to the door, stop within reach and ask the runtime
@@ -749,6 +802,15 @@ namespace ToyFactory.AI.Agents.Saboteur
 
             if (nearestSqr <= DoorReachMetres * DoorReachMetres)
             {
+                // The last look before the door shuts. The score came from a cache up to half a second old and
+                // judged this door alone; another Saboteur may have shut the room's other entrance since.
+                // A door that would now leave the player no route is given up (with the failure cooldown).
+                if (!_doorInReach && ctx.World != null && _detours.WouldLockPlayerOut(ctx.World, key.TargetId))
+                {
+                    EndDoorPlan(key, ctx.Time, false, true);
+                    return false;
+                }
+
                 List<Vector3> stop = null;
                 if (!_doorInReach)
                 {
@@ -786,8 +848,20 @@ namespace ToyFactory.AI.Agents.Saboteur
                     return false;
                 }
 
-                intent = Keep("CloseDoor");
-                return true;
+                TravelCheck progress = _doorTravel.Check(Mathf.Sqrt(nearestSqr), ctx.Time);
+                if (progress == TravelCheck.GiveUp)
+                {
+                    EndDoorPlan(key, ctx.Time, false, true);
+                    return false;
+                }
+
+                if (progress == TravelCheck.Fine)
+                {
+                    intent = Keep("CloseDoor");
+                    return true;
+                }
+
+                _doorRouteSent = false;   // no progress: search again from where the body is now
             }
 
             Vector2Int target = cells[0];
@@ -821,6 +895,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             _factRouteSent = false;
             _factInReach = false;
             _factRoute = null;
+            _factTravel = default;
         }
 
         // Carries out the selected ArmTrap or StealBattery: walk to the object's walkable cell, stop
@@ -893,8 +968,20 @@ namespace ToyFactory.AI.Agents.Saboteur
                     return false;
                 }
 
-                intent = Keep(state);
-                return true;
+                TravelCheck progress = _factTravel.Check(Mathf.Sqrt(dx * dx + dz * dz), ctx.Time);
+                if (progress == TravelCheck.GiveUp)
+                {
+                    EndFactPlan(key, ctx.Time, true);
+                    return false;
+                }
+
+                if (progress == TravelCheck.Fine)
+                {
+                    intent = Keep(state);
+                    return true;
+                }
+
+                _factRouteSent = false;   // no progress: search again from where the body is now
             }
 
             if (!TryRoute(ctx.Cell, cell, out List<Vector2Int> route))
@@ -1010,6 +1097,10 @@ namespace ToyFactory.AI.Agents.Saboteur
             cells = null;
             if (!_grid.IsTraversable(target) &&
                 !_grid.TryFindNearestTraversable(target, PatrolSnapRadius, out target))
+                return false;
+
+            if (!_grid.IsTraversable(from) &&
+                !_grid.TryFindNearestTraversable(from, StartSnapRadius, out from))
                 return false;
 
             if (target == from)

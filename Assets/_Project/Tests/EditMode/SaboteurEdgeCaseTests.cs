@@ -179,6 +179,56 @@ namespace ToyFactory.Tests.EditMode
             Assert.IsNull(_claims.ClaimedBy(1));
         }
 
+        // ---- A body standing in a blocked cell
+
+        [Test]
+        public void ASaboteurWedgedInABlockedCellStillPlansItsPatrolRoute()
+        {
+            Vector2Int wedged = new Vector2Int(10, 10);
+            _grid.SetWalkable(wedged, false);
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new FixedSource());
+
+            AgentIntent intent = brain.Tick(At(wedged, 0f));
+
+            Assert.AreEqual("Patrol", intent.DebugState);
+            Assert.IsNotNull(intent.Path, "A route from the nearest free cell, not a hold.");
+            Assert.Greater(intent.Path.Count, 0);
+        }
+
+        [Test]
+        public void ASaboteurWedgedInABlockedCellStillWalksToItsDoor()
+        {
+            Vector2Int wedged = new Vector2Int(12, 10);
+            _grid.SetWalkable(wedged, false);
+            DetourCache cache = Cache();
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new CloseDoorSource(cache), cache);
+
+            AgentIntent intent = brain.Tick(At(wedged, 0f));
+
+            Assert.AreEqual("CloseDoor", intent.DebugState);
+            Assert.IsNotNull(intent.Path);
+            Assert.Greater(intent.Path.Count, 0);
+            Assert.AreEqual(_grid.CellToWorld(Door1Cell), intent.Path[intent.Path.Count - 1]);
+        }
+
+        [Test]
+        public void ASaboteurWithNoFreeCellNearbyHoldsInsteadOfFailing()
+        {
+            using (GridGraph.Batch batch = _grid.BeginBatch())
+            {
+                for (int x = 5; x <= 15; x++)
+                for (int y = 5; y <= 15; y++)
+                    batch.SetWalkable(new Vector2Int(x, y), false);
+                batch.Commit();
+            }
+
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new FixedSource());
+
+            AgentIntent intent = brain.Tick(At(new Vector2Int(10, 10), 0f));
+
+            Assert.AreEqual("Hold", intent.DebugState, "Nothing walkable within 4 cells: it holds, without an error.");
+        }
+
         // ---- Scores that lose to Idle
 
         [Test]
