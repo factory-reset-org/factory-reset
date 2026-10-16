@@ -51,4 +51,4 @@ Short names: Def = Default, Ply = Player, Env = Environment, Psh = Pushable, Hld
 
 ## Screenshot
 
-The matrix as Unity shows it: `Docs/Evidence/Physics/LayerCollisionMatrix.png` (Edit > Project Settings > Physics, the Layer Collision Matrix at the bottom).
+The matrix in the same triangle layout as Unity's Layer Collision Matrix (Edit > Project Settings > Physics), drawn from the saved settings in `ProjectSettings/DynamicsManager.asset` rather than captured from the window: `Docs/Evidence/Physics/LayerCollisionMatrix.png`. A tick means the pair collides.
