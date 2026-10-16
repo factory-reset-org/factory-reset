@@ -31,7 +31,7 @@ Utility selection runs at 4 Hz. On every `IAgentBrain.Tick`, check hard invalida
 | --- | --- |
 | Assess | Select the highest eligible action-target pair; enter Travel, Execute, or Hold. |
 | Travel | Follow a route to a door, trap, battery, or escape cell; revalidate target and route; Execute only when in interaction range. |
-| Execute | Request interaction or attack; start cooldown only after runtime confirms success; reassess on failure. |
+| Execute | Request interaction or attack; start the cooldown when the attempt ends (rule 6), never when the intent is emitted; reassess on failure. |
 | Hold | Patrol or remain in place; reassess next selection tick. |
 | Stunned | Suppress actions and discard pending interaction; reassess with fresh facts when recovered. |
 
@@ -46,7 +46,7 @@ Apply rules in this order:
 3. Score eligible candidates. Add `0.15` momentum to the **current action-target pair's** ranking score, capped at `1`. Momentum never restores eligibility.
 4. Keep a valid selected pair for at least `1.5 s`. Idle/Patrol is a fallback, not a plan, so it is never held by commitment. A different eligible pair may interrupt early only when its **base** score is greater than `0.9`. After commitment, rank with momentum.
 5. On equal ranking scores, keep the current eligible pair; otherwise use the action order in the table, then ascending target ID.
-6. Start cooldown after confirmed success, not intent emission. A closed door has a `10 s` cooldown. Other cooldowns need agreement with target owners.
+6. Start the cooldown when an attempt ends, never when the intent is emitted: on the runtime's answer, success or failure (`ActionSelector.NotifySuccess` and `NotifyFailure` start the same cooldown), or when the brain gives the attempt up itself (no route, the last lockout check, stuck on the way, no answer 3 s after reaching the target). A failure counts so that an unreachable target is not chosen again at every decision. A target that stops being valid on its own (shut, armed or taken by someone else, or the player stepping into the doorway) ends the plan with no cooldown. A door, trap or battery has a `10 s` cooldown; AttackPlayer, Flee and Idle have none (the attack is paced at 1.2 s instead).
 
 Emergency scoring does not override eligibility. Flee interrupts commitment early only if eligible and its base score exceeds `0.9`.
 
@@ -61,7 +61,7 @@ Emergency scoring does not override eligibility. Flee interrupts commitment earl
 | C | orange | |
 | D | pink | |
 
-Each instance owns its own brain object, with a numeric agent id (the claim owner id) and a letter. The brain does not know its colour: the tint is a model concern (S3 model; the tint component's location is to be agreed with S4). The spawner gives the brain its letter and agent id from the spawn point's squad slot and its spawn-order id (`AgentIdentity`, also on `IAgentState.Identity` for the HUD squad dots); see Spawn hookup.
+Each instance owns its own brain object, with a numeric agent id (the claim owner id) and a letter. The brain does not know its colour: the tint is a model concern. `SaboteurTint` (`Runtime/Visuals/`, S3; the location agreed with S4 on 4 October) reads the squad slot from the `IAgentState` above it once, in `Start`, and writes the colour into a `MaterialPropertyBlock`. The spawner gives the brain its letter and agent id from the spawn point's squad slot and its spawn-order id (`AgentIdentity`, also on `IAgentState.Identity` for the HUD squad dots); see Spawn hookup.
 
 ### Target claims
 
@@ -79,11 +79,11 @@ An attack-count factor multiplies the AttackPlayer score by how many other live 
 
 ### Tick stagger
 
-Selection runs at 4 Hz (250 ms). Instances are offset by 62.5 ms (A = 0, B = 62.5, C = 125, D = 187.5 ms) from their first tick and keep that phase, so one frame never holds four selections. Timers use `AgentContext.Time` only; today that is `Time.time`, so cutscene and pause freezing depends on the controller supplying game time (**needed from S4**).
+Selection runs at 4 Hz (250 ms). Instances are offset by 62.5 ms (A = 0, B = 62.5, C = 125, D = 187.5 ms) from their first tick and keep that phase, so one frame never holds four selections. Timers use `AgentContext.Time` only. The controller fills it from `GameClock.Current.GameTime`, the GameManager's game time, which stops during cutscenes and the pause menu, so the stagger and every brain timer stop with it; only a test scene with no GameManager falls back to Unity's clock.
 
 ### DetourCache
 
-Detour gain is player-centric, so four instances would repeat the same searches. `DetourCache` computes it once per door every 0.5 s for the whole squad and all four brains read the result. With six doors that is about 12 A* runs per pass (one open-route and one closed-route search per door), not four times that. The cache stops updating when all four Saboteurs are destroyed, and its searches are wrapped in the `AI.Saboteur.Detour` profiler marker. In code, a refresh does one search for the player's current route and one more only for each door that lies on or right next to that route, so a door off the route costs no search. A refresh runs at most every 0.5 s of game time, or at once when the grid version or the objective list changes. The objective is the Captain's `PredictedGoal` when its confidence is at least 0.5, otherwise the nearest entry of `WorldBlackboard.ObjectiveTargets`. The searches are counted in `DetourCache.Searches`, and `SaboteurDetourTests` checks that four Saboteurs asking at their staggered times cost the same number of searches as one (two on the test map: the route and the one door on it). Timings are not measured yet; they go in `Docs/AIPerformanceLog.md` with the squad evidence.
+Detour gain is player-centric, so four instances would repeat the same searches. `DetourCache` computes it once per door every 0.5 s for the whole squad and all four brains read the result. With six doors that is about 12 A* runs per pass (one open-route and one closed-route search per door), not four times that. The cache stops updating when all four Saboteurs are destroyed, and its searches are wrapped in the `AI.Saboteur.Detour` profiler marker. In code, a refresh does one search for the player's current route and one more only for each door that lies on or right next to that route, so a door off the route costs no search. A refresh runs at most every 0.5 s of game time, or at once when the grid version or the objective list changes. The objective is the Captain's `PredictedGoal` when its confidence is at least 0.5, otherwise the nearest entry of `WorldBlackboard.ObjectiveTargets`. The searches are counted in `DetourCache.Searches`, and `SaboteurDetourTests` checks that four Saboteurs asking at their staggered times cost the same number of searches as one (two on the test map: the route and the one door on it). Its timings are measured in `Docs/AIPerformanceLog.md`: the squad scenario and the refresh on a level-sized grid (15 October) and the seven-agent stress run with the real brain (16 October).
 
 ### Hypothetical door closure
 
@@ -102,7 +102,7 @@ The brain carries it out in two phases, only when it was given the shared `Detou
 - **Stuck.** A walk is watched for progress in game time (a pause never counts). If the Saboteur gets no 0.5 m closer to the door for `TravelStuckSeconds` (4 s), its route is sent again from where the body is now; stuck again for as long, and it gives the door up as a failure (cooldown, claim released). This covers a body shoved aside, carried off, teleported or wedged against something the grid does not know about, which would otherwise keep "walking" a stale route and hold the claim for ever. The same watch runs on trap and battery walks. A body standing in a blocked cell (against a wall or a box) plans from the nearest free cell within `StartSnapRadius` (4 cells) instead of failing to plan anything.
 - **End.** The controller answers every door request exactly once through `IActionFeedback.OnActionResolved(action, targetId, success)`: success when it closed the door, failure when the door is not registered, the Saboteur stayed out of reach for 2 s, a newer request replaced it, or the Saboteur was knocked out first. Either answer starts the door cooldown (10 s) at once and ends the plan on the next tick, with the claim released. The grid still ends the plan if the door is seen closed, and a door still open 3 s after the Saboteur reached it is given up as a failure, so a brain without a controller (tests) still cannot stand at a door for ever. A door shut by someone else just stops being a candidate and earns no cooldown.
 
-Wired into the level through `AgentSpawner.CreateBrain` (see Spawn hookup): the controller carries `CloseDoor` out and answers through `IActionFeedback`. `CompositeCandidateSource` combines it with `AttackPlayerSource`.
+Wired into the level through `AgentSpawner.CreateBrain` (see Spawn hookup): the controller carries `CloseDoor` out and answers through `IActionFeedback`. `CompositeCandidateSource` combines it with `AttackPlayerSource`, `FleeSource`, `ArmTrapSource` and `StealBatterySource`.
 
 ### ArmTrap and StealBattery
 
@@ -127,7 +127,7 @@ Two candidate sources read S2's trap and battery facts (`world.SabotageFacts`: i
 `IAgentBrain.OnDestroyed()` is called by `AgentController.Scrap` before `AgentEvents.OnDestroyed`, and there is no reboot. The brain:
 
 - calls `TargetClaims.Release(agentId)` and releases any reservation;
-- drops a carried battery;
+- drops a carried battery (none yet: StealBattery does not make the Saboteur carry one);
 - for Saboteur A, works out where the keycard lands and reports it through `IDropsItems.GetDrops` (see below), never on a blocked cell or inside a box;
 - stops emitting intents.
 
@@ -140,7 +140,7 @@ The squad stops counting a destroyed instance for saturation, and `DetourCache` 
 - **Destroyed before its first tick.** The brain has no cell yet, so it starts from its first patrol cell, or from the middle of the grid when it has no patrol.
 - **Later grid changes.** The cell is fixed at destruction; a box that lands there afterwards is not tracked.
 - **`ItemId`.** Reported as given to the constructor (default 0). What the id means for the keycard (one fixed id, or the chapter task's id) is still to be agreed with S4 and S2.
-- **Battery.** The brain carries no battery until StealBattery exists, so `ItemDropKind.Battery` is only in the contract for now.
+- **Battery.** StealBattery does not make the brain carry the battery it takes (see ArmTrap and StealBattery), so `ItemDropKind.Battery` is only in the contract for now.
 
 ### Flee and the keycard carrier
 
@@ -260,7 +260,7 @@ An action definition with no considerations is invalid; Idle/Patrol is the expli
 
 ### Door detour heuristic
 
-Resolve the objective with the chain: the Captain's `PredictedGoal` if it is current and confident, otherwise the nearest `ObjectiveTargets` entry, otherwise the nearest active switch. If none exists, CloseDoor is ineligible. `ObjectiveTargets` (S1) and `PredictedGoal` (S4) are not on the blackboard yet, so the chain is tested with fixed inputs. For each eligible open door, compare the shortest player-to-objective path in the current world with a **hypothetical** view where only that door is closed:
+Resolve the objective with the chain: the Captain's `PredictedGoal` if it is current and confident, otherwise the nearest `ObjectiveTargets` entry, otherwise the nearest active switch. If none exists, CloseDoor is ineligible. Both are on the blackboard: `ObjectiveTargetWriter` (Runtime) copies the chapter's active objectives into `WorldBlackboard.ObjectiveTargets`, and the Captain's controller writes `WorldBlackboard.PredictedGoal` through `SetPredictedGoal`. `DetourCache` takes the prediction at a confidence of 0.5 or more, otherwise the nearest objective target; switches are objective targets (`ObjectiveTargetKind.Switch`), so the third step needs no source of its own. EditMode tests still use fixed inputs. For each eligible open door, compare the shortest player-to-objective path in the current world with a **hypothetical** view where only that door is closed:
 
 ```text
 gain(d) = (closedCost(d) - openCost) / openCost
@@ -274,8 +274,8 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 ## Integration boundaries
 
 - Put pure scoring and selection code in `Assets/_Project/Scripts/AI/Agents/Saboteur/` under `ToyFactory.AI.Agents`. The Agents assembly references AI.Core only. Do not duplicate A* or add reverse references.
-- Consume `AgentContext`, `SensorSnapshot`, and read-only `WorldBlackboard` facts. The latter two are currently stubs. Player health/ammo/aiming, target states, objectives, Captain prediction, action completion, and navigation validity are **needed handoffs**, not existing fields.
-- Return `AgentIntent` with path, look target, action, target ID, and concise debug state. The current action enum supports `CloseDoor`, `ArmTrap`, `StealBattery`, and `Shoot`; movement-only Flee and Idle/Patrol use `None`. The current `AgentController` applies paths but does not execute actions or populate real cell/sensor facts. S2/S4-owned runtime work must supply execution and completion feedback.
+- Consume `AgentContext` and read-only `WorldBlackboard` facts. The blackboard carries the player (`Player`, written every frame by `PlayerStateWriter`: cell, position, facing, alive, health, ammunition, overcharge), the trap and battery facts (`SabotageFacts`, from `SabotageFactWriter`), `ObjectiveTargets` (`ObjectiveTargetWriter`), the Captain's `PredictedGoal` and the squad's `Claims`. Door state is read from the grid (`IsDoorClosed`). The player's aim is not reported, so the brain works it out from `PlayerSnapshot.Forward` (see Flee). `SensorSnapshot` carries only hearing, which the Saboteur does not use.
+- Return `AgentIntent` with path, look target, action, target ID, and concise debug state. The action enum supports `CloseDoor`, `ArmTrap`, `StealBattery`, and `Shoot`; movement-only Flee and Idle/Patrol use `None`. `AgentController` passes the real cell under the body, carries out `CloseDoor`, `ArmTrap` and `StealBattery` through `SabotageTargets` and answers each request once through `IActionFeedback`; `Shoot` drives S4's claw swipe and gets no answer. It reports the brain's own health through `IHealthAware`.
 - Runtime adapters supply physics, sight, doorway occupancy, aiming, interaction range, and hypothetical door state. The brain neither touches scene objects nor calls door or trap methods directly.
 - On `OnGraphChanged`, replan movement only when changed cells affect its current route; invalidate a door comparison when changed cells affect a compared route or doorway. On `OnStunned`, cancel pending action and enter Stunned.
 
@@ -284,12 +284,12 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | Need | Owner | Status |
 | --- | --- | --- |
 | `TargetClaims` reachable through `WorldBlackboard` | S2 | Done: `WorldBlackboard.Claims`, passed to the brain by the spawner. |
-| Player state (position, cell, ammo, overcharge, alive, aiming), door/trap/battery state | S2 | Not on the blackboard. Fake snapshots in tests. |
+| Player state (position, cell, ammo, overcharge, alive, aiming), door/trap/battery state | S2 | Done: `PlayerStateWriter` writes `WorldBlackboard.Player` every frame (cell, position, facing, alive, health, ammunition, overcharge); door state is on the grid; trap and battery state is `world.SabotageFacts` (row below). Aiming is worked out from `PlayerSnapshot.Forward`. EditMode tests use fake snapshots. |
 | Pathfinder, grid and instance identity (letter, claim id, keycard carrier) given at spawn; an id on `IAgentState` | S4 (with S1 `GridManager`) | Done: `BrainSetup` and `AgentIdentity` (`IAgentState.Identity`); see Spawn hookup. |
 | Action execution and success/failure feedback | S4 controller, S2 targets | Done (S4, #217): `AgentController` carries out door, trap and battery actions through `SabotageTargets` and answers through `IActionFeedback`; the brain uses it for door cooldowns. It also tells the brain its health through `IHealthAware`. |
 | `ISabotageable` on traps and batteries; their facts on the blackboard | S2 | Done: traps and batteries are executable targets, and `world.SabotageFacts` lists each one's id, cell, kind and availability. |
-| `ObjectiveTargets`; `PredictedGoal` with confidence | S1; S4 | Not published. Fixed test objective. |
-| Game time in `AgentContext` | S4 / S2 | `Time.time` today. |
+| `ObjectiveTargets`; `PredictedGoal` with confidence | S1; S4 | Done: `ObjectiveTargetWriter` fills `WorldBlackboard.ObjectiveTargets` from the chapter's objectives, and the Captain's controller writes `PredictedGoal` through `SetPredictedGoal`. EditMode tests use a fixed objective. |
+| Game time in `AgentContext` | S4 / S2 | Done: the controller passes `GameClock.Current.GameTime`, which stops during cutscenes and pause (`Time.time` only in a scene with no GameManager). |
 | Infinite-cost step behaviour in `AStarSearch` | S2 | Tested, no change needed (see Hypothetical door closure); S2's confirmation outstanding. |
 
 ### Implementation status
@@ -307,15 +307,15 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | Squad scenario: four Saboteurs, two doors, a way round each, with the real sources, cache, claims and A*; searches for one and four instances; tick cost; anti-dithering | Implemented, measured | `SaboteurSquadScenarioTests`, `Test_SquadClaims.unity`, `SquadClaimsSceneTests`, `SquadScenarioObjective`; results in `Docs/AIPerformanceLog.md` |
 | Detour cache spread over ticks (one A* search per call, results published together after the last) | Implemented, measured | `DetourCache.SearchesPerCall`; worst call on a level-sized grid 8.09 ms -> 4.69 ms; see `Docs/AIPerformanceLog.md` |
 | ArmTrap, StealBattery | Implemented, tested and wired into the level through `AgentSpawner.CreateBrain`; they use `IActionFeedback`. Scores are starting values; no battery is carried or dropped | `ArmTrapSource`, `StealBatterySource`, `SabotageTargetCells`, `DetourCache.PlayerRoute`, `SaboteurBrain`; `SaboteurTrapBatteryTests`, `SaboteurBatterySceneTests` |
-| Squad layer: claim on commit, "not claimed" veto, displacement check, release, attack saturation, tick stagger | Implemented in the brain: claims on commit, the veto and saturation applied to every candidate, stagger by letter, release on stun and destruction. The candidates come from an `ICandidateSource`; `AttackPlayerSource` is the first | `SquadCoordinator`, `ICandidateSource`, `SaboteurBrain`; `SquadClaimTests`, `SaboteurSquadTests` |
-| Keycard drop through `IDropsItems` | Implemented; the battery drop waits for StealBattery | `IDropsItems`, `SaboteurBrain.GetDrops`; `SaboteurDropTests` |
+| Squad layer: claim on commit, "not claimed" veto, displacement check, release, attack saturation, tick stagger | Implemented in the brain: claims on commit, the veto and saturation applied to every candidate, stagger by letter, release on stun and destruction. The candidates come from an `ICandidateSource`; in the level that is five sources in one `CompositeCandidateSource` | `SquadCoordinator`, `ICandidateSource`, `SaboteurBrain`; `SquadClaimTests`, `SaboteurSquadTests` |
+| Keycard drop through `IDropsItems` | Implemented; no battery is dropped, because StealBattery does not carry one | `IDropsItems`, `SaboteurBrain.GetDrops`; `SaboteurDropTests` |
 | `DetourCache` and `DoorClosureCostModel` | Implemented and tested; refresh at most every 0.5 s, searches only for doors on the route, `AI.Saboteur.Detour` profiler marker | `DetourCache`, `DoorClosureCostModel`; `SaboteurDetourTests` |
 
 The skeleton's behaviour:
 
-- **Selection.** At most every 0.25 s of `AgentContext.Time`, the brain rebuilds its candidates and asks `ActionSelector` for a choice. Today the only candidate is Idle/Patrol at 0.1, so the loop is in place before the other actions exist.
+- **Selection.** At most every 0.25 s of `AgentContext.Time`, the brain rebuilds its candidates and asks `ActionSelector` for a choice. The candidates are Idle/Patrol at 0.1, which the brain always adds, and whatever its `ICandidateSource` offers; in the level that is AttackPlayer, Flee, CloseDoor, ArmTrap and StealBattery.
 - **Patrol.** Patrol points are given in world space and converted to cells once. Points outside the grid are dropped; a blocked point snaps to the nearest free cell within 2 cells. A leg counts as finished when the Saboteur is within 0.5 m of its last waypoint on the ground plane, because the body stops up to 0.3 m short and may still be in the previous cell; `AgentContext.Cell` is only used as the start of the next search. Routes come from the injected `IPathfinder` with `BaseCostModel`, and are sent once per leg (`Path = null` keeps the current route). An unreachable point is skipped. If no point is reachable the Saboteur holds, and A* is retried only on the next selection pass or grid change, never every tick. With no patrol points it holds in place.
-- **Debug data.** Every selection pass overwrites `SaboteurBrain.LastDecision`: the candidates in the order they were scored, their raw and compensated base scores, each consideration's name, input and score, the ranking score (base plus momentum), whether the commitment window was active, and for each candidate that did not win one reason: `Vetoed`, `OnCooldown`, `CommitmentHeld` or `Outranked`. The brain and selector write the numbers they already computed, so the panel only displays them. Candidates that are ineligible before scoring (for example a target claimed by another Saboteur) are not candidates, so they are not in the trace; the action that builds candidates will need to record them when it exists. Storage is allocated once per brain; a test checks that 1,000 passes allocate 0 bytes.
+- **Debug data.** Every selection pass overwrites `SaboteurBrain.LastDecision`: the candidates in the order they were scored, their raw and compensated base scores, each consideration's name, input and score, the ranking score (base plus momentum), whether the commitment window was active, and for each candidate that did not win one reason: `Vetoed`, `OnCooldown`, `CommitmentHeld` or `Outranked`. The brain and selector write the numbers they already computed, so the panel only displays them. Candidates that are ineligible before scoring (for example a target claimed by another Saboteur) are not candidates, so they are not in the trace; the candidate sources do not record them. Storage is allocated once per brain; a test checks that 1,000 passes allocate 0 bytes.
 - **Grid changes.** `OnGraphChanged` replans only when a changed cell lies on the current route.
 - **Stun.** The controller owns stun timing: it stops the body and does not tick the brain until the reboot. `OnStunned` therefore only cancels the current selection, releases this instance's claims and asks for a fresh route; the brain keeps no stun timer of its own, so a stun lasts exactly as long as the controller says.
 - **Identity.** The brain rejects `default(SaboteurIdentity)`, which would otherwise read as Saboteur A, the keycard carrier.
@@ -351,7 +351,7 @@ Stun calls `EndPlan` and destruction calls `OnDestroyed`, so a stunned or destro
 
 - **Line of sight.** The brain asks `IPlayerSight.CanSeeCell(cell)`. `CoverVisibilitySight` answers it from the Guard's `ICoverVisibility` (a ray from the player's eye to a point 1 m above the Saboteur's cell, characters skipped), so the runtime's one physics sight check, S2's `PhysicsCoverVisibility`, serves both agents and the brain stays free of physics.
 - **Intent.** While AttackPlayer is selected and the player is in range, `Tick` sets `LookTarget` to the player and either walks at them or, within 2 m, stops the body once (an empty path) and requests `AgentAction.Shoot` at most every 1.2 s (`AttackIntervalSeconds`); see Melee reach below. It is checked every tick, so a dead player or one who steps out of range ends the attack at once rather than at the next 4 Hz decision. When the attack ends, the next tick routes the patrol afresh.
-- **Not in the score yet.** The design prefers a Saboteur with more health, but `AgentContext` carries no own-health fact; it joins as a second consideration when it exists (it is also Flee's input). There is no attack-ready cooldown beyond the 1.2 s pacing, because the runtime reports no shot result.
+- **Own health.** The controller reports the Saboteur's hit points through `IHealthAware.OnHealthChanged`, and the brain passes them to its sources: own health is AttackPlayer's second consideration (above) and Flee's input. There is no attack-ready cooldown beyond the 1.2 s pacing, because the runtime reports no result for `Shoot`.
 - **Melee reach (B15).** The claw swipe is S4's `AgentClawSwipe`: it deals its 10 damage itself at contact and needs no `AgentWeapon`, but it only lands within the body's stand-off plus its lunge. On the Saboteur prefab that is 1.6 m + 0.6 m = 2.2 m, with a swipe every 1.2 s. The first version stopped the body wherever the player came into range (up to 8 m) and asked for `Shoot` from there, so the swipe never reached and the Saboteur dealt no damage. Now `Attack` closes in first, with the numbers as named constants on `SaboteurBrain`:
   - Beyond `MeleeReachMetres` (2.0 m, inside the 2.2 m the swipe lands, with slack for the body's travel between ticks) it walks at the player along an A* route to the player's cell and never asks for `Shoot`. The runtime's `PlayerStandOff` (`MeleeStandOffMetres`, 1.6 m) holds the body in front of the player, so the route does not need to stop short. The route is sent once and searched again only when the player has moved to another cell, at most every `ChaseReplanSeconds` (0.5 s, so four chasers cost at most eight searches a second), or after a graph change. If there is no route to the player the body is stopped once, no swipe is asked for, and the search is tried again after the same delay.
   - Within `MeleeReachMetres` it stops the body once, faces the player and asks for `Shoot` at most every `AttackIntervalSeconds` (1.2 s, the prefab's swipe interval; it was a provisional 1.5 s). The pacing is shared with the chase, so stepping in and out of reach cannot ask for a swipe before the last one has finished. A player who backs out of reach is chased again at once.
@@ -366,14 +366,19 @@ Stun calls `EndPlan` and destruction calls `OnDestroyed`, so a stunned or destro
 
 ```csharp
 if (setup.HasGrid && setup.Identity.IsInSquad && setup.Identity.SquadIndex <= (int)SaboteurLetter.D)
+{
+    DetourCache detours = DetourCache.For(setup.Blackboard, setup.Grid, setup.Pathfinder);
+    var candidates = new CompositeCandidateSource(
+        new AttackPlayerSource(new CoverVisibilitySight(new PhysicsCoverVisibility(setup.Grid))),
+        new FleeSource(new CoverVisibilitySight(new PhysicsCoverVisibility(setup.Grid))),
+        new CloseDoorSource(detours),
+        new ArmTrapSource(setup.Grid, detours),
+        new StealBatterySource(setup.Grid));
     return new SaboteurBrain(
         new SaboteurIdentity(setup.Identity.Id, (SaboteurLetter)setup.Identity.SquadIndex),
         setup.Grid, setup.Pathfinder, setup.Blackboard.Claims, setup.PatrolPoints, null, 0,
-        new CompositeCandidateSource(
-            new AttackPlayerSource(new CoverVisibilitySight(new PhysicsCoverVisibility(setup.Grid))),
-            new FleeSource(new CoverVisibilitySight(new PhysicsCoverVisibility(setup.Grid))),
-            new CloseDoorSource(detours)),
-        detours);   // detours = DetourCache.For(setup.Blackboard, setup.Grid, setup.Pathfinder)
+        candidates, detours);
+}
 return new MockPathProvider(setup.PatrolPoints);
 ```
 
@@ -381,12 +386,12 @@ return new MockPathProvider(setup.PatrolPoints);
 - All four brains get the blackboard's one `TargetClaims`, so `SquadCoordinator.For(claims)` makes them one squad. Each level load builds a new blackboard, so a new squad.
 - The grid and pathfinder are the level grid and the one `AStarSearch` the spawner shares with every brain.
 - Without a grid, or for a Saboteur spawn point with no squad slot or a slot past D, the case keeps the mock. A mis-set spawn point never becomes a second Saboteur A, and it does not stop the other agents spawning, as an exception from `SaboteurIdentity` inside `SpawnAll` would. The spawner already logs an error when two Saboteur spawn points share a slot.
-- Each Saboteur gets its own `AttackPlayerSource` and `FleeSource`, each over its own `PhysicsCoverVisibility` (the Guard's physics sight check), and its own `CloseDoorSource`, so the brains share no scratch buffers. All four share one `DetourCache`, found with `DetourCache.For(blackboard, grid, pathfinder)` (a weak table keyed by the level's blackboard, like `SquadCoordinator.For`), so the squad costs the searches of one Saboteur.
+- Each Saboteur gets its own `AttackPlayerSource` and `FleeSource`, each over its own `PhysicsCoverVisibility` (the Guard's physics sight check), and its own `CloseDoorSource`, `ArmTrapSource` and `StealBatterySource`, so the brains share no scratch buffers. All four share one `DetourCache`, found with `DetourCache.For(blackboard, grid, pathfinder)` (a weak table keyed by the level's blackboard, like `SquadCoordinator.For`), so the squad costs the searches of one Saboteur.
 - The keycard item id stays at its default (0). S2's `KeycardDrop` places the keycard from `AgentEvents.OnDestroyed`, and nothing in the runtime calls `IDropsItems.GetDrops` yet.
 
 Checked on 9 October 2026 in batch-mode Play, in `Test_AgentSpawner` (6 s) and in `Agents.unity` loaded from Bootstrap with the intro skipped (8 s): all four Saboteurs ran `SaboteurBrain` as A-D, reported the Patrol state and logged no console errors.
 
-With the attack wired in, `SaboteurAttackSceneTests` (PlayMode, real scenes from Bootstrap) puts the player 4 m from Saboteur A in the open: it switches to `AttackPlayer` and reports the Alert level, and when the player is moved 40 m away it returns to Patrol. In the whole PlayMode suite (202 tests) the only failure is `AgentAnimationTests.WheelsRollWithoutSlippingAsTheAgentMoves`, which fails the same way without this change. The attack deals no damage yet, because the Saboteur prefab has no weapon (see AttackPlayer).
+With the attack wired in, `SaboteurAttackSceneTests` (PlayMode, real scenes from Bootstrap) puts the player 4 m from Saboteur A in the open: it switches to `AttackPlayer` and reports the Alert level, and when the player is moved 40 m away it returns to Patrol. In the whole PlayMode suite (202 tests) the only failure is `AgentAnimationTests.WheelsRollWithoutSlippingAsTheAgentMoves`, which fails the same way without this change. That first version dealt no damage, because it asked for a swipe from wherever the player came into range. Since B15 (#281, 15 October) the Saboteur closes to 2.0 m before it swipes, and `SaboteurClosesInOnAPlayerWhoStandsStillAndHurtsThem` shows a still player 4 m away taking damage (see Melee reach).
 
 ## Architecture rationale
 
@@ -410,11 +415,11 @@ EditMode tests should use deterministic snapshots and fake target/search results
 | Battery collected or trap armed during travel | Current pair invalidates immediately and fresh decision follows. |
 | Missing/dead player, absent objective, unreachable target, stun | No invalid action intent; valid fallback or independent action remains; stun suppresses actions. |
 | Unrelated versus route-intersecting grid change | Only affected path/comparison is requested again. |
-| Runtime reports action failure versus success | Cooldown starts only after success. |
+| Runtime reports action failure versus success; target shut or taken by someone else | Either answer starts the cooldown, so a failed target is not retried at once; a target that becomes invalid on its own starts none; emitting the intent never does. |
 | Two instances want one door | Only one holds the claim; a tie goes to the lower id; the other instance's candidate is vetoed. |
 | A holder is outscored | Its next tick sees `ClaimedBy` differ and cancels the plan. |
 | Third instance in AttackPlayer | Its score is multiplied by `0.45`. |
-| Instance destroyed holding claims | All its claims are released; a carried battery is dropped. |
+| Instance destroyed holding claims | All its claims are released; a carried battery is dropped (none is carried yet). |
 | Saboteur A destroyed next to a box | Keycard lands on the nearest traversable cell. |
 | One versus four instances | `DetourCache` A* count is the same. |
 
