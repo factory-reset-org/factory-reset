@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -63,8 +64,24 @@ namespace ToyFactory.Tests
             yield return Until(() => GameClock.Current.State == GameState.Playing, 10f, "Playing");
         }
 
+        // Counts the parts of the body that the camera draws: a part cast as shadow only is not drawn.
+        static int Drawn(Transform body, out int drawnNames)
+        {
+            int drawn = 0;
+            drawnNames = 0;
+            foreach (Renderer r in body.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r.shadowCastingMode == ShadowCastingMode.ShadowsOnly)
+                    continue;
+                drawn++;
+                if (r.name.StartsWith("Leg_") || r.name.StartsWith("Foot_"))
+                    drawnNames++;
+            }
+            return drawn;
+        }
+
         [UnityTest]
-        public IEnumerator ThePlayerHasLegsThatTheCameraSeesAndNothingAboveThem()
+        public IEnumerator TheLegsAreDrawnOnlyWhenThePlayerLooksDown_AndNothingElseOfTheBodyIsEver()
         {
             yield return LoadLevelAndStart();
             Transform player = ((Component)PlayerState.Current).transform;
@@ -72,25 +89,29 @@ namespace ToyFactory.Tests
             Transform body = player.Find("Body (own legs)");
             Assert.IsNotNull(body, "the player stands in Unit 047's body");
             Assert.AreEqual(0, body.GetComponentsInChildren<Collider>(true).Length, "the body cannot touch physics");
+            Assert.Greater(body.GetComponentsInChildren<Renderer>(true).Length, 15, "it is the whole model, as a shadow");
 
-            int legs = 0, hidden = 0;
-            foreach (Renderer r in body.GetComponentsInChildren<Renderer>(true))
-            {
-                bool lower = r.name.StartsWith("Leg_") || r.name.StartsWith("Foot_") || r.name == "Pelvis";
-                if (lower)
-                {
-                    legs++;
-                    Assert.AreEqual(ShadowCastingMode.On, r.shadowCastingMode, r.name + " is drawn for the camera");
-                }
-                else
-                {
-                    hidden++;
-                    Assert.AreEqual(ShadowCastingMode.ShadowsOnly, r.shadowCastingMode, r.name + " is not drawn for the camera");
-                }
-            }
+            // The controller sets the camera's pitch from its own field every frame, so that is what is set.
+            Component controller = player.GetComponent("PlayerController");
+            Assert.IsNotNull(controller, "the player has a PlayerController");
+            FieldInfo pitch = controller.GetType().GetField("_pitch", BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.IsNotNull(pitch, "the controller keeps its pitch in _pitch");
+            pitch.SetValue(controller, 0f);
+            yield return null;
+            yield return null;
+            Assert.AreEqual(0, Drawn(body, out int _), "looking ahead, no part of the body is drawn");
 
-            Assert.AreEqual(5, legs, "two legs, two feet and the pelvis");
-            Assert.Greater(hidden, 10, "the rest of the model is only a shadow");
+            pitch.SetValue(controller, 65f);
+            yield return null;
+            yield return null;
+            int total = Drawn(body, out int legParts);
+            Assert.AreEqual(4, total, "looking down, two legs and two feet are drawn and nothing else (not the pelvis)");
+            Assert.AreEqual(4, legParts, "they are the legs and feet");
+
+            pitch.SetValue(controller, 10f);
+            yield return null;
+            yield return null;
+            Assert.AreEqual(0, Drawn(body, out int _), "looking up again, they go away");
         }
 
         [UnityTest]
@@ -109,6 +130,13 @@ namespace ToyFactory.Tests
             Assert.IsTrue((bool)isReaching.GetValue(body), "the hand is out");
             Assert.IsFalse((bool)bodyType.GetMethod("Thrust").Invoke(body, new object[] { (Action)(() => arrived += 100) }),
                 "a second reach is refused while the first is under way");
+
+            Transform hand = player.transform.Find("CameraPivot/Camera/ViewModelCamera/Hand (slide)");
+            Assert.IsNotNull(hand, "the hand is a toy hand under the overlay camera");
+            Assert.IsTrue(hand.gameObject.activeSelf, "it is shown while it reaches");
+            foreach (string part in new[] { "Forearm", "Cuff", "Palm", "Finger 1", "Finger 4", "Thumb" })
+                Assert.IsNotNull(hand.Find(part), "the hand has a " + part);
+            Assert.AreEqual(0, hand.GetComponentsInChildren<Collider>(true).Length, "the hand cannot touch physics");
 
             yield return Until(() => arrived > 0, 2f, "the hand to arrive");
             yield return Until(() => !(bool)isReaching.GetValue(body), 2f, "the hand to go back");
