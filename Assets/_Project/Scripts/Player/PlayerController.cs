@@ -39,12 +39,6 @@ namespace ToyFactory.Player
         [Tooltip("Must match the shared grid's cell size (0.5 m).")]
         [SerializeField] float cellSize = 0.5f;
 
-        [Header("Pushing")]
-        [Tooltip("Force applied to a Pushable box per collision hit. Must clear the " +
-                 "box's static friction (roughly mass * 9.81 * frictionCoefficient) " +
-                 "or it will never start moving.")]
-        [SerializeField] float pushForce = 400f;
-
         [Header("Footsteps")]
         [Tooltip("Seconds between footstep noises while walking. The agents hear them (NoiseLoudness.Footsteps, 3.75 m) and the Tracker follows them.")]
         [SerializeField, Min(0.05f)] float walkStepInterval = 0.45f;
@@ -173,9 +167,9 @@ namespace ToyFactory.Player
                 AudioListener.volume = AudioListener.volume > 0f ? 0f : 1f;
         }
 
-        // Fires once per colliding hit during CharacterController.Move(). Pushes are
-        // only queued here; PushableBox applies them on its own FixedUpdate so a box
-        // never receives force outside the physics step.
+        // Fires once per colliding hit during CharacterController.Move(). Remembers what the player
+        // stands on, for the belt. Walking into a box does not push it: a box only moves when the
+        // player slides it with Interact (PushableBox.Interact).
         void OnControllerColliderHit(ControllerColliderHit hit)
         {
             if (hit.normal.y > 0.5f && hit.collider != _groundCollider)
@@ -183,18 +177,6 @@ namespace ToyFactory.Player
                 _groundCollider = hit.collider;
                 hit.collider.TryGetComponent(out _groundBelt);
             }
-
-            if (!hit.collider.CompareTag("Pushable"))
-                return;
-            if (hit.moveDirection.y < -0.3f)
-                return;
-
-            PushableBox box = hit.collider.GetComponent<PushableBox>();
-            if (box == null)
-                return;
-
-            Vector3 direction = new Vector3(hit.moveDirection.x, 0f, hit.moveDirection.z).normalized;
-            box.AddPush(direction * pushForce);
         }
 
         // Locks and hides the cursor so mouse movement only ever reports a look

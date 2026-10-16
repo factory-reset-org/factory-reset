@@ -19,6 +19,27 @@ namespace ToyFactory.Tests
     /// </summary>
     public sealed class SabotageFactsSceneTests
     {
+        // Leaves nothing behind: the tests that run next load Bootstrap themselves and must not
+        // find this level's spawner, clock or player still alive.
+        [UnityTearDown]
+        public IEnumerator TearDown()
+        {
+            Time.timeScale = 1f;
+            Scene empty = SceneManager.CreateScene("Empty after " + Guid.NewGuid());
+            SceneManager.SetActiveScene(empty);
+            for (int i = SceneManager.sceneCount - 1; i >= 0; i--)
+            {
+                Scene scene = SceneManager.GetSceneAt(i);
+                if (scene != empty && scene.isLoaded)
+                    yield return SceneManager.UnloadSceneAsync(scene);
+            }
+
+            if (GameClock.Current is UnityEngine.Object clock && clock == null)
+                GameClock.Publish(null);
+            if (PlayerState.Current is UnityEngine.Object player && player == null)
+                PlayerState.Publish(null);
+        }
+
         const float LoadTimeout = 60f;
 
         static IEnumerator Until(Func<bool> condition, float seconds, string what)

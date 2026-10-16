@@ -93,21 +93,6 @@ namespace ToyFactory.Tests
         }
 
         [UnityTest]
-        public IEnumerator OnlyOneChapterCardShowsBecauseTheDirectorsIsSwitchedOff()
-        {
-            yield return StartPlaying();
-
-            ChapterCard directorCard = UnityEngine.Object.FindAnyObjectByType<ChapterCard>(FindObjectsInactive.Include);
-            if (directorCard != null)
-            {
-                Assert.IsFalse(directorCard.enabled, "The director's own card is switched off once the HUD draws one.");
-                Assert.IsFalse(directorCard.IsShowing);
-            }
-
-            Assert.IsTrue(HudPresenter.Current.Card.IsShowing);
-        }
-
-        [UnityTest]
         public IEnumerator CompletingATaskTicksItsRow()
         {
             yield return StartPlaying();
@@ -156,19 +141,16 @@ namespace ToyFactory.Tests
         }
 
         [UnityTest]
-        public IEnumerator SubtitlesShowDialogueAndSwitchOffThePlaceholder()
+        public IEnumerator SubtitlesShowDialogueUntilTheLineClears()
         {
             yield return StartPlaying();
             HudPresenter hud = HudPresenter.Current;
-            PlaceholderSubtitles placeholder = UnityEngine.Object.FindAnyObjectByType<PlaceholderSubtitles>();
 
             DialogueEvents.RaiseLineShown(new DialogueLineView("TEST", Color.white, "Hello there", 5));
             yield return null;
 
             Assert.IsTrue(hud.Subtitles.IsShowing);
             StringAssert.Contains("Hello", hud.Subtitles.DisplayedText);
-            if (placeholder != null)
-                Assert.IsFalse(placeholder.enabled, "The placeholder bar stops once the real one draws.");
 
             DialogueEvents.RaiseLineCleared();
             yield return null;

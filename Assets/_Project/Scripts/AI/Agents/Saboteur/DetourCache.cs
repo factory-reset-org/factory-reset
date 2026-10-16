@@ -93,6 +93,8 @@ namespace ToyFactory.AI.Agents.Saboteur
         readonly List<DoorDetour> _results = new List<DoorDetour>();
         readonly Dictionary<int, int> _resultIndex = new Dictionary<int, int>();
         readonly HashSet<Vector2Int> _routeNeighbourhood = new HashSet<Vector2Int>();
+        readonly List<Vector2Int> _route = new List<Vector2Int>();
+        readonly List<Vector2Int> _stagingRoute = new List<Vector2Int>();
 
         // A refresh in progress. Its results are built here and published together when the last search
         // is done, so a reader never sees half a refresh.
@@ -136,6 +138,13 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// <summary>True when the latest refresh found a player, an objective and a route between them.</summary>
         public bool HasObjective { get; private set; }
 
+        /// <summary>
+        /// The player's open route from the latest refresh, from the player's cell to the objective, so
+        /// the trap source can predict which traps the player will pass and when. Empty while
+        /// <see cref="HasObjective"/> is false. It is up to <see cref="RefreshSeconds"/> old.
+        /// </summary>
+        public IReadOnlyList<Vector2Int> PlayerRoute => _route;
+
         /// <summary>The cell the latest refresh measured the player's route to.</summary>
         public Vector2Int ObjectiveCell { get; private set; }
 
@@ -150,8 +159,14 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// <summary>Refreshes done so far, for tests and the evidence log.</summary>
         public int Refreshes { get; private set; }
 
-        /// <summary>Searches made so far (the route plus one per door on it), for tests and the evidence log.</summary>
+        /// <summary>Searches made so far by refreshes (the route plus one per door on it), for tests and the evidence log.</summary>
         public int Searches { get; private set; }
+
+        /// <summary>
+        /// Fresh searches made by <see cref="WouldLockPlayerOut"/> so far: one per door plan that reached its
+        /// door. They are not refresh searches, so they are counted apart from <see cref="Searches"/>.
+        /// </summary>
+        public int LockoutChecks { get; private set; }
 
         /// <summary>
         /// Brings the results up to date for game time <paramref name="now"/>. Cheap when nothing
@@ -219,6 +234,41 @@ namespace ToyFactory.AI.Agents.Saboteur
         }
 
         /// <summary>
+        /// True when closing door <paramref name="doorId"/> right now would leave the player no route to
+        /// the objective. Unlike <see cref="TryGet"/> this searches fresh against the grid as it is at
+        /// this moment, so a door another Saboteur has just shut is already counted. The brain asks it
+        /// once, just before it sends the close request: two doors that are each safe alone can be
+        /// together a lockout (the two entrances of one room), and the cache's results can be half a
+        /// second old. A door with no known cells, or no player, objective or route to compare, is not
+        /// a lockout. The grid is never changed.
+        /// </summary>
+        public bool WouldLockPlayerOut(WorldBlackboard world, int doorId)
+        {
+            if (world == null)
+                throw new ArgumentNullException(nameof(world));
+            if (!TryGetCells(doorId, out IReadOnlyList<Vector2Int> cells) || cells.Count == 0)
+                return false;
+
+            PlayerSnapshot player = world.Player;
+            if (!player.IsKnown || !player.IsAlive)
+                return false;
+            if (!Snap(player.Cell, out Vector2Int start) || !TryPickObjective(world, start, out Vector2Int objective)
+                || !Snap(objective, out Vector2Int goal) || start == goal)
+                return false;
+
+            using (Marker.Auto())
+            {
+                LockoutChecks++;
+                _closure.SetClosed(cells);
+                PathResult result = _pathfinder.FindPath(start, goal, _closure);
+                bool lockout = !result.Found || result.Cells == null
+                    || float.IsInfinity(DoorClosureCostModel.PathCost(result.Cells, _closure));
+                _closure.Clear();
+                return lockout;
+            }
+        }
+
+        /// <summary>
         /// The detour gain: <c>(closed - open) / open</c>, infinite for a lockout. Returns 0 when the
         /// open route is free (the player is already there), because the ratio is undefined.
         /// </summary>
@@ -255,6 +305,8 @@ namespace ToyFactory.AI.Agents.Saboteur
             }
 
             MarkRouteNeighbourhood(route);
+            _stagingRoute.Clear();
+            _stagingRoute.AddRange(route);
             _nextEntry = 0;
             _inProgress = true;
             Continue(now, 1);
@@ -304,6 +356,10 @@ namespace ToyFactory.AI.Agents.Saboteur
                 _resultIndex[_staging[i].DoorId] = _results.Count;
                 _results.Add(_staging[i]);
             }
+
+            _route.Clear();
+            if (hasObjective)
+                _route.AddRange(_stagingRoute);
 
             HasObjective = hasObjective;
             if (hasObjective)

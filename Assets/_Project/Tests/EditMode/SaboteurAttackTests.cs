@@ -64,7 +64,8 @@ namespace ToyFactory.Tests.EditMode
         PlayerSnapshot PlayerAt(float metresEast, bool alive = true, bool known = true, float height = 0f)
         {
             Vector3 position = _grid.CellToWorld(_home) + new Vector3(metresEast, height, 0f);
-            return new PlayerSnapshot(known, _home, position, Vector3.zero, Vector3.forward, 5f,
+            Vector2Int cell = _grid.TryWorldToCell(position, out Vector2Int found) ? found : _home;
+            return new PlayerSnapshot(known, cell, position, Vector3.zero, Vector3.forward, 5f,
                 alive, 1f, 1f, false, 0f, 0f);
         }
 
@@ -198,10 +199,10 @@ namespace ToyFactory.Tests.EditMode
         // ---- The brain
 
         [Test]
-        public void FirstAttackTickStopsTheBodyFacesThePlayerAndShoots()
+        public void FirstAttackTickWithinReachStopsTheBodyFacesThePlayerAndShoots()
         {
             SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
-            PlayerSnapshot player = PlayerAt(3f);
+            PlayerSnapshot player = PlayerAt(1.5f);
 
             AgentIntent intent = brain.Tick(Ctx(WorldWith(player), 0f));
 
@@ -214,10 +215,175 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void MeleeConstantsMatchTheSwipe()
+        {
+            // The Saboteur prefab: stand-off 1.6 m, reach margin 0.6 m (hit reach 2.2 m), a swipe every 1.2 s.
+            Assert.AreEqual(1.2f, SaboteurBrain.AttackIntervalSeconds);
+            Assert.AreEqual(1.6f, SaboteurBrain.MeleeStandOffMetres);
+            Assert.AreEqual(2f, SaboteurBrain.MeleeReachMetres);
+            Assert.Less(SaboteurBrain.MeleeReachMetres, 1.6f + 0.6f, "Shoot is only asked for inside the distance the swipe lands.");
+            Assert.GreaterOrEqual(SaboteurBrain.MeleeReachMetres, SaboteurBrain.MeleeStandOffMetres);
+        }
+
+        [Test]
+        public void PlayerBeyondReachIsChasedNotShot()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            PlayerSnapshot player = PlayerAt(5f);
+
+            AgentIntent intent = brain.Tick(Ctx(WorldWith(player), 0f));
+
+            Assert.AreEqual(Attack, brain.CurrentAction);
+            Assert.AreEqual("AttackPlayer", intent.DebugState);
+            Assert.AreEqual(AgentAction.None, intent.Action, "The swipe only lands within about 2 m.");
+            Assert.IsNotNull(intent.Path);
+            Assert.Greater(intent.Path.Count, 0, "A route to the player, not a stop.");
+            Vector3 end = intent.Path[intent.Path.Count - 1];
+            Assert.Less(Vector3.Distance(end, player.Position), 1f, "The route ends at the player.");
+            Assert.AreEqual(player.Position, intent.LookTarget);
+        }
+
+        [TestCase(1.95f, true)]
+        [TestCase(2.05f, false)]
+        public void ShootIsAskedForOnlyWithinMeleeReach(float metres, bool shoots)
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+
+            AgentIntent intent = brain.Tick(Ctx(WorldWith(PlayerAt(metres)), 0f));
+
+            Assert.AreEqual(shoots ? AgentAction.Shoot : AgentAction.None, intent.Action);
+        }
+
+        [Test]
+        public void NoShotIsAskedForAtAnyDistanceBeyondReach()
+        {
+            // Up to 7 m: past about 7.2 m the attack scores below Idle and is not selected at all.
+            for (float metres = 2.1f; metres < 7f; metres += 0.35f)
+            {
+                _claims = new TargetClaims();
+                SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+
+                AgentIntent intent = brain.Tick(Ctx(WorldWith(PlayerAt(metres)), 0f));
+
+                Assert.AreEqual(Attack, brain.CurrentAction, $"{metres} m");
+                Assert.AreNotEqual(AgentAction.Shoot, intent.Action, $"{metres} m");
+            }
+        }
+
+        [Test]
+        public void ChaseRouteIsSentOnceWhileThePlayerStaysInTheSameCell()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            WorldBlackboard world = WorldWith(PlayerAt(5f));
+            Assert.IsNotNull(brain.Tick(Ctx(world, 0f)).Path);
+
+            AgentIntent keep = brain.Tick(Ctx(world, SaboteurBrain.ChaseReplanSeconds + Frame));
+
+            Assert.AreEqual("AttackPlayer", keep.DebugState);
+            Assert.IsNull(keep.Path, "The route already sent still leads to the player.");
+        }
+
+        [Test]
+        public void ChaseRoutesAgainWhenThePlayerMovesButNotBeforeTheReplanDelay()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            brain.Tick(Ctx(WorldWith(PlayerAt(5f)), 0f));
+            WorldBlackboard moved = WorldWith(PlayerAt(6.5f));
+
+            AgentIntent early = brain.Tick(Ctx(moved, SaboteurBrain.ChaseReplanSeconds - Frame));
+            Assert.IsNull(early.Path, "Not yet: searches are rationed.");
+
+            AgentIntent later = brain.Tick(Ctx(moved, SaboteurBrain.ChaseReplanSeconds));
+            Assert.IsNotNull(later.Path);
+            Assert.Greater(later.Path.Count, 0);
+            Assert.Less(Vector3.Distance(later.Path[later.Path.Count - 1], moved.Player.Position), 1f);
+        }
+
+        [Test]
+        public void GraphChangeMakesTheChaseSearchAgainEvenForAStillPlayer()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            WorldBlackboard world = WorldWith(PlayerAt(5f));
+            brain.Tick(Ctx(world, 0f));
+
+            brain.OnGraphChanged(new List<Vector2Int> { new Vector2Int(12, 10) });
+            AgentIntent intent = brain.Tick(Ctx(world, SaboteurBrain.ChaseReplanSeconds));
+
+            Assert.IsNotNull(intent.Path, "The route to the player may have been cut.");
+            Assert.Greater(intent.Path.Count, 0);
+        }
+
+        [Test]
+        public void ClosingInStopsTheBodyAndStrikes()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            Assert.AreNotEqual(AgentAction.Shoot, brain.Tick(Ctx(WorldWith(PlayerAt(5f)), 0f)).Action);
+
+            AgentIntent strike = brain.Tick(Ctx(WorldWith(PlayerAt(1.5f)), Frame));
+
+            Assert.AreEqual(AgentAction.Shoot, strike.Action);
+            Assert.IsNotNull(strike.Path, "Inside reach the chase route is replaced by a stop.");
+            Assert.AreEqual(0, strike.Path.Count);
+        }
+
+        [Test]
+        public void PlayerBackingOffDuringTheStrikeIsChasedAgain()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            Assert.AreEqual(AgentAction.Shoot, brain.Tick(Ctx(WorldWith(PlayerAt(1.5f)), 0f)).Action);
+
+            AgentIntent intent = brain.Tick(Ctx(WorldWith(PlayerAt(5f)), Frame));
+
+            Assert.AreEqual("AttackPlayer", intent.DebugState);
+            Assert.AreEqual(AgentAction.None, intent.Action);
+            Assert.IsNotNull(intent.Path);
+            Assert.Greater(intent.Path.Count, 0, "The stopped body is sent after the player.");
+        }
+
+        [Test]
+        public void ShotPacingHoldsAcrossAChaseAndAStrike()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            Assert.AreEqual(AgentAction.Shoot, brain.Tick(Ctx(WorldWith(PlayerAt(1.5f)), 0f)).Action);
+            brain.Tick(Ctx(WorldWith(PlayerAt(5f)), 0.5f));
+
+            AgentIntent tooSoon = brain.Tick(Ctx(WorldWith(PlayerAt(1.5f)), 0.75f));
+            Assert.AreEqual(AgentAction.None, tooSoon.Action, "Back in reach, but the swipe is still recovering.");
+
+            AgentIntent ready = brain.Tick(Ctx(WorldWith(PlayerAt(1.5f)), SaboteurBrain.AttackIntervalSeconds));
+            Assert.AreEqual(AgentAction.Shoot, ready.Action);
+        }
+
+        [Test]
+        public void UnreachablePlayerIsNotShotAtAndTheBodyHolds()
+        {
+            using (GridGraph.Batch batch = _grid.BeginBatch())
+            {
+                for (int x = 0; x < _grid.Width; x++)
+                for (int y = 0; y < _grid.Height; y++)
+                    if (Mathf.Abs(x - _home.x) > 1 || Mathf.Abs(y - _home.y) > 1)
+                        batch.SetWalkable(new Vector2Int(x, y), false);
+                batch.Commit();
+            }
+
+            SaboteurBrain brain = Brain(SaboteurLetter.A);
+            WorldBlackboard world = WorldWith(PlayerAt(5f));
+
+            AgentIntent first = brain.Tick(Ctx(world, 0f));
+            Assert.AreEqual("AttackPlayer", first.DebugState);
+            Assert.AreEqual(AgentAction.None, first.Action);
+            Assert.IsNotNull(first.Path, "No route to the player, so the body is stopped once.");
+            Assert.AreEqual(0, first.Path.Count);
+
+            AgentIntent next = brain.Tick(Ctx(world, SaboteurBrain.ChaseReplanSeconds + Frame));
+            Assert.AreEqual(AgentAction.None, next.Action);
+        }
+
+        [Test]
         public void ShotsArePacedByTheAttackInterval()
         {
             SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
-            WorldBlackboard world = WorldWith(PlayerAt(3f));
+            WorldBlackboard world = WorldWith(PlayerAt(1.5f));
 
             Assert.AreEqual(AgentAction.Shoot, brain.Tick(Ctx(world, 0f)).Action);
 
@@ -233,7 +399,7 @@ namespace ToyFactory.Tests.EditMode
         public void PlayerLeavingRangeSendsTheSaboteurBackToPatrol()
         {
             SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
-            Assert.AreEqual(AgentAction.Shoot, brain.Tick(Ctx(WorldWith(PlayerAt(3f)), 0f)).Action);
+            Assert.AreEqual(AgentAction.Shoot, brain.Tick(Ctx(WorldWith(PlayerAt(1.5f)), 0f)).Action);
 
             // Out of range: the next decision drops the attack and the body is routed again.
             AgentIntent intent = default;
@@ -255,10 +421,10 @@ namespace ToyFactory.Tests.EditMode
         public void PlayerDyingMidAttackStopsTheShootingAtOnce()
         {
             SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
-            Assert.AreEqual(AgentAction.Shoot, brain.Tick(Ctx(WorldWith(PlayerAt(3f)), 0f)).Action);
+            Assert.AreEqual(AgentAction.Shoot, brain.Tick(Ctx(WorldWith(PlayerAt(1.5f)), 0f)).Action);
 
             // A dead player must not be shot at, whether or not this tick is a decision slot.
-            AgentIntent intent = brain.Tick(Ctx(WorldWith(PlayerAt(3f, alive: false)), SaboteurBrain.AttackIntervalSeconds));
+            AgentIntent intent = brain.Tick(Ctx(WorldWith(PlayerAt(1.5f, alive: false)), SaboteurBrain.AttackIntervalSeconds));
 
             Assert.AreNotEqual(AgentAction.Shoot, intent.Action);
             Assert.AreEqual("Patrol", intent.DebugState);

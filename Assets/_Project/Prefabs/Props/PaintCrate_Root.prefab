@@ -51,7 +51,23 @@ PrefabInstance:
     - target: {fileID: -2273854516249975326, guid: 856a64be5fed53b4a9a4fb497bfb212b, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
-      objectReference: {fileID: 2100000, guid: 4b2c70c99817ddb4a819b5181004eb50, type: 2}
+      objectReference: {fileID: 2100000, guid: 5db9e8055a09e2849adb3a0765c90077, type: 2}
+    - target: {fileID: -2273854516249975326, guid: 856a64be5fed53b4a9a4fb497bfb212b, type: 3}
+      propertyPath: 'm_Materials.Array.data[1]'
+      value: 
+      objectReference: {fileID: 2100000, guid: fc13cce20f7d1fe4aaf8fb17bb3355b8, type: 2}
+    - target: {fileID: -2273854516249975326, guid: 856a64be5fed53b4a9a4fb497bfb212b, type: 3}
+      propertyPath: 'm_Materials.Array.data[2]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 5d914da1335e64045ac23bfba9be8986, type: 2}
+    - target: {fileID: -2273854516249975326, guid: 856a64be5fed53b4a9a4fb497bfb212b, type: 3}
+      propertyPath: 'm_Materials.Array.data[3]'
+      value: 
+      objectReference: {fileID: 2100000, guid: f3f1fc4a44eb01a448e500f5141780c4, type: 2}
+    - target: {fileID: -2273854516249975326, guid: 856a64be5fed53b4a9a4fb497bfb212b, type: 3}
+      propertyPath: 'm_Materials.Array.data[4]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 17eed53d06c47344a95d059703038bd5, type: 2}
     - target: {fileID: 919132149155446097, guid: 856a64be5fed53b4a9a4fb497bfb212b, type: 3}
       propertyPath: m_Name
       value: PaintCrate_Root

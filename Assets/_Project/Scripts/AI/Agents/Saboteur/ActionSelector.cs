@@ -18,27 +18,47 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// <summary>Seconds a closed door cannot be selected again after a confirmed success.</summary>
         public float DoorCooldownSeconds { get; }
 
+        /// <summary>
+        /// Seconds a trap or battery cannot be selected again after an attempt on it ended (it was armed
+        /// or taken, or the Saboteur could not get there). A started value, tuned in play. It mainly stops
+        /// an unreachable trap or battery being chosen again at every decision.
+        /// </summary>
+        public float FactCooldownSeconds { get; }
+
         /// <summary>Creates settings; the defaults are the design's starting values.</summary>
         public SelectorSettings(float momentum = 0.15f, float commitmentSeconds = 1.5f,
-            float emergencyThreshold = 0.9f, float doorCooldownSeconds = 10f)
+            float emergencyThreshold = 0.9f, float doorCooldownSeconds = 10f, float factCooldownSeconds = 10f)
         {
             RequireRange(momentum, 0f, 1f, nameof(momentum));
             RequireRange(commitmentSeconds, 0f, float.MaxValue, nameof(commitmentSeconds));
             RequireRange(emergencyThreshold, 0f, 1f, nameof(emergencyThreshold));
             RequireRange(doorCooldownSeconds, 0f, float.MaxValue, nameof(doorCooldownSeconds));
+            RequireRange(factCooldownSeconds, 0f, float.MaxValue, nameof(factCooldownSeconds));
 
             Momentum = momentum;
             CommitmentSeconds = commitmentSeconds;
             EmergencyThreshold = emergencyThreshold;
             DoorCooldownSeconds = doorCooldownSeconds;
+            FactCooldownSeconds = factCooldownSeconds;
         }
 
         /// <summary>
-        /// Cooldown after a confirmed success. Only the door cooldown is agreed; the other
-        /// actions have none until their target owners agree a value.
+        /// Cooldown after an attempt on a target ended: the door cooldown for CloseDoor, the fact
+        /// cooldown for ArmTrap and StealBattery, none for the other actions.
         /// </summary>
-        public float CooldownSeconds(SaboteurActionKind kind) =>
-            kind == SaboteurActionKind.CloseDoor ? DoorCooldownSeconds : 0f;
+        public float CooldownSeconds(SaboteurActionKind kind)
+        {
+            switch (kind)
+            {
+                case SaboteurActionKind.CloseDoor:
+                    return DoorCooldownSeconds;
+                case SaboteurActionKind.ArmTrap:
+                case SaboteurActionKind.StealBattery:
+                    return FactCooldownSeconds;
+                default:
+                    return 0f;
+            }
+        }
 
         static void RequireRange(float value, float min, float max, string name)
         {

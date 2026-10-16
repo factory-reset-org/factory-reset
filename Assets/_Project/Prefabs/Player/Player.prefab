@@ -144,6 +144,7 @@ GameObject:
   - component: {fileID: 8113869875364931116}
   - component: {fileID: 2986423053530059453}
   - component: {fileID: 7160304162156384356}
+  - component: {fileID: 2566602629998703359}
   m_Layer: 6
   m_Name: Player
   m_TagString: Untagged
@@ -233,6 +234,7 @@ MonoBehaviour:
   inputActions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   aim: {fileID: 5399716465226662200}
   reach: 2.5
+  promptReach: 1.8
   aimRadius: 0.35
   interactMask:
     serializedVersion: 2
@@ -314,6 +316,30 @@ MonoBehaviour:
   throwSpeed: 9
   throwLift: 3.2
   spawnDistance: 0.7
+--- !u!114 &2566602629998703359
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1503289532830950443}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b126dc25edaeaf34798a951ffb9b8afc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Player.PlayerBody
+  modelPrefab: {fileID: 3129044021387983766, guid: 2ac2a448e1f36664d86fdaa86ebd827d, type: 3}
+  viewCamera: {fileID: 4922832602558203308}
+  legSwingDegrees: 28
+  cyclesPerMetre: 0.45
+  bodyBackOffset: 0.12
+  reachSeconds: 0.12
+  holdSeconds: 0.06
+  returnSeconds: 0.22
+  restPosition: {x: -0.3, y: -0.42, z: 0.1}
+  reachPosition: {x: -0.16, y: -0.22, z: 0.52}
+  handScale: 1.2
+  handAngles: {x: -78, y: 10, z: 0}
 --- !u!1 &5810225151088404182
 GameObject:
   m_ObjectHideFlags: 0

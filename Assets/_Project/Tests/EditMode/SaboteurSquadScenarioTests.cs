@@ -127,19 +127,41 @@ namespace ToyFactory.Tests.EditMode
             return brains;
         }
 
-        // Every Saboteur ticks every frame at its own cell, as the controller does, for the given game time.
-        void Run(SaboteurBrain[] brains, float from, float seconds)
+        // Every Saboteur ticks every frame at its own cell, as the controller does, for the given game time. With
+        // walk set, one that has chosen a door steps a cell toward it every eighth of a second, like a body walking
+        // its route; without it the bodies stand still, which the brain now treats as being stuck.
+        void Run(SaboteurBrain[] brains, float from, float seconds, bool walk = false)
         {
             int frames = Mathf.RoundToInt(seconds / Frame);
+            var cells = (Vector2Int[])StartCells.Clone();
             for (int f = 0; f < frames; f++)
             {
                 float time = from + f * Frame;
                 for (int i = 0; i < brains.Length; i++)
                 {
-                    Vector2Int cell = StartCells[i];
+                    if (walk && f % 8 == 0)
+                        cells[i] = StepTowardItsDoor(brains[i], cells[i]);
+
+                    Vector2Int cell = cells[i];
                     brains[i].Tick(new AgentContext(cell, _grid.CellToWorld(cell), Vector3.right, time, _world, default));
                 }
             }
+        }
+
+        Vector2Int StepTowardItsDoor(SaboteurBrain brain, Vector2Int from)
+        {
+            ActionKey key = brain.CurrentAction;
+            if (key.Kind != SaboteurActionKind.CloseDoor || !_cache.TryGetCells(key.TargetId, out IReadOnlyList<Vector2Int> doorCells) || doorCells.Count == 0)
+                return from;
+
+            Vector2Int target = doorCells[0];
+            foreach (Vector2Int cell in doorCells)
+            {
+                if (BaseCostModel.OctileDistance(from, cell) < BaseCostModel.OctileDistance(from, target))
+                    target = cell;
+            }
+
+            return from + new Vector2Int(Mathf.Clamp(target.x - from.x, -1, 1), Mathf.Clamp(target.y - from.y, -1, 1));
         }
 
         static string Describe(SaboteurBrain brain) =>
@@ -244,12 +266,14 @@ namespace ToyFactory.Tests.EditMode
             (int cacheOne, int walkOne) = SearchesInTwentySeconds(1);
             (int cacheFour, int walkFour) = SearchesInTwentySeconds(4);
 
-            Debug.Log($"[squad evidence] A* searches in 20 s of game time (player and objective fixed). Detour cache: one Saboteur {cacheOne}, " +
+            Debug.Log($"[squad evidence] A* searches in 20 s of game time (player and objective fixed). Detour cache refreshes: one Saboteur {cacheOne}, " +
                       $"four Saboteurs {cacheFour}. Routes the Saboteurs planned to their door: one {walkOne}, four {walkFour}");
             Assert.AreEqual(cacheOne, cacheFour, "The shared cache answers all four with the searches of one.");
             Assert.LessOrEqual(cacheFour, 40 * 3, "At most one refresh every half second: one search for the route plus one per door on it.");
-            Assert.AreEqual(1, walkOne, "One Saboteur plans one route, to the door it chose.");
-            Assert.AreEqual(2, walkFour, "Two Saboteurs got a door, each plans one route; C and D chose no door.");
+            // The routes are each Saboteur's own work and are not shared: more Saboteurs, more routes. They walk their
+            // routes here, so one that finds a nearer door as it moves plans another; the figure is logged, not fixed.
+            Assert.GreaterOrEqual(walkOne, 1, "One Saboteur plans a route to the door it chose.");
+            Assert.Greater(walkFour, walkOne, "Four Saboteurs plan more routes than one, while the cache's searches stay the same.");
         }
 
         (int cache, int walk) SearchesInTwentySeconds(int count)
@@ -258,8 +282,10 @@ namespace ToyFactory.Tests.EditMode
             SaboteurBrain[] squad = MakeSquad(count);
             _pathfinder.Calls = 0;
             _walkPathfinder.Calls = 0;
-            Run(squad, 0f, 20f);
-            return (_pathfinder.Calls, _walkPathfinder.Calls);
+            Run(squad, 0f, 20f, walk: true);
+            // The cache's own refreshes; the fresh lockout check each door plan makes just before it closes its door
+            // runs on the same pathfinder but is counted apart (one per plan, whoever asks).
+            return (_pathfinder.Calls - _cache.LockoutChecks, _walkPathfinder.Calls);
         }
 
         [Test]

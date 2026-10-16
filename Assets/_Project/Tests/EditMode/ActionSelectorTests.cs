@@ -191,12 +191,23 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void ActionsWithoutAnAgreedCooldownHaveNone()
+        public void ActionsWithoutATargetToCoolDownHaveNone()
         {
             var selector = new ActionSelector();
-            selector.NotifySuccess(Battery, 0f);
+            var attack = new ActionKey(SaboteurActionKind.AttackPlayer);
+            selector.NotifySuccess(attack, 0f);
 
-            Assert.IsFalse(selector.IsOnCooldown(Battery, 0.1f));
+            Assert.IsFalse(selector.IsOnCooldown(attack, 0.1f));
+        }
+
+        [Test]
+        public void ABatteryOrTrapAttemptStartsTheFactCooldown()
+        {
+            var selector = new ActionSelector();
+            selector.NotifyFailure(Battery, 0f);
+
+            Assert.IsTrue(selector.IsOnCooldown(Battery, 9.9f));
+            Assert.IsFalse(selector.IsOnCooldown(Battery, 10.1f));
         }
 
         [Test]
