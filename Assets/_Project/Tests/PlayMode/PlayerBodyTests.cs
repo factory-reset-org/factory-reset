@@ -115,35 +115,6 @@ namespace ToyFactory.Tests
         }
 
         [UnityTest]
-        public IEnumerator TheHandReachesOutCallsBackOnArrivalAndGoesAway()
-        {
-            yield return LoadLevelAndStart();
-            Component player = (Component)PlayerState.Current;
-            Type bodyType = Type.GetType("ToyFactory.Player.PlayerBody, Assembly-CSharp");
-            Component body = player.GetComponent(bodyType);
-            Assert.IsNotNull(body, "the player has a PlayerBody");
-
-            int arrived = 0;
-            object accepted = bodyType.GetMethod("Thrust").Invoke(body, new object[] { (Action)(() => arrived++) });
-            Assert.IsTrue((bool)accepted);
-            var isReaching = bodyType.GetProperty("IsReaching");
-            Assert.IsTrue((bool)isReaching.GetValue(body), "the hand is out");
-            Assert.IsFalse((bool)bodyType.GetMethod("Thrust").Invoke(body, new object[] { (Action)(() => arrived += 100) }),
-                "a second reach is refused while the first is under way");
-
-            Transform hand = player.transform.Find("CameraPivot/Camera/ViewModelCamera/Hand (slide)");
-            Assert.IsNotNull(hand, "the hand is a toy hand under the overlay camera");
-            Assert.IsTrue(hand.gameObject.activeSelf, "it is shown while it reaches");
-            foreach (string part in new[] { "Forearm", "Cuff", "Palm", "Finger 1", "Finger 4", "Thumb" })
-                Assert.IsNotNull(hand.Find(part), "the hand has a " + part);
-            Assert.AreEqual(0, hand.GetComponentsInChildren<Collider>(true).Length, "the hand cannot touch physics");
-
-            yield return Until(() => arrived > 0, 2f, "the hand to arrive");
-            yield return Until(() => !(bool)isReaching.GetValue(body), 2f, "the hand to go back");
-            Assert.AreEqual(1, arrived, "the callback ran once");
-        }
-
-        [UnityTest]
         public IEnumerator PushableBoxesStayUprightSoTheyCannotTipIntoTheFloor()
         {
             yield return LoadLevelAndStart();

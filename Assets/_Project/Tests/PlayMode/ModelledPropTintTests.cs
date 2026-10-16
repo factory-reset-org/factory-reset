@@ -48,7 +48,7 @@ namespace ToyFactory.Tests
         {
             Type type = Type.GetType("ToyFactory.Interaction." + typeName + ",Assembly-CSharp");
             Assert.IsNotNull(type, typeName + " type");
-            var found = UnityEngine.Object.FindFirstObjectByType(type, FindObjectsInactive.Include) as Component;
+            var found = UnityEngine.Object.FindAnyObjectByType(type, FindObjectsInactive.Include) as Component;
             Assert.IsNotNull(found, "a " + typeName + " in the level");
             return found;
         }
