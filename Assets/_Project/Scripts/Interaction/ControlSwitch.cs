@@ -25,7 +25,9 @@ namespace ToyFactory.Interaction
         // this back as an empty string, which is not null, and the id would stay empty.
         [NonSerialized] string _id;
 
-        Renderer _body;
+        [Tooltip("Recoloured to show sealed, ready and restored. Left empty, the first renderer on this object or its children.")]
+        [SerializeField] Renderer body;
+
         PropGlow _glow;
 
         public override string Id => _id ??= IdPrefix + switchNumber;
@@ -43,7 +45,8 @@ namespace ToyFactory.Interaction
 
         void Awake()
         {
-            _body = GetComponentInChildren<Renderer>();
+            if (body == null)
+                body = GetComponentInChildren<Renderer>();
             Show(SealedColour);
         }
 
@@ -87,7 +90,7 @@ namespace ToyFactory.Interaction
 
         void Show(Color colour)
         {
-            PropTint.Set(_body, colour);
+            PropTint.Set(body, colour);
             if (_glow != null)
                 _glow.Colour = colour;
         }

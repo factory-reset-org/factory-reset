@@ -18,6 +18,9 @@ namespace ToyFactory.Interaction
         [Tooltip("Seconds for the field to drop. The prototype's takes two thirds of a second.")]
         [SerializeField, Min(0.05f)] float dropTime = 0.66f;
 
+        [Tooltip("The see-through field that drops. Left empty, the renderer on this object.")]
+        [SerializeField] Renderer field;
+
         Collider _collider;
         Renderer _renderer;
         bool _hasFieldLook;
@@ -29,15 +32,15 @@ namespace ToyFactory.Interaction
         void Awake()
         {
             _collider = GetComponent<Collider>();
-            _renderer = GetComponent<Renderer>();
+            _renderer = field != null ? field : GetComponent<Renderer>();
             _fullScale = transform.localScale;
             _bottom = transform.position.y - _fullScale.y * 0.5f;
 
             // See-through light instead of a solid box, when the effects asset is there.
-            Material field = PropEffects.FieldMaterial;
-            if (_renderer != null && field != null)
+            Material fieldMaterial = PropEffects.FieldMaterial;
+            if (_renderer != null && fieldMaterial != null)
             {
-                _renderer.sharedMaterial = field;
+                _renderer.sharedMaterial = fieldMaterial;
                 _renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 _hasFieldLook = true;
             }
