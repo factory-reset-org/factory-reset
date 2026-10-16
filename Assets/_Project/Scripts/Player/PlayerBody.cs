@@ -5,20 +5,32 @@ using UnityEngine.Rendering;
 namespace ToyFactory.Player
 {
     /// <summary>
-    /// The player's own legs, the way a first-person shooter shows them: looking down, the player sees
-    /// their legs and feet, and they step as the player walks.
+    /// The player's body: a shadow on the floor and Unit 047's own arms holding the blaster in view,
+    /// the way a first-person shooter shows its player.
     /// </summary>
     /// <remarks>
-    /// Unit 047's model stands a little in front of the camera. Its legs and feet are drawn for the camera
-    /// and are only in view when the player looks down past about 50 degrees. The hips, chest, head,
-    /// arms and blaster are not drawn (the gun is the first-person model), but every part still casts
-    /// a shadow. Colliders are removed so it cannot
-    /// touch physics, and the legs swing along the way the player moves.
+    /// <para>Unit 047's model stands under the player with every part set to cast shadows only, so the
+    /// player has a shadow and the camera never sees the head or torso from inside them. Its legs swing
+    /// along the way the player moves, so the shadow walks.</para>
+    /// <para>The arms are a second copy of the model. Its two arms and hands are posed round a blaster that
+    /// is the first-person gun scaled up (<see cref="modelBlasterScale"/>), so the copy is scaled to fit and
+    /// moved until its blaster sits on the gun's. Only the arms, hands and shoulders are kept and drawn,
+    /// on the ViewModel layer by the overlay camera like the gun, under the gun, so they bob and kick
+    /// with it and can never be inside a wall.</para>
     /// </remarks>
     public sealed class PlayerBody : MonoBehaviour
     {
-        [Tooltip("The model used for the body: Unit 047.")]
+        const string ViewLayerName = "ViewModel";
+
+        [Tooltip("The model used for the shadow and the arms: Unit 047.")]
         [SerializeField] GameObject modelPrefab;
+
+        [Header("Arms")]
+        [Tooltip("How much bigger the blaster is on the model than in the first-person gun. The arms are scaled down by this to fit the gun.")]
+        [SerializeField, Min(0.1f)] float modelBlasterScale = 1.25f;
+
+        [Tooltip("The first-person gun's model, under the player. Left empty, found as CameraPivot/Camera/BlasterViewModel/Model/BlasterModel.")]
+        [SerializeField] Transform gunModel;
 
         [Header("Legs")]
         [Tooltip("How far each leg swings from the hip at a run, in degrees.")]
@@ -27,8 +39,8 @@ namespace ToyFactory.Player
         [Tooltip("Leg swing cycles per metre walked.")]
         [SerializeField, Min(0.1f)] float cyclesPerMetre = 0.45f;
 
-        [Tooltip("How far behind the camera the body stands; negative is in front of it. In front, the legs and feet come into view at about 50 degrees of look down.")]
-        [SerializeField] float bodyBackOffset = -0.30f;
+        [Tooltip("How far behind the camera the shadow body stands.")]
+        [SerializeField] float bodyBackOffset = 0.12f;
 
         [Tooltip("How high a foot lifts at the top of a step, in metres.")]
         [SerializeField, Min(0f)] float footLift = 0.06f;
@@ -49,6 +61,7 @@ namespace ToyFactory.Player
                 return;
 
             BuildBody();
+            BuildArms();
         }
 
         void BuildBody()
@@ -62,7 +75,7 @@ namespace ToyFactory.Player
                 Destroy(c);
 
             foreach (Renderer r in body.GetComponentsInChildren<Renderer>(true))
-                r.shadowCastingMode = IsSeen(r.name) ? ShadowCastingMode.On : ShadowCastingMode.ShadowsOnly;
+                r.shadowCastingMode = ShadowCastingMode.ShadowsOnly;
 
             _legL = FindDeep(body.transform, "Leg_L_Pivot");
             _legR = FindDeep(body.transform, "Leg_R_Pivot");
@@ -72,10 +85,75 @@ namespace ToyFactory.Player
                 _legRBase = _legR.localPosition;
         }
 
-        // What the player sees of themselves: the legs and the feet. Seen from above, the hips and chest are
-        // big flat slabs, so they are not drawn.
-        static bool IsSeen(string partName) =>
-            partName.StartsWith("Leg_", StringComparison.Ordinal) || partName.StartsWith("Foot_", StringComparison.Ordinal);
+        static bool IsArmPart(string partName) =>
+            partName == "Arm_L" || partName == "Arm_R" || partName == "Hand_L" || partName == "Hand_R"
+            || partName == "ShoulderBall_L" || partName == "ShoulderBall_R";
+
+        // A copy of the model whose blaster is laid over the first-person gun, keeping only the arms.
+        void BuildArms()
+        {
+            Transform gun = gunModel != null ? gunModel : transform.Find("CameraPivot/Camera/BlasterViewModel/Model/BlasterModel");
+            Renderer gunRenderer = gun != null ? gun.GetComponent<Renderer>() : null;
+            if (gunRenderer == null)
+                return;
+
+            int layer = LayerMask.NameToLayer(ViewLayerName);
+            if (layer < 0)
+                layer = 0;
+
+            GameObject arms = Instantiate(modelPrefab, gun.parent);
+            arms.name = "Arms";
+            arms.transform.localPosition = Vector3.zero;
+            arms.transform.localRotation = Quaternion.identity;
+            arms.transform.localScale = Vector3.one / modelBlasterScale;
+
+            foreach (Collider c in arms.GetComponentsInChildren<Collider>(true))
+                Destroy(c);
+            foreach (Animator a in arms.GetComponentsInChildren<Animator>(true))
+                Destroy(a);
+            // The model's own motion scripts would swing the arms on their own.
+            foreach (MonoBehaviour m in arms.GetComponentsInChildren<MonoBehaviour>(true))
+                Destroy(m);
+
+            Bounds modelGun = default;
+            bool any = false;
+            var kept = new System.Collections.Generic.List<Renderer>();
+            foreach (Renderer r in arms.GetComponentsInChildren<Renderer>(true))
+            {
+                r.gameObject.layer = layer;
+                if (r.name == "Blaster_Body" || r.name == "Blaster_Barrel")
+                {
+                    if (!any)
+                        modelGun = r.bounds;
+                    else
+                        modelGun.Encapsulate(r.bounds);
+                    any = true;
+                }
+
+                if (IsArmPart(r.name))
+                {
+                    r.shadowCastingMode = ShadowCastingMode.Off;
+                    r.receiveShadows = false;
+                    kept.Add(r);
+                }
+                else
+                {
+                    r.enabled = false;
+                }
+            }
+
+            foreach (Transform t in arms.GetComponentsInChildren<Transform>(true))
+                t.gameObject.layer = layer;
+
+            // The model's blaster is the gun scaled up and held in the hands: move the copy until it sits on the gun.
+            if (any)
+                arms.transform.position += gunRenderer.bounds.center - modelGun.center;
+
+            // The gun hides in cutscenes and on the title screen; so do the arms.
+            BlasterViewModel viewModel = GetComponentInChildren<BlasterViewModel>(true);
+            if (viewModel != null)
+                viewModel.Adopt(kept.ToArray());
+        }
 
         static Transform FindDeep(Transform root, string name)
         {

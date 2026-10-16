@@ -98,6 +98,16 @@ namespace ToyFactory.Player
             return clock == null || clock.State == GameState.Playing || clock.State == GameState.Paused;
         }
 
+        /// <summary>Parts that are not under the gun's own renderers but must show and hide with it, like the player's arms.</summary>
+        public void Adopt(Renderer[] parts)
+        {
+            var all = new Renderer[_renderers.Length + parts.Length];
+            _renderers.CopyTo(all, 0);
+            parts.CopyTo(all, _renderers.Length);
+            _renderers = all;
+            SetVisible(_visible);
+        }
+
         void SetVisible(bool visible)
         {
             _visible = visible;
