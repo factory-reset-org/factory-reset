@@ -150,7 +150,6 @@ namespace ToyFactory.Tests
             Transform muzzle = Part(weapon.GetComponent<AgentController>(), "Muzzle_Point");
             Vector3 muzzleAtShot = default;
             weapon.Fired += _ => muzzleAtShot = muzzle.position;
-            LineRenderer line = weapon.GetComponentInChildren<LineRenderer>();
             yield return null;
 
             weapon.RequestShot();
@@ -167,7 +166,7 @@ namespace ToyFactory.Tests
 
             Assert.AreEqual(1, weapon.ShotsFired);
             Assert.AreEqual(1, cannon.Flashes);
-            Assert.Less(Vector3.Distance(line.GetPosition(0), muzzleAtShot), 0.05f, "The shot leaves from the muzzle point.");
+            Assert.Less(Vector3.Distance(weapon.LastShotFrom, muzzleAtShot), 0.05f, "The shot leaves from the muzzle point.");
             Assert.Greater(slam, 0.1f, "The barrel slams back along the forearm.");
             Assert.Less(dimmest, 0.5f, "The spent cell goes dim.");
 
