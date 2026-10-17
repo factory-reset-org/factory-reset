@@ -27,18 +27,33 @@ Four chapters in a fixed order: Assembly Floor, Painting Room, Storage Area, Con
 
 1. Clone the repo and open the folder in Unity Hub.
 2. Set up Smart Merge in your local `.git/config` (see [CONTRIBUTING.md](CONTRIBUTING.md)).
-3. Open `Assets/_Project/Scenes/Bootstrap.unity` and press Play. It loads `Env`, `Interactables` and `Agents` additively.
+3. Open `Assets/_Project/Scenes/Bootstrap.unity` and press Play. It loads `Env`, `Interactables`, `Agents` and `UI` additively and waits on the title screen; press Start.
 
 ## Controls
 
 | Input | Action |
 | --- | --- |
-| _TBD_ | |
-| F1 | Toggle AI debug overlay |
+| W A S D / arrow keys | Move |
+| Mouse | Look |
+| Left Shift | Sprint (louder footsteps: agents hear them) |
+| Left mouse button (or Enter) | Shoot the blaster |
+| R | Reload from a spare cell |
+| E | Use: levers, switches, doors, the crate dispenser, the charger, and shove a crate. Hold E on the terminal and the console |
+| Q | Throw a wind-up toy (a lure for the Tracker) |
+| M | Mute and unmute |
+| Esc | Pause; in a cutscene, skip it |
+| Space, E or left click | In a cutscene, finish the line and go to the next |
+
+Debug keys:
+
+| Input | Action | Where |
+| --- | --- | --- |
+| F3 | Toggle the AI debug overlay (routes, cover scores, predictions, noise) | Editor and every build |
+| F6 / F7 / F8 | Jump to Chapter 2 / 3 / 4 | Editor and development builds |
 
 ## Building
 
-File → Build Settings: `Bootstrap` (index 0), `Env`, `Interactables`, `Agents`. Build to `Builds/` (git-ignored).
+Use **Factory Reset → Build → Windows Player**: it builds the five scenes in order (`Bootstrap` at index 0, then `Env`, `Interactables`, `Agents`, `UI`) to `Builds/Windows/` (git-ignored) and appends a row to [Docs/BuildLog.md](Docs/BuildLog.md) with the commit, size, time, warnings and errors. A full build takes about an hour the first time (shader compilation). By hand: File → Build Profiles, the same five scenes in the same order, Windows, x86_64.
 
 ## Documentation
 
