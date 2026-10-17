@@ -292,5 +292,35 @@ namespace ToyFactory.Tests
             Assert.IsTrue(taken, "the player had room for a spare cell");
             Assert.GreaterOrEqual(ScoreManager.Current.Score - before, 50, "a battery pickup scores 50");
         }
+
+        [UnityTest]
+        public IEnumerator APlayerStandingOnABoxCannotShoveItFromUnderTheirFeet()
+        {
+            yield return LoadLevel();
+            yield return StartPlaying();
+            PropTestLevel.RemoveAgents();
+
+            GameObject crate = GameObject.Find("Crate_2");
+            Component box = crate.GetComponent(PropType("PushableBox"));
+            Rigidbody rb = crate.GetComponent<Rigidbody>();
+            yield return PropTestLevel.UntilAtRest(rb, 5f, "the crate to rest");
+            Bounds top = crate.GetComponent<Collider>().bounds;
+
+            var controller = ((Component)PlayerState.Current).GetComponent<CharacterController>();
+            controller.enabled = false;
+            controller.transform.position = new Vector3(top.center.x + 0.2f, top.max.y + 0.05f, top.center.z);
+            controller.enabled = true;
+            Physics.SyncTransforms();
+            yield return null;
+            yield return null;
+            Assert.IsTrue((bool)box.GetType().GetMethod("IsStoodOnBy").Invoke(box, new object[] { PlayerState.Current.Position }),
+                "the player is standing on the crate");
+
+            Vector3 before = crate.transform.position;
+            box.GetType().GetMethod("Interact").Invoke(box, null);
+            float until = Time.time + 1f;
+            yield return PropTestLevel.UntilGameTime(() => Time.time > until, 3f, "a second");
+            Assert.Less(Vector3.Distance(before, crate.transform.position), 0.05f, "the crate stayed under the player");
+        }
     }
 }
