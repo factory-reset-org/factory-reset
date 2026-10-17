@@ -89,6 +89,9 @@ namespace ToyFactory.Interaction
                 return;
             if (_rb.linearVelocity.sqrMagnitude > reshoveBelowSpeed * reshoveBelowSpeed)
                 return;
+            // A player standing on the box cannot shove it out from under their own feet.
+            if (IsStoodOnBy(player.Position))
+                return;
 
             // Away from the player along one of the four axes; if that way is blocked (a wall, another
             // box), the free way closest to it, so a box in a corner slides out along the wall.
@@ -97,6 +100,17 @@ namespace ToyFactory.Interaction
                 return;
 
             _rb.linearVelocity = direction * slideSpeed;
+        }
+
+        /// <summary>True if <paramref name="feet"/> is on top of this box: at its top face and within its footprint.</summary>
+        public bool IsStoodOnBy(Vector3 feet)
+        {
+            if (_collider == null)
+                return false;
+            Bounds b = _collider.bounds;
+            return feet.y >= b.max.y - 0.15f
+                && feet.x >= b.min.x - 0.3f && feet.x <= b.max.x + 0.3f
+                && feet.z >= b.min.z - 0.3f && feet.z <= b.max.z + 0.3f;
         }
 
         // True if the box can move a little way along direction: nothing solid in its way. Shrunk a
