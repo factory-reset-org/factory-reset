@@ -6,6 +6,7 @@ using UnityEngine;
 using ToyFactory.Interfaces;
 using ToyFactory.Runtime.Agents;
 using ToyFactory.Runtime.Animation;
+using ToyFactory.Runtime.Effects;
 using ToyFactory.Runtime.Movement;
 
 namespace ToyFactory.Editor.Animation
@@ -37,7 +38,8 @@ namespace ToyFactory.Editor.Animation
                 { "CaptainBot", (AgentType.Captain, 0.55f, 3.25f) },
             };
 
-        const string ShotLineMaterialPath = BodyFolder + "/AgentShotLine.mat";
+        const string BoltPrefabPath = "Assets/_Project/Prefabs/FX/ShotBolt.prefab";
+        const string ImpactPrefabPath = "Assets/_Project/Prefabs/FX/ImpactBurst.prefab";
         const string LightMaterialPath = BodyFolder + "/AgentLight.mat";
         const string SparkMaterialPath = BodyFolder + "/AgentSpark.mat";
         const string FxTextureFolder = "Assets/_Project/Textures/FX";
@@ -124,8 +126,9 @@ namespace ToyFactory.Editor.Animation
 
         /// <summary>
         /// Adds or refreshes only the hit effects (knock-down pose, dizzy stars, lights), the
-        /// Tracker's excitement, the Guard's tread scroll and the Saboteur's hands-on move on the
-        /// four existing bodies, without rebuilding their clips and controllers.
+        /// Tracker's excitement, the Guard's tread scroll, how the shooters' shots look and the
+        /// Saboteur's hands-on move on the four existing bodies, without rebuilding their clips
+        /// and controllers.
         /// </summary>
         [MenuItem("Factory Reset/Animation/Update Agent Hit Effects")]
         public static void UpdateHitEffects()
@@ -414,7 +417,6 @@ namespace ToyFactory.Editor.Animation
                     for (int i = 0; i < muzzles.arraySize; i++)
                         muzzles.GetArrayElementAtIndex(i).objectReferenceValue = Pivot(model, spec.Model, weapon.muzzles[i]);
                     gunSettings.FindProperty("damage").floatValue = weapon.damage;
-                    gunSettings.FindProperty("lineMaterial").objectReferenceValue = ShotLineMaterial();
                     gunSettings.ApplyModifiedPropertiesWithoutUndo();
                 }
 
@@ -475,6 +477,8 @@ namespace ToyFactory.Editor.Animation
 
             if (modelName == "TrackerToy")
                 AddExcitement(root, model);
+
+            AddShotLook(root, modelName);
 
             // The Guard's treads scroll with how each side really moves over the ground.
             if (modelName == "GuardBot")
@@ -747,21 +751,37 @@ namespace ToyFactory.Editor.Animation
             return AssetDatabase.LoadAssetAtPath<Sprite>(path);
         }
 
-        // Not "??": in the editor a missing component comes back as Unity's fake null.
-        // Unlit and coloured by the line's vertex colour, so one material serves the red aim
-        // line and the yellow tracer. Created once, then reused.
-        static Material ShotLineMaterial()
+        // How each shooter's shots look: the player's bolt and sparks in the robot's own warm
+        // colour, so enemy fire is never the player's cyan; the Captain's power cell is its
+        // telegraph, so only the Guard grows a glow at its muzzle through the aim.
+        static void AddShotLook(GameObject root, string modelName)
         {
-            var material = AssetDatabase.LoadAssetAtPath<Material>(ShotLineMaterialPath);
-            if (material != null)
-                return material;
-            Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
-            if (shader == null)
-                shader = Shader.Find("Sprites/Default");
-            material = new Material(shader) { name = "AgentShotLine" };
-            AssetDatabase.CreateAsset(material, ShotLineMaterialPath);
-            return material;
+            var gun = root.GetComponent<AgentWeapon>();
+            if (gun == null)
+                return;
+            var bolt = AssetDatabase.LoadAssetAtPath<ShotBolt>(BoltPrefabPath);
+            var settings = new SerializedObject(gun);
+            settings.FindProperty("boltPrefab").objectReferenceValue = bolt;
+            settings.FindProperty("impactPrefab").objectReferenceValue = AssetDatabase.LoadAssetAtPath<ImpactBurst>(ImpactPrefabPath);
+            settings.FindProperty("boltColour").colorValue = modelName == "CaptainBot"
+                ? new Color(1f, 0.22f, 0.2f)     // the Captain's red, like its visor
+                : new Color(1f, 0.55f, 0.15f);   // the Guard's orange
+            settings.FindProperty("chargeGlow").boolValue = modelName != "CaptainBot";
+            // Big enough to read at the 7-10 m the Guard fights from (0.45 m looked like a speck).
+            settings.FindProperty("chargeSize").floatValue = 0.7f;
+            settings.FindProperty("flashSize").floatValue = 1f;
+            // The bolt's own soft glow material, so the charge matches the bolt it becomes.
+            Material glow = null;
+            if (bolt != null)
+            {
+                var glowRenderer = new SerializedObject(bolt).FindProperty("glowRenderer").objectReferenceValue as Renderer;
+                glow = glowRenderer != null ? glowRenderer.sharedMaterial : null;
+            }
+            settings.FindProperty("chargeMaterial").objectReferenceValue = glow;
+            settings.ApplyModifiedPropertiesWithoutUndo();
         }
+
+        // Not "??": in the editor a missing component comes back as Unity's fake null.
 
         static T GetOrAdd<T>(GameObject target) where T : Component
         {

@@ -146,9 +146,14 @@ MonoBehaviour:
   range: 20
   chestHeight: 1.45
   tracerSeconds: 0.08
-  lineMaterial: {fileID: 2100000, guid: f7a1b61649e9f404b8a6efe2fac01eb8, type: 2}
-  aimColour: {r: 1, g: 0.25, b: 0.2, a: 0.6}
-  tracerColour: {r: 1, g: 0.9, b: 0.4, a: 1}
+  boltPrefab: {fileID: 8570983655450898588, guid: 6e2b050a2a4f69d409c405044a63f0b2, type: 3}
+  impactPrefab: {fileID: 8927951077047317907, guid: 0807c551d4fae064bb6b15cf0bd1aa4a, type: 3}
+  boltColour: {r: 1, g: 0.22, b: 0.2, a: 1}
+  chargeGlow: 0
+  chargeMaterial: {fileID: 2100000, guid: c82742d3b8a91964b9a855f2d3bc4db7, type: 2}
+  chargeSize: 0.7
+  flashSize: 1
+  flashSeconds: 0.07
 --- !u!114 &5280218360834695168
 MonoBehaviour:
   m_ObjectHideFlags: 0
