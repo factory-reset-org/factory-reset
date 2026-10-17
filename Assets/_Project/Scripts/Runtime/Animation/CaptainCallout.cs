@@ -2,6 +2,7 @@ using UnityEngine;
 using ToyFactory.AI.Agents.Captain;
 using ToyFactory.Interfaces;
 using ToyFactory.Runtime.Agents;
+using ToyFactory.Runtime.World;
 
 namespace ToyFactory.Runtime.Animation
 {
@@ -118,9 +119,15 @@ namespace ToyFactory.Runtime.Animation
 
             bool committed = brain.TryGetCommitment(out CandidateGoal goal, out Vector3 goalPosition, out _);
             if (_callouts.Update(Now, committed, goal))
-                Mark(goalPosition);
+                Mark(RingPoint(goal.Id, goalPosition));
             UpdateMarker();
         }
+
+        // The brain's goal is a grid cell, always at floor height. The ring goes on the surface under the
+        // objective's real position instead (a power core's rack top, the floor for a floor task), the same
+        // rule as the yellow objective beacon.
+        static Vector3 RingPoint(int goalId, Vector3 cellPosition) =>
+            ObjectiveTargetWriter.TryGetWorldPosition(goalId, out Vector3 real) ? RingPlacement.OnSurfaceBelow(real) : cellPosition;
 
         void Mark(Vector3 point)
         {
