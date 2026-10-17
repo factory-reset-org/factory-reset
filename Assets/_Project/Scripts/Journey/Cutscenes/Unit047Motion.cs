@@ -105,6 +105,9 @@ namespace ToyFactory.Journey.Cutscenes
         [Tooltip("Breathing bob (m) and its period (s).")]
         [SerializeField] Vector2 bob = new Vector2(0.006f, 1.8f);
 
+        [Tooltip("Degrees both arms (and so the blaster in both hands) rise and fall with each breath.")]
+        [SerializeField] float armBob = 1.5f;
+
         [Tooltip("Degrees per second the wind-up key turns.")]
         [SerializeField] float keySpeed = 180f;
 
@@ -264,12 +267,16 @@ namespace ToyFactory.Journey.Cutscenes
                 _body.localPosition = _bodyRestPosition + Vector3.up * (bob.x * Mathf.Sin(tau * _time / bob.y));
             }
 
-            // The arms hang and swing a little against the sway, so they look loose.
-            float arm = 3f * Mathf.Sin(tau * _time / sway.y + Mathf.PI);
+            // Both hands hold the blaster (S3's two-handed stance, 15 October), so the arms move
+            // together: the same pitch on both shoulders, whose axes are parallel, keeps the left
+            // hand on the front grip while the gun rises and falls a little with the breath.
+            // Swinging them against each other, as for the first model's hanging arms, slid the
+            // left hand 2 cm along the gun every sway.
+            float arm = armBob * Mathf.Sin(tau * _time / bob.y);
             if (_armL != null)
                 _armL.localRotation = _armLRest * Quaternion.Euler(arm, 0f, 0f);
             if (_armR != null)
-                _armR.localRotation = _armRRest * Quaternion.Euler(-arm, 0f, 0f);
+                _armR.localRotation = _armRRest * Quaternion.Euler(arm, 0f, 0f);
 
             if (_key != null)
             {
