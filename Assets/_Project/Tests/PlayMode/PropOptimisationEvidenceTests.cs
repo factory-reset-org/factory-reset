@@ -303,5 +303,89 @@ namespace ToyFactory.Tests
                     PlayerState.Publish(null);
             }
         }
+
+        // ---- 4. Core debris: the power-core explosion pool ----------------------------
+
+        /// <summary>
+        /// The Chapter 4 finale blows up three power cores, each with a big debris burst. The bursts come from
+        /// the pool in <see cref="PropEffects"/> (prewarmed with 3). Ten finales back to back (30 bursts, three at
+        /// a time, each batch waiting for the bursts to finish) against creating and destroying a burst each time.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Evidence_CoreDebrisPooling()
+        {
+            var effects = Resources.Load<PropEffects>("PropEffects");
+            Assert.IsNotNull(effects, "Resources/PropEffects");
+            var prefab = (ImpactBurst)typeof(PropEffects).GetField("explosionPrefab",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(effects);
+            Assert.IsNotNull(prefab, "the explosion burst");
+
+            var root = new GameObject("DebrisEvidence");
+            _created.Add(root);
+            const int Finales = 10;
+            const int CoresPerFinale = 3;
+            Color debris = new Color(1f, 0.79f, 0.2f);
+
+            // Warm the create path once.
+            Object.Destroy(Object.Instantiate(prefab, root.transform).gameObject);
+            yield return null;
+
+            // Create and destroy one burst per core.
+            long instantiateBytes = 0;
+            double instantiateMs = 0;
+            for (int f = 0; f < Finales; f++)
+            {
+                var live = new List<ImpactBurst>(CoresPerFinale);
+                long before = Allocated;
+                var watch = Stopwatch.StartNew();
+                for (int c = 0; c < CoresPerFinale; c++)
+                {
+                    ImpactBurst burst = Object.Instantiate(prefab, root.transform);
+                    burst.Play(new Vector3(c * 3f, 3.75f, 0f), Vector3.up, debris);
+                    live.Add(burst);
+                }
+                watch.Stop();
+                instantiateMs += watch.Elapsed.TotalMilliseconds;
+                instantiateBytes += Allocated - before;
+                yield return new WaitForSeconds(0.1f);
+                foreach (ImpactBurst burst in live)
+                    Object.Destroy(burst.gameObject);
+                yield return null;
+            }
+
+            // The pool PropEffects uses: prewarmed with 3, released when each burst finishes.
+            ObjectPool<ImpactBurst> pool = null;
+            pool = new ObjectPool<ImpactBurst>(prefab, root.transform, burst => burst.Finished += b => pool.Release(b));
+            pool.Prewarm(3);
+            yield return null;
+            int createdAfterPrewarm = pool.Created;
+            long poolBytes = 0;
+            double poolMs = 0;
+            for (int f = 0; f < Finales; f++)
+            {
+                long before = Allocated;
+                var watch = Stopwatch.StartNew();
+                for (int c = 0; c < CoresPerFinale; c++)
+                    pool.Get().Play(new Vector3(c * 3f, 3.75f, 0f), Vector3.up, debris);
+                watch.Stop();
+                poolMs += watch.Elapsed.TotalMilliseconds;
+                poolBytes += Allocated - before;
+                float until = Time.realtimeSinceStartup + 10f;
+                while (pool.ActiveCount > 0 && Time.realtimeSinceStartup < until)
+                    yield return null;
+            }
+
+            var report = new StringBuilder();
+            report.AppendLine($"Core debris bursts: {Finales} finales x {CoresPerFinale} cores ({Finales * CoresPerFinale} bursts)");
+            report.AppendLine("| Method | Copies created | Managed bytes in the spawn calls | Time in the spawn calls (ms, total) |");
+            report.AppendLine("| --- | --- | --- | --- |");
+            report.AppendLine($"| Instantiate and Destroy | {Finales * CoresPerFinale} | {instantiateBytes:N0} | {instantiateMs:0.00} |");
+            report.AppendLine($"| PropEffects pool (prewarm 3) | {pool.Created} | {poolBytes:N0} | {poolMs:0.00} |");
+            Debug.Log(report.ToString());
+            TestContext.Out.WriteLine(report.ToString());
+
+            Assert.AreEqual(createdAfterPrewarm, pool.Created, "three bursts at a time never needed a fourth copy");
+            Assert.Less(poolMs, instantiateMs, "Get and Play is faster than Instantiate and Play");
+        }
     }
 }
