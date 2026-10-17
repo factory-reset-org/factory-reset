@@ -15,7 +15,7 @@ namespace ToyFactory.Interaction
     }
 
     /// <summary>
-    /// A door that swings or slides open, stops and retries if something blocks its path
+    /// A door that swings, or slides (the level's doors lift straight up) open, stops and retries if something blocks its path
     /// instead of reversing, and raises <see cref="StateChanged"/> when it settles fully
     /// open or closed. <see cref="ISabotageable.Execute"/> closes it, for the Saboteur.
     /// The player toggles it with Interact. It tells the level grid when it stops being
@@ -46,12 +46,13 @@ namespace ToyFactory.Interaction
         [Tooltip("How far the panel swings open, in degrees around its local up axis.")]
         [SerializeField] float openAngle = 90f;
 
-        [Tooltip("Local offset the panel slides to when fully open.")]
+        [Tooltip("Local offset the panel slides to when fully open. The level's doors lift: (0, 5, 0), up into the lintel and out of the way.")]
         [SerializeField] Vector3 openOffset = new Vector3(0f, 2f, 0f);
 
         [Header("Blocking")]
         [Tooltip("Something in this box, at the panel's current position, stops the door and makes it retry.")]
         [SerializeField] Vector3 blockCheckHalfExtents = new Vector3(0.5f, 1f, 0.1f);
+        [Tooltip("What stops the door. Left empty: Player, Agents, Pushable and Throwable.")]
         [SerializeField] LayerMask blockingMask;
         [SerializeField, Min(0.05f)] float retryInterval = 0.5f;
 
@@ -74,6 +75,7 @@ namespace ToyFactory.Interaction
         Vector3 _openPosition;
         float _retryTimer;
         Transform _useZone;
+        BoxCollider _panelBox;
 
         /// <summary>Raised once the door settles fully open or fully closed.</summary>
         public event Action<Door> StateChanged;
@@ -95,6 +97,10 @@ namespace ToyFactory.Interaction
             _openRotation = _closedRotation * Quaternion.Euler(0f, openAngle, 0f);
             _closedPosition = movingPart.localPosition;
             _openPosition = _closedPosition + openOffset;
+            _panelBox = movingPart.GetComponent<BoxCollider>();
+            // Left empty, the door waits for the player, an agent, a crate or a thrown toy under it.
+            if (blockingMask.value == 0)
+                blockingMask = LayerMask.GetMask("Player", "Agents", "Pushable", "Throwable");
             IsLocked = !string.IsNullOrEmpty(unlockSignal);
             CreateUseZone();
 
@@ -279,7 +285,23 @@ namespace ToyFactory.Interaction
             NoiseEvents.Emit(new NoiseEvent(movingPart.position, NoiseLoudness.DoorSlam, GetHashCode(), time));
         }
 
-        bool IsBlocked() =>
-            Physics.CheckBox(movingPart.position, blockCheckHalfExtents, movingPart.rotation, blockingMask);
+        // A door that lifts opens away from anything in the doorway and can only catch something as it comes
+        // down: it waits while the player, an agent or a box is under its lower edge.
+        bool Lifts => mode == DoorMode.Slide && Mathf.Abs(openOffset.y) > Mathf.Max(Mathf.Abs(openOffset.x), Mathf.Abs(openOffset.z));
+
+        bool IsBlocked()
+        {
+            if (!Lifts)
+                return Physics.CheckBox(movingPart.position, blockCheckHalfExtents, movingPart.rotation, blockingMask);
+
+            if (_state != State.Closing || _panelBox == null)
+                return false;
+
+            Bounds panel = _panelBox.bounds;
+            const float CheckHeight = 0.6f;
+            Vector3 centre = new Vector3(panel.center.x, panel.min.y - CheckHeight, panel.center.z);
+            Vector3 half = new Vector3(Mathf.Max(0.1f, panel.extents.x - 0.05f), CheckHeight, Mathf.Max(0.2f, panel.extents.z));
+            return Physics.CheckBox(centre, half, Quaternion.identity, blockingMask, QueryTriggerInteraction.Ignore);
+        }
     }
 }
