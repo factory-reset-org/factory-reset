@@ -52,7 +52,7 @@ namespace ToyFactory.Interaction
         [Header("Blocking")]
         [Tooltip("Something in this box, at the panel's current position, stops the door and makes it retry.")]
         [SerializeField] Vector3 blockCheckHalfExtents = new Vector3(0.5f, 1f, 0.1f);
-        [Tooltip("What stops the door. Left empty: Player, Agents, Pushable and Throwable.")]
+        [Tooltip("What stops the door. Left empty: Player, Pushable and Throwable.")]
         [SerializeField] LayerMask blockingMask;
         [SerializeField, Min(0.05f)] float retryInterval = 0.5f;
 
@@ -98,9 +98,11 @@ namespace ToyFactory.Interaction
             _closedPosition = movingPart.localPosition;
             _openPosition = _closedPosition + openOffset;
             _panelBox = movingPart.GetComponent<BoxCollider>();
-            // Left empty, the door waits for the player, an agent, a crate or a thrown toy under it.
+            // Left empty, the door waits for the player, a crate or a thrown toy under it. Not for agents: a
+            // Saboteur closes a door from its doorway, and the Captain and Saboteurs time their door actions
+            // on the grid, which already treats a door as shut from the moment it starts down.
             if (blockingMask.value == 0)
-                blockingMask = LayerMask.GetMask("Player", "Agents", "Pushable", "Throwable");
+                blockingMask = LayerMask.GetMask("Player", "Pushable", "Throwable");
             IsLocked = !string.IsNullOrEmpty(unlockSignal);
             CreateUseZone();
 
@@ -286,7 +288,7 @@ namespace ToyFactory.Interaction
         }
 
         // A door that lifts opens away from anything in the doorway and can only catch something as it comes
-        // down: it waits while the player, an agent or a box is under its lower edge.
+        // down: it waits while the player, a crate or a thrown toy is under its lower edge.
         bool Lifts => mode == DoorMode.Slide && Mathf.Abs(openOffset.y) > Mathf.Max(Mathf.Abs(openOffset.x), Mathf.Abs(openOffset.z));
 
         bool IsBlocked()
