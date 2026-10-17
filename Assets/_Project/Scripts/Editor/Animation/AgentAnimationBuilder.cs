@@ -72,10 +72,10 @@ namespace ToyFactory.Editor.Animation
 
         // What glows on each agent, and its colour from the prototype: the Tracker's green
         // antenna ball, the Guard's cyan visor, the Saboteur's green goggles and the Captain's
-        // red visor. Lens sizes come from the visor and goggle meshes: the Guard's visor plate
-        // is 0.44 x 0.11 x 0.035 m, each goggle rim 0.24 m across and closed at the front (front
-        // face 0.41 m forward), so its lens sits on that face. The remade Captain's visor is its
-        // own part, so it glows itself; its cannon's power cell glows too (CaptainCannon).
+        // red visor. The Guard's lens size comes from its visor plate (0.44 x 0.11 x 0.035 m).
+        // The remade Saboteur's goggles have their own domed lenses (Lens_L, Lens_R), and the
+        // remade Captain's visor is its own part, so those glow themselves; the Captain's
+        // cannon's power cell glows too (CaptainCannon).
         static readonly Dictionary<string, (LightPart[] parts, Color colour)> Lights =
             new Dictionary<string, (LightPart[], Color)>
             {
@@ -86,10 +86,8 @@ namespace ToyFactory.Editor.Animation
                     new Color(0.38f, 0.85f, 1f)) },
                 { "SaboteurBot", (new[]
                     {
-                        LightPart.Lens("SaboteurBot_Root/Body_Pivot", "Goggle_Lens_L", PrimitiveType.Cylinder,
-                            new Vector3(-0.19f, 1.035f, 0.413f), new Vector3(90f, 0f, 0f), new Vector3(0.16f, 0.004f, 0.16f)),
-                        LightPart.Lens("SaboteurBot_Root/Body_Pivot", "Goggle_Lens_R", PrimitiveType.Cylinder,
-                            new Vector3(0.19f, 1.035f, 0.413f), new Vector3(90f, 0f, 0f), new Vector3(0.16f, 0.004f, 0.16f)),
+                        LightPart.Existing("SaboteurBot_Root/Body_Pivot/Lens_L"),
+                        LightPart.Existing("SaboteurBot_Root/Body_Pivot/Lens_R"),
                     }, new Color(0.49f, 1f, 0.42f)) },
                 { "CaptainBot", (new[] { LightPart.Existing(CaptainHead + "/Visor") }, CaptainRed) },
             };
@@ -125,9 +123,9 @@ namespace ToyFactory.Editor.Animation
         }
 
         /// <summary>
-        /// Adds or refreshes only the hit effects (knock-down pose, dizzy stars, lights) and the
-        /// Tracker's excitement on the four existing bodies, without rebuilding their clips and
-        /// controllers.
+        /// Adds or refreshes only the hit effects (knock-down pose, dizzy stars, lights), the
+        /// Tracker's excitement and the Saboteur's hands-on move on the four existing bodies,
+        /// without rebuilding their clips and controllers.
         /// </summary>
         [MenuItem("Factory Reset/Animation/Update Agent Hit Effects")]
         public static void UpdateHitEffects()
@@ -437,7 +435,8 @@ namespace ToyFactory.Editor.Animation
                 }
                 else if (spec.Model == "SaboteurBot")
                 {
-                    SetWheels(GetOrAdd<WheelSpinner>(root), model, 0.365f, "SaboteurBot_Root/Wheel_Pivot");
+                    // The remade wheel is 0.56 m across (it was 0.73 m).
+                    SetWheels(GetOrAdd<WheelSpinner>(root), model, 0.28f, "SaboteurBot_Root/Wheel_Pivot");
                 }
 
                 PrefabUtility.SaveAsPrefabAsset(root, path);
@@ -477,9 +476,37 @@ namespace ToyFactory.Editor.Animation
             if (modelName == "TrackerToy")
                 AddExcitement(root, model);
 
+            // The Saboteur reaches in and pinches when it closes a door, arms a trap or takes a
+            // battery, and a stolen battery shows in the crate on its back.
+            if (modelName == "SaboteurBot")
+            {
+                const string body = "SaboteurBot_Root/Body_Pivot";
+                const string shL = body + "/Shoulder_L_Pivot", shR = body + "/Shoulder_R_Pivot";
+                const string elL = shL + "/Elbow_L_Pivot", elR = shR + "/Elbow_R_Pivot";
+                SetPivots<SaboteurHandsOn>(root, model, modelName,
+                    ("root", "SaboteurBot_Root"),
+                    ("body", body), ("shoulderLeft", shL), ("shoulderRight", shR),
+                    ("elbowLeft", elL), ("elbowRight", elR),
+                    ("clawLeftTop", elL + "/Claw_L_Top_Pivot"), ("clawLeftBottom", elL + "/Claw_L_Bottom_Pivot"),
+                    ("clawRightTop", elR + "/Claw_R_Top_Pivot"), ("clawRightBottom", elR + "/Claw_R_Bottom_Pivot"));
+                var handsOn = new SerializedObject(root.GetComponent<SaboteurHandsOn>());
+                handsOn.FindProperty("carriedBattery").objectReferenceValue =
+                    Pivot(model, modelName, body + "/Battery_Pivot/Battery").gameObject;
+                handsOn.ApplyModifiedPropertiesWithoutUndo();
+            }
+
             // The ending films the Captain powering down on its spawn, facing the console.
             if (modelName == "CaptainBot")
                 GetOrAdd<AgentCutsceneMark>(root);
+
+            // The flat goggle discs made for the first Saboteur sit inside the remade model's
+            // domed lenses, which glow themselves now.
+            foreach (string retired in new[] { "Goggle_Lens_L", "Goggle_Lens_R" })
+            {
+                Transform disc = model.Find("SaboteurBot_Root/Body_Pivot/" + retired);
+                if (disc != null)
+                    Object.DestroyImmediate(disc.gameObject);
+            }
 
             if (!Lights.TryGetValue(modelName, out (LightPart[] parts, Color colour) light))
                 return;
