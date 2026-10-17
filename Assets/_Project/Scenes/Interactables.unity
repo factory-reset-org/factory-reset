@@ -921,9 +921,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.Door
   movingPart: {fileID: 0}
   mode: 1
-  speed: 3
+  speed: 3.5
   openAngle: 90
-  openOffset: {x: 0, y: 0, z: 3.1}
+  openOffset: {x: 0, y: 5, z: 0}
   blockCheckHalfExtents: {x: 0.5, y: 1, z: 0.1}
   blockingMask:
     serializedVersion: 2
@@ -1759,7 +1759,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4743123472918931354, guid: beac78d7a8286394e88936df61608686, type: 3}
       propertyPath: m_LocalScale.z
-      value: 20
+      value: 40
       objectReference: {fileID: 0}
     - target: {fileID: 4743123472918931354, guid: beac78d7a8286394e88936df61608686, type: 3}
       propertyPath: m_LocalPosition.x
@@ -4401,7 +4401,7 @@ MonoBehaviour:
   startRunning: 0
   edgeRamps: 1
   rampDegrees: 12
-  extraWidth: 0.6
+  extraWidth: 0.2
   rampLift: 0.0015
 --- !u!54 &708138641
 Rigidbody:
@@ -4518,7 +4518,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: 0.7071068, z: -0, w: 0.7071068}
   m_LocalPosition: {x: 9.2, y: 0.02, z: 17.5}
-  m_LocalScale: {x: 1.5, y: 0.04, z: 11.4}
+  m_LocalScale: {x: 2.2, y: 0.04, z: 11.4}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 306817895}
@@ -5394,7 +5394,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: 0.7071068, z: -0, w: -0.7071068}
   m_LocalPosition: {x: 10.25, y: 0.02, z: 7.5}
-  m_LocalScale: {x: 1.5, y: 0.04, z: 17.5}
+  m_LocalScale: {x: 2.2, y: 0.04, z: 17.5}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 963200781}
@@ -5417,7 +5417,7 @@ MonoBehaviour:
   startRunning: 0
   edgeRamps: 1
   rampDegrees: 12
-  extraWidth: 0.6
+  extraWidth: 0.2
   rampLift: 0.0015
 --- !u!54 &829231103
 Rigidbody:
@@ -6300,7 +6300,7 @@ Transform:
   m_GameObject: {fileID: 895729957}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 12, y: 0.5, z: 4}
+  m_LocalPosition: {x: 16, y: 0.5, z: 4.2}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -7109,7 +7109,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0.7071068, y: -0, z: -0, w: 0.7071068}
   m_LocalPosition: {x: 24.6, y: 3.55, z: 17.5}
-  m_LocalScale: {x: 1.24, y: 0.05, z: 1.24}
+  m_LocalScale: {x: 1.24, y: 0.15, z: 1.24}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1121241213}
@@ -7131,6 +7131,7 @@ MonoBehaviour:
   spinDegreesPerSecond: 70
   body: {fileID: 1121241214}
   hitColour: {r: 0.2, g: 0.9, b: 0.4, a: 1}
+  hitTint: 0.55
 --- !u!64 &1096905068
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -7551,7 +7552,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0.7071068, y: -0, z: -0, w: 0.7071068}
   m_LocalPosition: {x: 38.9, y: 3.55, z: 5.5}
-  m_LocalScale: {x: 1.24, y: 0.05, z: 1.24}
+  m_LocalScale: {x: 1.24, y: 0.15, z: 1.24}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1738349734}
@@ -7573,6 +7574,7 @@ MonoBehaviour:
   spinDegreesPerSecond: 130
   body: {fileID: 1738349735}
   hitColour: {r: 0.2, g: 0.9, b: 0.4, a: 1}
+  hitTint: 0.55
 --- !u!64 &1120128781
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -7670,7 +7672,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4743123472918931354, guid: beac78d7a8286394e88936df61608686, type: 3}
       propertyPath: m_LocalScale.z
-      value: 20
+      value: 40
       objectReference: {fileID: 0}
     - target: {fileID: 4743123472918931354, guid: beac78d7a8286394e88936df61608686, type: 3}
       propertyPath: m_LocalPosition.x
@@ -7972,7 +7974,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4743123472918931354, guid: beac78d7a8286394e88936df61608686, type: 3}
       propertyPath: m_LocalScale.z
-      value: 20
+      value: 40
       objectReference: {fileID: 0}
     - target: {fileID: 4743123472918931354, guid: beac78d7a8286394e88936df61608686, type: 3}
       propertyPath: m_LocalPosition.x
@@ -9687,9 +9689,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.Door
   movingPart: {fileID: 0}
   mode: 1
-  speed: 3
+  speed: 3.5
   openAngle: 90
-  openOffset: {x: 0, y: 0, z: 3.1}
+  openOffset: {x: 0, y: 5, z: 0}
   blockCheckHalfExtents: {x: 0.5, y: 1, z: 0.1}
   blockingMask:
     serializedVersion: 2
@@ -10114,7 +10116,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0.7071068, y: -0, z: -0, w: 0.7071068}
   m_LocalPosition: {x: 37.4, y: 3.55, z: 17.5}
-  m_LocalScale: {x: 1.24, y: 0.05, z: 1.24}
+  m_LocalScale: {x: 1.24, y: 0.15, z: 1.24}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1195518590}
@@ -10136,6 +10138,7 @@ MonoBehaviour:
   spinDegreesPerSecond: 90
   body: {fileID: 1195518591}
   hitColour: {r: 0.2, g: 0.9, b: 0.4, a: 1}
+  hitTint: 0.55
 --- !u!64 &1531412214
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -10456,7 +10459,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1595024057}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalRotation: {x: -0, y: 1, z: -0, w: -0.00000004371139}
   m_LocalPosition: {x: 10.5, y: 0.5, z: 31}
   m_LocalScale: {x: 1.2, y: 1, z: 0.6}
   m_ConstrainProportionsScale: 0
@@ -11164,7 +11167,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0.7071068, y: -0, z: -0, w: 0.7071068}
   m_LocalPosition: {x: 27.4, y: 3.55, z: 11.5}
-  m_LocalScale: {x: 1.24, y: 0.05, z: 1.24}
+  m_LocalScale: {x: 1.24, y: 0.15, z: 1.24}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 189043830}
@@ -11186,6 +11189,7 @@ MonoBehaviour:
   spinDegreesPerSecond: 110
   body: {fileID: 189043831}
   hitColour: {r: 0.2, g: 0.9, b: 0.4, a: 1}
+  hitTint: 0.55
 --- !u!64 &1637341114
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -11599,7 +11603,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4743123472918931354, guid: beac78d7a8286394e88936df61608686, type: 3}
       propertyPath: m_LocalScale.z
-      value: 20
+      value: 40
       objectReference: {fileID: 0}
     - target: {fileID: 4743123472918931354, guid: beac78d7a8286394e88936df61608686, type: 3}
       propertyPath: m_LocalPosition.x
@@ -12584,9 +12588,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.Door
   movingPart: {fileID: 0}
   mode: 1
-  speed: 3
+  speed: 3.5
   openAngle: 90
-  openOffset: {x: 3.1, y: 0, z: 0}
+  openOffset: {x: 0, y: 5, z: 0}
   blockCheckHalfExtents: {x: 0.5, y: 1, z: 0.1}
   blockingMask:
     serializedVersion: 2
@@ -12969,9 +12973,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.Door
   movingPart: {fileID: 0}
   mode: 1
-  speed: 3
+  speed: 3.5
   openAngle: 90
-  openOffset: {x: 3.1, y: 0, z: 0}
+  openOffset: {x: 0, y: 5, z: 0}
   blockCheckHalfExtents: {x: 0.5, y: 1, z: 0.1}
   blockingMask:
     serializedVersion: 2
@@ -13183,7 +13187,7 @@ Transform:
   m_GameObject: {fileID: 1929273191}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 4.5, y: 0.5, z: 15.5}
+  m_LocalPosition: {x: 4.5, y: 0.5, z: 15}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
