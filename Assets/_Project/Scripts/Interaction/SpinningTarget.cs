@@ -22,6 +22,9 @@ namespace ToyFactory.Interaction
         [SerializeField] Renderer body;
         [SerializeField] Color hitColour = new Color(0.24f, 0.86f, 0.69f);
 
+        [Tooltip("How far a hit target's colours move towards the hit colour: tinted, so its rings still show.")]
+        [SerializeField, Range(0f, 1f)] float hitTint = 0.55f;
+
         TargetGroup _group;
         PropGlow _glow;
         float _speedFactor = 1f;
@@ -50,7 +53,7 @@ namespace ToyFactory.Interaction
                 return;
 
             IsHit = true;
-            PropTint.Set(body, hitColour);
+            PropTint.Blend(body, hitColour, hitTint);
             Vector3 at = transform.position;
             PropEffects.Spark(at, hitColour);
             PropEffects.Word("ding", at + Vector3.up * 0.7f);
