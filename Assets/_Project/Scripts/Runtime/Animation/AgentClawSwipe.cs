@@ -13,7 +13,14 @@ namespace ToyFactory.Runtime.Animation
     /// <remarks>
     /// Curves are over normalised time and editable in the Inspector. Signs are for the
     /// right arm; the left arm mirrors the twist. The root is <c>SaboteurBot_Root</c>, which
-    /// carries the wheel, so the whole robot rolls in and out.
+    /// carries the wheel, so the whole robot rolls in and out. The angles are for the remade
+    /// Saboteur (15 October), whose upper arms hang at its sides with the forearms pointing
+    /// forward: the shoulder lifts the arm forward and up past horizontal (-90° is straight
+    /// ahead). In the strike the upper arm is just above level (-105°) and the elbow points the
+    /// forearm 45° up, so with the 14° lean the pincer ends about 1.2 m up: the player's chest,
+    /// not their knees. The Saboteur swipes from 2 m (its brain's melee reach), where the front
+    /// of the player's body (radius 0.4 m) is 1.6 m away; the 0.5 m roll-in takes the pincer
+    /// tip there (measured in play: 1.43 m with the old 0.3 m roll, so it closed on air).
     /// </remarks>
     public sealed class AgentClawSwipe : AgentMeleeMove
     {
@@ -33,16 +40,16 @@ namespace ToyFactory.Runtime.Animation
         [SerializeField, Min(0f)] float damage = 10f;
 
         [Header("Curves over normalised time")]
-        [Tooltip("Root forward offset (m): rolls in for the strike, back after.")]
-        [SerializeField] AnimationCurve roll = Keys((0f, 0f), (0.3f, -0.08f), (0.5f, 0.3f), (0.65f, 0.3f), (1f, 0f));
+        [Tooltip("Root forward offset (m): rolls in for the strike, back after. 0.5 m puts the pincer tip on the front of the player's body when the Saboteur swipes from 2 m.")]
+        [SerializeField] AnimationCurve roll = Keys((0f, 0f), (0.3f, -0.08f), (0.5f, 0.5f), (0.65f, 0.5f), (1f, 0f));
         [Tooltip("Body twist (degrees, + = towards the swinging arm): away in the wind-up, through in the strike.")]
         [SerializeField] AnimationCurve twist = Keys((0f, 0f), (0.3f, -25f), (0.5f, 20f), (0.65f, 15f), (1f, 0f));
         [Tooltip("Body lean (degrees, + = forward).")]
         [SerializeField] AnimationCurve lean = Keys((0f, 0f), (0.3f, -8f), (0.5f, 14f), (0.65f, 12f), (1f, 0f));
-        [Tooltip("Swinging shoulder pitch (degrees, - = up): raised high, then slashed down.")]
-        [SerializeField] AnimationCurve shoulder = Keys((0f, 0f), (0.3f, -75f), (0.5f, 25f), (0.65f, 25f), (1f, 0f));
-        [Tooltip("Swinging elbow pitch (degrees): cocked in the wind-up, straight in the strike.")]
-        [SerializeField] AnimationCurve elbow = Keys((0f, 0f), (0.3f, -40f), (0.5f, 5f), (1f, 0f));
+        [Tooltip("Swinging shoulder pitch (degrees, - = forward and up; -90 = straight ahead): raised high, then slashed down to the front.")]
+        [SerializeField] AnimationCurve shoulder = Keys((0f, 0f), (0.3f, -140f), (0.5f, -105f), (0.65f, -95f), (1f, 0f));
+        [Tooltip("Swinging elbow pitch (degrees, + = forearm down): cocked back in the wind-up, levelled in the strike.")]
+        [SerializeField] AnimationCurve elbow = Keys((0f, 0f), (0.3f, -30f), (0.5f, 60f), (0.65f, 55f), (1f, 0f));
         [Tooltip("Pincer opening (degrees per jaw): open in the wind-up, snapped shut in the strike.")]
         [SerializeField] AnimationCurve pincer = Keys((0f, 0f), (0.3f, 35f), (0.48f, 35f), (0.52f, -5f), (0.7f, 0f), (1f, 0f));
         [Tooltip("Other shoulder pitch (degrees): pulled back for balance.")]
