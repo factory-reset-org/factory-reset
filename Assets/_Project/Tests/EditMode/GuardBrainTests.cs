@@ -204,6 +204,51 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual(_grid.CellToWorld(PlayerCell), shot.LookTarget);
         }
 
+        // S4 saw a Guard sit in cover for a minute against a player in view who never fired. A cover with no
+        // cell to peek from can never allow a peek, so nothing moved it. It must push in and get a shot.
+        [Test]
+        public void Guard_CoverWithNoPeek_PushesInAndShootsAPlayerWhoNeverFires()
+        {
+            // A full wall at x = 15 with one gap at y = 0. The player sees nothing east of it, so every cover
+            // there is safe; the only two that could peek (beside the gap) are held by another agent.
+            for (int y = 1; y < Height; y++)
+                _grid.SetWalkable(new Vector2Int(WallX, y), false);
+            for (int x = WallX + 1; x < Width; x++)
+                for (int y = 0; y < Height; y++)
+                    _visibility.Blocked.Add(new Vector2Int(x, y));
+            _world.Reservations.TryReserve(new Vector2Int(WallX + 1, 0), 98);
+            _world.Reservations.TryReserve(new Vector2Int(WallX + 1, 1), 99);
+            SetPlayer();
+            GuardBrain brain = Guard();
+            TickAt(brain, GuardStart, 0f);
+            Vector2Int cover = brain.CoverCell;
+            for (int i = 0; i < 6 && brain.StateName != "InCover"; i++)
+            {
+                cover = brain.CoverCell;
+                TickAt(brain, cover, 0.5f + i * 0.1f);
+            }
+            Assert.AreEqual("InCover", brain.StateName, "it settles in a cover");
+            Assert.IsFalse(brain.CoverCanPeek, "the setup gives a cover with nowhere to peek from: " + brain.CoverCell);
+
+            // The hold runs out: before the fix it stayed InCover here for good.
+            AgentIntent intent = TickAt(brain, cover, 3f);
+            for (int i = 0; i < 3 && brain.StateName != "Advance"; i++)
+                intent = TickAt(brain, cover, 3.1f + i * 0.1f);
+            Assert.AreEqual("Advance", brain.StateName, "it leaves the cover it cannot shoot from");
+            for (int i = 0; i < 4 && (intent.Path == null || intent.Path.Count == 0); i++)
+                intent = TickAt(brain, cover, 3.5f + i * 0.1f);
+            Assert.IsNotNull(intent.Path, "and walks");
+            Vector3 end = intent.Path[intent.Path.Count - 1];
+            Assert.Less(end.x, _grid.CellToWorld(cover).x, "towards the player");
+
+            // Once it can see the player it fires, though the player never has.
+            Vector2Int inView = new Vector2Int(12, 5);
+            AgentIntent shot = TickAt(brain, inView, 4f);
+            for (int i = 0; i < 5 && shot.Action != AgentAction.Shoot; i++)
+                shot = TickAt(brain, inView, 4.5f + i * 0.5f);
+            Assert.AreEqual(AgentAction.Shoot, shot.Action, "it shoots the player who never fired");
+        }
+
         [Test]
         public void Guard_PeekTimerElapses_ReturnsToCover()
         {
