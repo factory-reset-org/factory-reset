@@ -598,7 +598,7 @@ namespace ToyFactory.Tests.EditMode
             Level level = LoadLevel();
             var report = new StringBuilder();
             report.AppendLine($"Chapter 3, the Captain starting at its spawn by the console and the player heading for the open task; {InterceptTrips} seeded trips per row, each starting at least 20 m away and out of its sight.");
-            report.AppendLine("Contact = the Captain within 10 m of the player with line of sight, before the player reaches their goal.");
+            report.AppendLine($"Contact = the Captain within {CaptainBrain.EngageRange:0} m of the player (its fight range) with line of sight, before the player reaches their goal.");
             report.AppendLine();
             report.AppendLine("| Player | Route | Captain | Contact before the goal | Median seconds to spare |");
             report.AppendLine("| --- | --- | --- | --- | --- |");
