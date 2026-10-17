@@ -8,6 +8,7 @@ using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
 using ToyFactory.Interfaces;
 using ToyFactory.Runtime.Agents;
+using ToyFactory.Runtime.Animation;
 
 namespace ToyFactory.Tests
 {
@@ -43,6 +44,13 @@ namespace ToyFactory.Tests
             public void OnGraphChanged(IReadOnlyList<Vector2Int> changedCells) { }
             public void OnStunned(float duration) { }
             public void OnDestroyed() { }
+        }
+
+        // Stands in for the Animator, which writes the clip pose every frame before the
+        // hands-on move adds to it in LateUpdate.
+        sealed class RestPose : MonoBehaviour
+        {
+            void Update() => transform.localRotation = Quaternion.identity;
         }
 
         sealed class CountingTarget : ISabotageable
@@ -81,6 +89,17 @@ namespace ToyFactory.Tests
             float until = Time.time + seconds;
             while (Time.time < until)
                 yield return null;
+        }
+
+        static IEnumerator Until(System.Func<bool> condition, string what, float seconds = 2f)
+        {
+            float until = Time.time + seconds;
+            while (!condition())
+            {
+                if (Time.time > until)
+                    Assert.Fail("Timed out waiting: " + what);
+                yield return null;
+            }
         }
 
         AgentController Body(ScriptBrain brain, int hitPoints = 3, float knockOut = 1f)
@@ -258,6 +277,78 @@ namespace ToyFactory.Tests
 
             Object.DestroyImmediate(marker);
             Assert.IsFalse(SabotageTargets.TryGet(SabotageKind.Door, 9, out _, out _));
+        }
+
+        [UnityTest]
+        public IEnumerator TheControllerSaysWhatItCarriedOutAndWhereBeforeTheBrainHears()
+        {
+            CountingTarget trap = Target(SabotageKind.Trap, 4, new Vector3(1f, 0f, 1f));
+            var brain = new ScriptBrain { Action = AgentAction.ArmTrap, TargetId = 4 };
+            AgentController agent = Body(brain);
+            var carried = new List<(AgentAction action, Vector3 at, int answersSoFar)>();
+            agent.ActionCarriedOut += (action, at) => carried.Add((action, at, brain.Answers.Count));
+
+            yield return Seconds(0.3f);
+            Assert.AreEqual(1, trap.Executed);
+            Assert.AreEqual(1, carried.Count, "Once per action carried out.");
+            Assert.AreEqual(AgentAction.ArmTrap, carried[0].action);
+            Assert.AreEqual(new Vector3(1f, 0f, 1f), carried[0].at, "Where the target is.");
+            Assert.AreEqual(0, carried[0].answersSoFar, "Raised before the brain is told it worked.");
+
+            brain.Action = AgentAction.StealBattery;   // nothing registered: fails, not carried out
+            brain.TargetId = 5;
+            yield return Seconds(0.2f);
+            Assert.AreEqual(1, carried.Count, "A failed request is not carried out.");
+        }
+
+        [UnityTest]
+        public IEnumerator TheSaboteurReachesInToActAndAStolenBatteryShowsInItsCrate()
+        {
+            var brain = new ScriptBrain { Action = AgentAction.ArmTrap, TargetId = 4 };
+            Target(SabotageKind.Trap, 4, new Vector3(0f, 0f, 1.5f));
+            Target(SabotageKind.Battery, 6, new Vector3(0f, 0f, 1.5f));
+
+            // A Saboteur body with the move, a body pivot to lean and the battery in its crate.
+            var root = new GameObject("Saboteur");
+            _created.Add(root);
+            root.SetActive(false);
+            root.AddComponent<CharacterController>();
+            AgentController agent = root.AddComponent<AgentController>();
+            var model = new GameObject("SaboteurBot_Root").transform;
+            model.SetParent(root.transform, false);
+            var body = new GameObject("Body_Pivot").transform;
+            body.SetParent(model, false);
+            body.gameObject.AddComponent<RestPose>();
+            var battery = new GameObject("Battery");
+            battery.transform.SetParent(body, false);
+            battery.SetActive(false);
+            SaboteurHandsOn handsOn = root.AddComponent<SaboteurHandsOn>();
+            SetField(handsOn, "root", model);
+            SetField(handsOn, "body", body);
+            SetField(handsOn, "carriedBattery", battery);
+            root.SetActive(true);
+            agent.Initialise(new AgentIdentity(AgentType.Saboteur, 0, 0), brain, new WorldBlackboard());
+
+            yield return Until(() => handsOn.Moves == 1, "arming the trap plays the reach");
+            Assert.IsTrue(handsOn.IsPlaying);
+            yield return Seconds(0.27f);   // 0.21-0.46 s is full reach
+            yield return new WaitForEndOfFrame();   // after LateUpdate, where the move poses
+            Assert.AreEqual(18f, Vector3.Angle(Vector3.up, body.up), 1f, "Leaning 18° in at full reach.");
+            Assert.Greater(body.up.z, 0f, "Forwards, towards the trap.");
+            Assert.AreEqual(0.2f, model.localPosition.z, 0.01f,
+                "The trap is 1.5 m away and the pincers reach 1.3 m: it rolls the other 0.2 m in.");
+            Assert.IsFalse(handsOn.CarriesBattery, "Arming a trap takes no battery.");
+            yield return Seconds(0.6f);
+            Assert.IsFalse(handsOn.IsPlaying, "Over after 0.7 s.");
+            Assert.AreEqual(Vector3.zero, model.localPosition, "And rolled back to rest.");
+
+            brain.Action = AgentAction.StealBattery;
+            brain.TargetId = 6;
+            yield return Until(() => handsOn.Moves == 2, "taking the battery plays the reach");
+            Assert.IsFalse(handsOn.CarriesBattery, "Not yet: the battery appears as the pincers close.");
+            yield return Seconds(0.6f);
+            Assert.IsTrue(handsOn.CarriesBattery, "The stolen battery is in the crate.");
+            Assert.AreEqual(2, handsOn.Moves);
         }
     }
 }
