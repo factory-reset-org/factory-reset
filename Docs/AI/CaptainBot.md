@@ -21,13 +21,44 @@ The Captain is the boss of the Control Room area. It does not chase the player. 
 2. It works out which chokepoints on that predicted route it can reach at least 1 second before the player.
 3. It walks there and waits, facing the way the player will come.
 
-**Why it is surprising to play against:** the player expects the enemy behind them and instead finds it waiting in front of them. Its tactics also change with its confidence: it shadows the player while unsure, and commits to an ambush once the prediction is strong.
+**Why it is surprising to play against:** the player expects the enemy behind them and instead finds it waiting in front of them. Its tactics change with what it believes and with the player's state:
+- **With its confidence:** unsure, it watches and keeps its distance (Observe); sure, it cuts the player off at a chokepoint (Intercept, Ambush); split between two goals, it holds a chokepoint both routes share; with nothing to watch, it guards the likeliest goal; and with the player busy at a goal, it closes in (Converge).
+- **With the player's weapon:** battery pickups become goals only while the player's blaster is below 30% charge, so a player running low is expected to detour for a battery, and the Captain waits there.
 
 **Counter-play:** the prediction is based on shortest routes, so a player who takes an unexpected route lowers the Captain's confidence and can slip past it. The Captain is beatable by a player who realises it is reading their movement.
 
-**Team play:** the Captain publishes `PredictedGoal` (goal and confidence) to the shared blackboard at 2 Hz. The Saboteur squad uses it to measure which door closure forces the longest detour. When the prediction is missing or not confident, the squad falls back to the nearest `ObjectiveTargets` entry, then to the nearest active switch. Nice-to-have: the Tracker investigates the predicted goal when it has nothing to hear.
+**Team play:** the Captain publishes `PredictedGoal` (goal and confidence) to the shared blackboard at 2 Hz. The Saboteur squad uses it to measure which door closure forces the longest detour. When the prediction is missing or not confident, the squad falls back to the nearest `ObjectiveTargets` entry, then to the nearest active switch. (A further idea, the Tracker investigating the predicted goal when it has nothing to hear, was not built.)
 
 **Decoupled from the story:** the Captain learns about the chapters only through the `ObjectiveTargets` blackboard entry written by S1's `ChapterManager`. The brain never references any Journey code, and the asmdefs make that a compile error.
+
+## Classification (in the course's terms)
+
+**PEAS**
+
+| | The Captain |
+| --- | --- |
+| **Performance measure** | Reach the player before they reach their goal (88% of trips against 75% for a plain chaser); predict the right goal (71% of samples on straight walks in Chapter 4, against 22% for "nearest goal"); never stuck, never firing blind, never ignoring a player in view (370 scripted runs, 0 violations); stay beatable (a feint drops the accuracy to 48%); cheap (p99 0.14 ms a frame) |
+| **Environment** | The factory as a grid of 0.5 m cells (83 x 83): four rooms, doors that open and shut, props and pushable boxes that change the grid, six other agents and the player |
+| **Actuators** | Its intent each tick: a route and speed, a look target, `Shoot`, `OpenDoor` and `CloseDoor`; the body carries them out |
+| **Sensors** | The player's cell, position and velocity from the blackboard (Factory OS's cameras in the story); its own 70 degree, 18 m view cone with grid line of sight; the grid (walls, doors, blockers); the chapter's `ObjectiveTargets`; where the other agents stand; game time |
+
+**Task environment**
+- **Partially observable:** where the player stands is known, but where they are going is hidden, and that hidden goal is exactly what it reasons about.
+- **Multi-agent:** competitive with the player, cooperative with the Saboteurs, which read its prediction.
+- **Stochastic (from its point of view):** the player's choices cannot be known in advance, so the goal is a probability, not a fact.
+- **Sequential:** where it waits now decides whether it can meet the player later.
+- **Dynamic:** the player, the boxes and the doors change while it decides, so it decides again at 2 Hz and repairs its distance fields when the grid changes.
+- **Continuous, discretised:** the world is continuous; searching is done on the 0.5 m grid.
+- **Known:** the map and the rules are known; only the player's intention is not.
+
+**Agent type: a hybrid.**
+- **Model-based:** it keeps internal state the percept alone does not give: the player's last 5 s of movement (`PlayerTrack`), where it last saw them, doors it gave up on, cells it avoids, and its FSM state.
+- **Goal-based, by search:** uniform-cost search (Dijkstra) builds a distance field per goal, like a pattern database of precomputed distances, and A* with the admissible and consistent octile heuristic plans its own routes; its cost model only adds to the octile cost, so the heuristic stays admissible.
+- **Probabilistic and utility-based in its choices:** P(goal | movement) comes from Bayes' rule (prior times the likelihood of the observed route), and it commits only above a confidence threshold, with hysteresis.
+- **Run by a data-driven FSM** with prioritised transitions: the fight and the stun react at once (a reactive layer) over the deliberate prediction and intercept.
+- **Not a learning agent, by choice:** every number has a stated reason and can be defended; a learned model would need training data the project does not have.
+
+**Where the prediction comes from.** It is a simplified form of cost-based goal recognition (plan recognition as planning): a goal is likely when the route the player has taken costs little more than the shortest route to it (Ramírez and Geffner, 2010; Masters and Sardina, 2017). It differs in three ways: it looks at the last 5 s, not the whole route, so it notices a change of mind; the priors come from the game's state (sealed switches, the console, batteries when the blaster is low); and each goal's distances are precomputed once as a field, so every prediction is a few lookups.
 
 ## Architecture
 
@@ -168,7 +199,7 @@ The gameplay need is a boss that feels smart without cheating: it must anticipat
 **What keeps it fair:**
 - **It predicts the goal, not the position.** Knowing where the player stands does not tell it where they are going. That still comes from how they have moved over the last 5 s, so detours and feints beat it (measured: Chapter 4 accuracy falls from 71% on a straight walk to 48% with a feint).
 - **It never fights what it cannot see.** Shooting, chasing to the last-seen spot and searching all need line of sight. Out of sight it can only wait at a goal.
-- **It shows its hand.** The call-outs and the red marker tell the player each time it commits, so the player gets the same information back and can change route.
+- **It shows its hand.** A red ring flashes on each goal it commits to, so the player gets the same information back and can change route.
 
 **The honest alternative, and why it was not used:** give the Captain only what the team can see. The squad, the Guard and the Tracker would report sightings to the blackboard, and between sightings the Captain would keep a belief over where the player could be: a probability map spread out from the last sighting at walking speed and cleared wherever an agent is looking (an occupancy map, like a grid-based particle filter). That is more honest, but:
 - **The prediction needs a continuous track.** The 5 s window needs the player's cell now and 5 s ago. The player is out of every agent's sight most of the time, so the inference would mostly run on a guessed position, and its accuracy would fall with it.
@@ -379,7 +410,7 @@ EditMode tests run without a scene, which also proves the brain is decoupled fro
 
 **Brain and states**
 
-Implemented: `CaptainBrainTests` (16 tests), on a three-room level with two goals.
+Implemented: `CaptainBrainTests` (24 tests), on a three-room level with two goals and a long hall.
 
 | Test | What it proves |
 | --- | --- |
@@ -389,7 +420,7 @@ Implemented: `CaptainBrainTests` (16 tests), on a three-room level with two goal
 | `WalkingTowardsAGoalCommitsToTheFirstChokepointItCanBeat` | Observe → Intercept at confidence ≥ 0.5; the first doorway is skipped because the player would beat it, the second qualifies, and `t_captain + 1 s ≤ t_player` holds; A* walks to it |
 | `ReachingTheCellTurnsToAmbushFacingTheWayThePlayerComes` | Intercept → Ambush, facing the approach |
 | `StoppedShortOnThePlayersSideItStillFacesThePlayersWay` | Standing 0.55 m short on the player's side, it still faces the player's route |
-| `TheCommitmentIsOfferedForTheCallouts` | No commitment while watching; committed, it reports the goal itself (not the intercept cell) for the call-outs |
+| `TheCommitmentIsOfferedForTheCallouts` | No commitment while watching; committed, it reports the goal itself (not the intercept cell) for the commitment flash (`CaptainCallouts`) |
 | `AmbushHoldsWhileTheCellIsStillAheadOfThePlayer` | No creeping towards the player while waiting |
 | `TaskCompletedMidInterceptDropsThePlanAndRepredicts` | A goal leaving the objectives sends the Captain to Reassess and onto the other goal |
 | `PlayerInViewWithinTenMetresIsEngagedOneShotPerInterval` | Engage asks for a shot at once (the body adds the 0.3 s telegraph), then one per 1.2 s |
@@ -411,11 +442,17 @@ Edge-case tests are listed in the table above.
 | Distance fields | `AI/Core/Search/DijkstraField` | Implemented, 21 tests + 8 repair tests |
 | Neighbour table | `AI/Core/Search/GridAdjacency` | Implemented, 5 tests |
 | Cost-only A* | `AI/Core/Search/OneToOneCost` | Implemented, 8 tests |
-| Candidate goals and priors | `Captain/CandidateGoal`, `GoalCategory`, `GoalPriors` | Implemented, 9 tests |
+| Candidate goals and priors | `Captain/CandidateGoal`, `GoalCategory`, `GoalPriors` | Implemented, 10 tests |
 | Player history (5 s window) | `Captain/PlayerTrack` | Implemented, 9 tests |
 | Goal inference | `Captain/GoalInference` | Implemented, 16 tests |
 | Intercept planner | `Captain/InterceptPlanner`, `InterceptPlan` | Implemented, 14 tests |
-| `CaptainBrain` states and transitions | `Captain/CaptainBrain`, `CaptainBrain.States` | Implemented, 21 tests |
+| `CaptainBrain` states and transitions | `Captain/CaptainBrain`, `CaptainBrain.States` | Implemented, 24 tests |
+| Robustness: no route, stuck, Converge, guarding, ties | `CaptainBrain` | Implemented, 13 tests (`CaptainRobustnessTests`) |
+| Doors: route through, open, shut behind, give up | `Captain/DoorRouter`, `CaptainBrain` | Implemented, 7 tests (`CaptainDoorTests`) |
+| Its size and the other agents in its routes | `Captain/CaptainRouteCost`, `Core/BodyFit`, `Runtime/Movement/ShoulderFit` | Implemented, 9 tests (`CaptainRoutingTests`) |
+| Commitment flash | `Captain/CaptainCallouts`, `Runtime/CaptainCallout` | Implemented, 3 + 2 tests |
+| Body: gait, kneel, cannon | `CaptainGait`, `AgentKneel`, `CaptainCannon` | Implemented, 3 + 5 tests |
+| Evidence in the real level | `CaptainAccuracyEvidenceTests` | 4 runs (category Evidence), tables in `AIPerformanceLog.md` |
 | `PredictedGoal` on the blackboard | `Core/IGoalPredictor`, `Blackboard/PredictedGoal`, copied by `AgentController` | Implemented |
 | Wake flag | `Blackboard.CaptainAwake`, `Runtime/CaptainWakeWriter` | Implemented |
 | Live view (F3 debug overlay) | `Runtime/Debug/CaptainOverlayLayer` | Implemented: P(g) per goal, predicted route, intercept cell and arrival times |
@@ -453,6 +490,12 @@ What this shows:
 - **The gap is smaller than at 10 m, honestly:** the longer fight range helps a chaser more, because a chaser behind the player is usually far away but in view down the same corridor. At 10 m the chaser even won the walking detour (78% against 70%); at 18 m the Captain wins it (100% against 93%).
 - **The sealed-goal priors were a measured fix.** With the old console share (0.45 next to the cores), Chapter 4 accuracy on straight walks was 30% and the Captain was confidently wrong on 53% of them, sure of the sealed console before the player moved. The sealed share (0.05) raised it to 71% and 0%, and feints are now read back in 98% of trips instead of 77%.
 - **Limits:** these are scripted players on the level's grid, not people; detours are random rather than tactical; and the Chapter 3 number is easy because only one task was open when the snapshot was taken.
+
+**Behaviour check across every kind of player (17 October).** The real brain was run on the level snapshot against 15 scripted players in Chapters 3 and 4: walking straight, by a detour or with a feint, sprinting, hiding out of sight, busy at a goal, walking up to it, standing behind it, hit-and-run, dying or vanishing half way, knocked out half way, its goal completed half way, a box dropped on its route, and before the wake signal. 370 runs, with six rules checked every 50 ms: it never fires at a player who is dead, missing, beyond 20 m or behind a wall; it never ignores a player in view for a second; it never stands still for 3 s while it should be moving; its routes stay on walkable cells; it does not switch state more than 10 times in 10 s; and its values stay finite. **No rule was broken in any run.** It engaged every walking player before their goal (110 of 110), 24 of 30 sprinters (the counter-play), every player busy at a goal or behind it, guarded a goal in all 30 hiding runs, stopped at once for a dead or missing player, and recovered from every stun, completed goal and box.
+
+**In the game:** a scripted player played Chapters 3 and 4 to the Results screen from Bootstrap: the Captain woke as Chapter 3 began, intercepted, fought, pursued and re-predicted, with no stuck spell, no player ignored in clear view and no console error. Knocked out mid-fight, it went down after its 6 hit points, rebooted after exactly 6.0 s and was fighting again 0.1 s later. Unsure where an unseen player was going (confidence 0.31), it guarded the likeliest goal facing the way they would come.
+
+**Seeing over props, measured (17 October):** in the level only 44 cells are tall enough to hide behind while standing on walkable floor (switch cages, chargers, terminals, crate dispensers), all at most 1.6 m tall; the Captain's visor is at 1.91 m even kneeling, so it does see over them. A player behind one can be seen, but a shot at their chest hits the prop.
 
 **Prediction speed (EditMode scenario, not yet measured in game):** three task goals to the east, north and west of the player, on an open 40 × 40 grid. The player walks east at 3 m/s and is sampled at 2 Hz. Output of `WalkingStraightAtAGoalIsConfidentWithinThreeSeconds` (2026-10-01):
 
