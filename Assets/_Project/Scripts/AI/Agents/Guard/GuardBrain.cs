@@ -172,6 +172,11 @@ namespace ToyFactory.AI.Agents.Guard
         bool _hasCover;
         Vector2Int _coverCell;
         bool _coverCanPeek;
+
+        // Set when the held cover has no cell to peek from and the hold ran out: the next cover chosen must
+        // allow a peek, and with none on offer the Guard pushes in to get a shot instead of hiding for ever.
+        bool _wantPeekCover;
+        bool _pushForShot;
         float _nextCoverTime = float.NegativeInfinity;
         bool _evaluateNow;
         Vector3 _lastEvalPlayerPosition;
@@ -252,7 +257,8 @@ namespace ToyFactory.AI.Agents.Guard
             Rule(rules, _retreat, _relocate, 60, "cover found, or the battery tier changed", b => b._reconsider);
             Rule(rules, _peek, _inCover, 50, "peek timer elapsed", b => b.Now >= b._peekUntil);
             Rule(rules, _relocate, _takeCover, 40, "a cover cell is reserved", b => b._hasCover && !b._aggressive);
-            Rule(rules, _relocate, _advance, 30, "player battery below 25% or reloading", b => b._aggressive);
+            Rule(rules, _relocate, _advance, 30, "player battery below 25% or reloading, or no cover to shoot from",
+                b => b._aggressive || b._pushForShot);
             Rule(rules, _relocate, _retreat, 20, "no valid cover", b => true);
 
             _machine = new StateMachine<GuardBrain>(_patrol, rules);
@@ -425,6 +431,8 @@ namespace ToyFactory.AI.Agents.Guard
                 _sightCellKnown = false;
                 _reconsider = false;
                 _evaluateNow = true;
+                _wantPeekCover = false;
+                _pushForShot = false;
                 return;
             }
 
@@ -444,9 +452,23 @@ namespace ToyFactory.AI.Agents.Guard
             if (exposed)
                 _sight.Invalidate();
             bool playerMoved = FlatDistance(player.Position, _lastEvalPlayerPosition) > ReevaluateDistance;
+            if (playerMoved)
+                _wantPeekCover = false;   // new ground: any cover may do again
 
             if (_evaluateNow || tierChanged || exposed || playerMoved || Now >= _nextCoverTime)
                 EvaluateCover(player);
+
+            // A cover with nowhere to peek from would be held for ever against a player who never fires:
+            // the hold runs out, the peek is never allowed and nothing else moves the Guard. Look for a
+            // cover it can shoot from, and push in if there is none.
+            if (_machine.Current == _inCover && _hasCover && !_coverCanPeek && _tier != BatteryTier.Overcharge
+                && Now >= _holdUntil && !_wantPeekCover)
+            {
+                _wantPeekCover = true;
+                EvaluateCover(player);
+                if (!_hasCover)
+                    _pushForShot = true;
+            }
 
             // With no cover the choice is Advance or Retreat, which depends on the tier.
             if (wasAggressive != _aggressive && !_hasCover)
@@ -570,7 +592,8 @@ namespace ToyFactory.AI.Agents.Guard
             CoverCandidate current = default;
             bool currentValid = _hasCover && IsAvailable(_coverCell)
                 && _evaluator.TryEvaluate(_coverCell, playerCell, out current)
-                && (!_fullCoverOnly || current.Protection >= 1f);
+                && (!_fullCoverOnly || current.Protection >= 1f)
+                && (!_wantPeekCover || current.CanPeek);
 
             bool found = false;
             CoverCandidate best = default;
@@ -578,6 +601,8 @@ namespace ToyFactory.AI.Agents.Guard
             for (int i = 0; i < _best.Count; i++)
             {
                 CoverCandidate candidate = _best[i].Candidate;
+                if (_wantPeekCover && !candidate.CanPeek)
+                    continue;
                 if (!TryPathCost(candidate.Cell, out float cost))
                     continue;
                 float score = _evaluator.Score(candidate, playerCell, _idealRange, cost, MaxPathCost);
@@ -614,6 +639,7 @@ namespace ToyFactory.AI.Agents.Guard
                 _hasCover = true;
                 _coverCell = best.Cell;
                 _coverCanPeek = best.CanPeek;
+                _pushForShot = false;
                 return;
             }
 
