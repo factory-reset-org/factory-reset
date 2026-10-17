@@ -127,7 +127,7 @@ namespace ToyFactory.Tests
 
             door.GetType().GetMethod("Close").Invoke(door, null);
             Assert.IsFalse((bool)isOpen.GetValue(door), "it is not open from the moment it starts to close");
-            yield return PropTestLevel.UntilGameTime(() => panel.bounds.min.y < 0.05f, 6f, "the door to come down");
+            yield return PropTestLevel.UntilGameTime(() => { Physics.SyncTransforms(); return panel.bounds.min.y < 0.05f; }, 6f, "the door to come down");
             Assert.AreEqual(footprint.x, panel.bounds.center.x, 0.01f, "it came straight down, not sideways");
             Assert.AreEqual(footprint.y, panel.bounds.center.z, 0.01f);
 
@@ -135,7 +135,8 @@ namespace ToyFactory.Tests
             yield return null;
             Assert.IsFalse((bool)isOpen.GetValue(door), "it counts as open only once fully up");
             yield return PropTestLevel.UntilGameTime(() => (bool)isOpen.GetValue(door), 6f, "the door to lift open");
-            Assert.Greater(panel.bounds.min.y, 4.9f);
+            Physics.SyncTransforms();   // the collider's bounds follow the moved panel at the next physics sync
+            Assert.Greater(panel.bounds.min.y, 4.9f, "fully up once it counts as open");
 
             // The player stands in the doorway: the door comes down to just above them and waits.
             var controller = ((Component)PlayerState.Current).GetComponent<CharacterController>();
@@ -147,6 +148,7 @@ namespace ToyFactory.Tests
             door.GetType().GetMethod("Close").Invoke(door, null);
             float waitUntil = Time.time + 3f;
             yield return PropTestLevel.UntilGameTime(() => Time.time > waitUntil, 5f, "three seconds");
+            Physics.SyncTransforms();
             Assert.Greater(panel.bounds.min.y, 1.8f, "the door waited over the player instead of coming down on them");
         }
 
