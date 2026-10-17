@@ -1,14 +1,18 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using ToyFactory.Interfaces;
+using ToyFactory.Runtime.Effects;
+using ToyFactory.Runtime.Pooling;
 
 namespace ToyFactory.Runtime.Agents
 {
     /// <summary>
     /// Carries out a brain's <see cref="ToyFactory.AI.Core.AgentAction.Shoot"/>. A request
-    /// starts a 0.3 s aim (the telegraph: a thin aim line from the cannon to the player), then
-    /// fires one hitscan ray at the player's chest. If the first thing the ray meets is the
-    /// player, <see cref="IPlayerState.TakeDamage"/> is called; a wall or a box in between
-    /// takes the shot instead. A bright tracer shows the shot either way.
+    /// starts a 0.3 s aim (the telegraph), then fires one hitscan ray at the player's chest. If
+    /// the first thing the ray meets is the player, <see cref="IPlayerState.TakeDamage"/> is
+    /// called; a wall or a box in between takes the shot instead. A flying energy bolt, the same
+    /// effect as the player's blaster (<see cref="ShotBolt"/>), shows the shot either way, with a
+    /// burst of sparks where it lands.
     /// </summary>
     /// <remarks>
     /// <para><b>Why a telegraph:</b> hitscan cannot be dodged once fired, so the 0.3 s aim is the
@@ -19,6 +23,14 @@ namespace ToyFactory.Runtime.Agents
     /// <para><b>A cannon pushed into cover:</b> the shot is traced from inside the body out to
     /// the muzzle before it leaves, so a cannon held out into a crate, a pillar or a wall hits
     /// that, rather than starting inside it and passing through.</para>
+    /// <para><b>How it looks (17 October):</b> the shots were thin laser lines, a red aim line
+    /// and a yellow tracer, which read as lasers rather than toy blasters. Now each robot fires a
+    /// bolt in its own warm colour (the Captain red, the Guard orange), never the player's cyan,
+    /// so enemy fire is told apart at a glance. The telegraph stays: the Captain's power cell
+    /// charges (<c>CaptainCannon</c>), and a weapon with <see cref="chargeGlow"/> grows a glow at
+    /// its muzzle through the aim, brighter and flickering faster, then flashes as it fires.
+    /// Bolts and sparks come from small pools, so a shot makes no garbage. They are pictures
+    /// only: the hit was decided, and the damage dealt, when the shot was fired.</para>
     /// <para><b>Time:</b> game time, like the controller, so a cutscene or the pause menu holds
     /// an aim where it is. A knock-out or scrap cancels it.</para>
     /// </remarks>
@@ -49,19 +61,40 @@ namespace ToyFactory.Runtime.Agents
         [Tooltip("Height above the player's feet that shots aim at: the chest by default. The Captain aims at the upper chest (1.45 m) so its ray comes at the first-person camera instead of dropping below it.")]
         [SerializeField, Min(0f)] float chestHeight = 1.2f;
 
-        [Tooltip("Seconds the tracer stays on screen after a shot.")]
+        [Tooltip("Seconds the body holds its attack pose after a shot.")]
         [SerializeField, Min(0f)] float tracerSeconds = 0.08f;
 
-        [Tooltip("Material for the aim line and tracer: unlit, using the line's vertex colour.")]
-        [SerializeField] Material lineMaterial;
+        [Header("How a shot looks")]
+        [Tooltip("The flying bolt (the player's blaster uses the same one).")]
+        [SerializeField] ShotBolt boltPrefab;
+        [Tooltip("The sparks where a bolt lands on something.")]
+        [SerializeField] ImpactBurst impactPrefab;
+        [Tooltip("This robot's shot colour: warm, so it is never mistaken for the player's cyan.")]
+        [SerializeField] Color boltColour = new Color(1f, 0.5f, 0.15f, 1f);
+        [Tooltip("Grow a glow at the muzzle through the aim (the telegraph) and flash it on firing. Off for a body with its own charge effect (the Captain's power cell).")]
+        [SerializeField] bool chargeGlow = true;
+        [Tooltip("Additive glow material for the charge (the bolt's glow). A plain sprite material is used without one.")]
+        [SerializeField] Material chargeMaterial;
+        [Tooltip("Width of the charge glow when fully charged (m).")]
+        [SerializeField, Min(0.05f)] float chargeSize = 0.7f;
+        [Tooltip("Width of the muzzle flash (m).")]
+        [SerializeField, Min(0.05f)] float flashSize = 1f;
+        [Tooltip("Seconds the muzzle flash lasts.")]
+        [SerializeField, Min(0.01f)] float flashSeconds = 0.07f;
 
-        [SerializeField] Color aimColour = new Color(1f, 0.25f, 0.2f, 0.6f);
-        [SerializeField] Color tracerColour = new Color(1f, 0.9f, 0.4f, 1f);
+        const int PoolSize = 3;
+        static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+        static readonly int ColorId = Shader.PropertyToID("_Color");
 
         AgentController _agent;
         ToyFactory.Runtime.Movement.AgentPathFollower _follower;
-        LineRenderer _line;
         int _hitMask;
+        Transform _effectsRoot;
+        ObjectPool<ShotBolt> _bolts;
+        ObjectPool<ImpactBurst> _impacts;
+        Renderer _glow;
+        MaterialPropertyBlock _glowBlock;
+        float _flashUntil = -1f;
         int _nextBarrel;
         float _fireAt;
         float _tracerUntil;
@@ -99,6 +132,24 @@ namespace ToyFactory.Runtime.Agents
         /// <summary>Shots dropped because the body could not face the target in time.</summary>
         public int ShotsDropped { get; private set; }
 
+        /// <summary>Where the most recent shot's bolt left from: the muzzle.</summary>
+        public Vector3 LastShotFrom { get; private set; }
+
+        /// <summary>Where the most recent shot ended: what it hit, or its full range.</summary>
+        public Vector3 LastShotTo { get; private set; }
+
+        /// <summary>Bolts launched so far (one per shot when the weapon has a bolt).</summary>
+        public int BoltsLaunched { get; private set; }
+
+        /// <summary>Bursts of sparks played where bolts landed.</summary>
+        public int ImpactsPlayed { get; private set; }
+
+        /// <summary>True while the muzzle glow shows: charging through the aim, or the flash.</summary>
+        public bool ChargeGlowVisible => _glow != null && _glow.enabled;
+
+        /// <summary>How big the muzzle glow is now (m), 0 when hidden.</summary>
+        public float ChargeGlowSize => ChargeGlowVisible ? _glow.transform.localScale.x : 0f;
+
         /// <summary>Raised when a shot leaves the barrel, with the barrel's index.</summary>
         public event System.Action<int> Fired;
 
@@ -111,24 +162,116 @@ namespace ToyFactory.Runtime.Agents
             // not exist in a project simply add nothing to the mask.
             _hitMask = LayerMask.GetMask("Default", "Environment", "Pushable", "Player", "TaskProp", "HeldItem", "Throwable");
 
-            // On its own child, on the Tracer layer, so cameras and lights can treat shots apart.
-            var lineObject = new GameObject("ShotLine");
-            lineObject.transform.SetParent(transform, false);
-            int tracerLayer = LayerMask.NameToLayer("Tracer");
-            if (tracerLayer >= 0)
-                lineObject.layer = tracerLayer;
-            _line = lineObject.AddComponent<LineRenderer>();
-            _line.positionCount = 2;
-            _line.useWorldSpace = true;
-            _line.enabled = false;
-            _line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            _line.receiveShadows = false;
-            _line.sharedMaterial = lineMaterial != null ? lineMaterial : new Material(Shader.Find("Sprites/Default"));
+            // Bolts and sparks live in the world, not on the body, which moves on; they are
+            // kept in this agent's scene so they go with it.
+            if (boltPrefab != null || impactPrefab != null)
+            {
+                _effectsRoot = new GameObject("ShotEffects (" + name + ")").transform;
+                SceneManager.MoveGameObjectToScene(_effectsRoot.gameObject, gameObject.scene);
+            }
+            if (boltPrefab != null)
+            {
+                _bolts = new ObjectPool<ShotBolt>(boltPrefab, _effectsRoot, OnBoltCreated);
+                _bolts.Prewarm(PoolSize);
+            }
+            if (impactPrefab != null)
+            {
+                _impacts = new ObjectPool<ImpactBurst>(impactPrefab, _effectsRoot, OnImpactCreated);
+                _impacts.Prewarm(PoolSize);
+            }
+            if (chargeGlow)
+                MakeChargeGlow();
 
             _barrelAxes = new Vector3[barrels.Length];
             for (int i = 0; i < barrels.Length; i++)
                 _barrelAxes[i] = barrels[i] != null ? BarrelAxis(barrels[i], transform.forward) : Vector3.forward;
         }
+
+        void OnDestroy()
+        {
+            if (_effectsRoot != null)
+                Destroy(_effectsRoot.gameObject);
+        }
+
+        // A quad on the Tracer layer that faces the camera: round from every side, like the
+        // bolt's own glow, and lit by nothing.
+        void MakeChargeGlow()
+        {
+            GameObject quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            quad.name = "ChargeGlow";
+            Destroy(quad.GetComponent<Collider>());
+            quad.transform.SetParent(transform, false);
+            int tracerLayer = LayerMask.NameToLayer("Tracer");
+            if (tracerLayer >= 0)
+                quad.layer = tracerLayer;
+            _glow = quad.GetComponent<Renderer>();
+            _glow.sharedMaterial = chargeMaterial != null ? chargeMaterial : new Material(Shader.Find("Sprites/Default"));
+            _glow.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            _glow.receiveShadows = false;
+            _glow.enabled = false;
+            _glowBlock = new MaterialPropertyBlock();
+        }
+
+        // Charging: grows to full size through the aim, brighter and flickering faster.
+        // Flashing: flash size for a moment after the shot. Otherwise hidden.
+        void UpdateChargeGlow(bool aiming)
+        {
+            if (_glow == null)
+                return;
+            float now = Now;
+            float size, brightness;
+            if (aiming)
+            {
+                float charge = aimSeconds > 0f ? Mathf.Clamp01(1f - (_fireAt - now) / aimSeconds) : 1f;
+                float flicker = 0.85f + 0.15f * Mathf.Sin(now * Mathf.Lerp(20f, 70f, charge));
+                size = Mathf.Lerp(0.15f, 1f, charge) * chargeSize * flicker;
+                brightness = Mathf.Lerp(1f, 3f, charge);
+            }
+            else if (now < _flashUntil)
+            {
+                size = flashSize;
+                brightness = 4f;
+            }
+            else
+            {
+                _glow.enabled = false;
+                return;
+            }
+            Transform glow = _glow.transform;
+            glow.position = Muzzle();
+            Camera camera = Camera.main;
+            if (camera != null)
+                glow.rotation = Quaternion.LookRotation(glow.position - camera.transform.position);
+            glow.localScale = Vector3.one * size;
+            Color tint = boltColour * brightness;
+            tint.a = 1f;
+            _glow.GetPropertyBlock(_glowBlock);
+            _glowBlock.SetColor(BaseColorId, tint);
+            _glowBlock.SetColor(ColorId, tint);
+            _glow.SetPropertyBlock(_glowBlock);
+            _glow.enabled = true;
+        }
+
+        // The pools hand out the same few objects again and again, so each is wired up once.
+        void OnBoltCreated(ShotBolt bolt)
+        {
+            bolt.Arrived += OnBoltArrived;
+            bolt.Finished += ReleaseBolt;
+        }
+
+        void OnImpactCreated(ImpactBurst burst) => burst.Finished += ReleaseImpact;
+
+        void OnBoltArrived(ShotBolt bolt)
+        {
+            if (!bolt.HasImpact || _impacts == null)
+                return;
+            _impacts.Get().Play(bolt.ImpactPoint, bolt.ImpactNormal, bolt.Colour);
+            ImpactsPlayed++;
+        }
+
+        void ReleaseBolt(ShotBolt bolt) => _bolts?.Release(bolt);
+
+        void ReleaseImpact(ImpactBurst burst) => _impacts?.Release(burst);
 
         static Vector3 BarrelAxis(Renderer barrel, Vector3 facing)
         {
@@ -206,19 +349,20 @@ namespace ToyFactory.Runtime.Agents
             IsAiming = false;
             ReleaseFacing();
             _tracerUntil = 0f;
-            if (_line != null)
-                _line.enabled = false;
+            _flashUntil = -1f;
+            if (_glow != null)
+                _glow.enabled = false;
         }
 
         void Update()
         {
             if (_agent.IsFrozen)
             {
-                // Game time is stopped too, so the aim resumes where it was and redraws its
-                // line. Hide the line meanwhile: a tracer left showing stayed on screen for the
-                // whole pause, cutscene or Results screen.
-                if (_line != null)
-                    _line.enabled = false;
+                // Game time is stopped too, so the aim resumes where it was and its glow comes
+                // back. Hide the glow meanwhile, or it would hang over the whole pause, cutscene
+                // or Results screen.
+                if (_glow != null)
+                    _glow.enabled = false;
                 return;
             }
 
@@ -239,7 +383,7 @@ namespace ToyFactory.Runtime.Agents
                 }
                 Vector3 from = Muzzle();
                 Vector3 to = player.Position + Vector3.up * chestHeight;
-                Show(from, to, aimColour, 0.02f);
+                UpdateChargeGlow(true);
                 if (Now >= _fireAt)
                 {
                     bool facing = _follower == null || _follower.FacingErrorTo(player.Position) <= maxFireAngle;
@@ -257,8 +401,7 @@ namespace ToyFactory.Runtime.Agents
             if (Now >= _tracerUntil)
                 ReleaseFacing();
 
-            if (_line.enabled && Now >= _tracerUntil)
-                _line.enabled = false;
+            UpdateChargeGlow(false);
         }
 
         void ReleaseFacing()
@@ -278,6 +421,8 @@ namespace ToyFactory.Runtime.Agents
             direction.Normalize();
 
             Vector3 end = from + direction * distance;
+            Vector3 normal = -direction;
+            bool landed = false;
             LastShotHit = false;
             // The muzzle can be held out well past the body (the Captain's arm cannon reaches
             // 1.5 m in front), into a crate, a pillar or a wall. A ray that starts inside a
@@ -289,6 +434,8 @@ namespace ToyFactory.Runtime.Agents
             if (blocked || Physics.Raycast(from, direction, out hit, range, _hitMask, QueryTriggerInteraction.Ignore))
             {
                 end = hit.point;
+                normal = hit.normal;
+                landed = true;
                 var hitPlayer = hit.collider.GetComponentInParent<IPlayerState>();
                 if (hitPlayer != null && ReferenceEquals(hitPlayer, player))
                 {
@@ -298,7 +445,14 @@ namespace ToyFactory.Runtime.Agents
                 }
             }
 
-            Show(from, end, tracerColour, 0.05f);
+            LastShotFrom = from;
+            LastShotTo = end;
+            if (_bolts != null)
+            {
+                _bolts.Get().Launch(from, end, boltColour, landed, normal);
+                BoltsLaunched++;
+            }
+            _flashUntil = Now + flashSeconds;
             _tracerUntil = Now + tracerSeconds;
             LastBarrel = barrels.Length > 0 ? _nextBarrel % barrels.Length : 0;
             _nextBarrel++;
@@ -325,15 +479,5 @@ namespace ToyFactory.Runtime.Agents
             return player;
         }
 
-        void Show(Vector3 from, Vector3 to, Color colour, float width)
-        {
-            _line.enabled = true;
-            _line.startColor = colour;
-            _line.endColor = colour;
-            _line.startWidth = width;
-            _line.endWidth = width;
-            _line.SetPosition(0, from);
-            _line.SetPosition(1, to);
-        }
     }
 }

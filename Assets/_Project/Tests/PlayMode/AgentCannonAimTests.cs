@@ -177,8 +177,6 @@ namespace ToyFactory.Tests
                 barrelAtShot = barrel;
                 weapon.TryGetBarrel(barrel, out tipAtShot, out _);
             };
-            LineRenderer line = weapon.GetComponentInChildren<LineRenderer>();
-
             weapon.RequestShot();
             float worstKick = 0f;
             float until = Time.time + 0.6f;
@@ -192,7 +190,7 @@ namespace ToyFactory.Tests
             }
 
             Assert.AreEqual(1, weapon.ShotsFired);
-            Assert.Less(Vector3.Distance(line.GetPosition(0), tipAtShot), 0.05f, "The tracer starts at the tip of the barrel that fired.");
+            Assert.Less(Vector3.Distance(weapon.LastShotFrom, tipAtShot), 0.05f, "The shot starts at the tip of the barrel that fired.");
             Assert.Greater(worstKick, 3f, "The kick is still seen.");
             Assert.Less(worstKick, 10f, "But the barrel never points far above the shot (it was 28° more).");
         }

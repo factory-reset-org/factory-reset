@@ -8,6 +8,7 @@ using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
 using ToyFactory.Interfaces;
 using ToyFactory.Runtime.Agents;
+using ToyFactory.Runtime.Effects;
 using ToyFactory.Runtime.Animation;
 using ToyFactory.Runtime.Movement;
 
@@ -285,9 +286,8 @@ namespace ToyFactory.Tests
             crate.transform.position = new Vector3(0.7f, 1.6f, 1.6f);
             crate.transform.localScale = Vector3.one;
             FakeShotPlayer player = Player(new Vector3(0.7f, 0f, 8f));   // in plain view past the crate
-            LineRenderer line = weapon.GetComponentInChildren<LineRenderer>();
             Vector3 end = default;
-            weapon.Fired += _ => end = line.GetPosition(1);
+            weapon.Fired += _ => end = weapon.LastShotTo;
 
             weapon.RequestShot();
             yield return Seconds(0.4f);
@@ -295,7 +295,7 @@ namespace ToyFactory.Tests
             Assert.AreEqual(1, weapon.ShotsFired);
             Assert.IsFalse(weapon.LastShotHit, "The crate round its cannon takes the shot.");
             Assert.AreEqual(0, player.Damage.Count);
-            Assert.Less(end.z, 2.2f, $"The tracer stops at the crate, not at the player: {end}.");
+            Assert.Less(end.z, 2.2f, $"The shot stops at the crate, not at the player: {end}.");
         }
 
         [UnityTest]
@@ -357,22 +357,117 @@ namespace ToyFactory.Tests
         }
 
         [UnityTest]
-        public IEnumerator TheTracerDoesNotStayOnScreenWhileTheGameIsFrozen()
+        public IEnumerator TheMuzzleGlowDoesNotStayOnScreenWhileTheGameIsFrozen()
         {
             AgentController agent = Agent(armed: true);
             AgentWeapon weapon = agent.GetComponent<AgentWeapon>();
             Player(new Vector3(0f, 0f, 5f));
-            LineRenderer line = agent.transform.Find("ShotLine").GetComponent<LineRenderer>();
 
             weapon.RequestShot();
-            while (weapon.ShotsFired == 0)
-                yield return null;
-            Assert.IsTrue(line.enabled, "The tracer shows after the shot.");
-
-            // The player died on that shot: the game goes to Results and every body freezes.
-            agent.OnGameStateChanged(GameState.Playing, GameState.Results);
             yield return null;
-            Assert.IsFalse(line.enabled, "No tracer left hanging over the frozen game.");
+            yield return null;
+            Assert.IsTrue(weapon.ChargeGlowVisible, "The muzzle glows while it charges.");
+
+            // A cutscene starts mid-aim: every body freezes.
+            agent.OnGameStateChanged(GameState.Playing, GameState.Cutscene);
+            yield return null;
+            Assert.IsFalse(weapon.ChargeGlowVisible, "No glow left hanging over the frozen game.");
+        }
+
+        [UnityTest]
+        public IEnumerator TheGlowGrowsThroughTheAimThenFlashesAndGoes()
+        {
+            AgentController agent = Agent(armed: true);
+            AgentWeapon weapon = agent.GetComponent<AgentWeapon>();
+            Player(new Vector3(0f, 0f, 5f));
+
+            weapon.RequestShot();
+            yield return null;
+            yield return null;
+            float early = weapon.ChargeGlowSize;
+            float late = 0f;
+            while (weapon.ShotsFired == 0)
+            {
+                late = Mathf.Max(late, weapon.ChargeGlowSize);
+                yield return null;
+            }
+            Assert.Greater(late, early * 2f, $"It grows as it charges: {early} then {late}.");
+            Assert.IsTrue(weapon.ChargeGlowVisible, "The shot flashes at the muzzle.");
+            yield return Seconds(0.3f);
+            Assert.IsFalse(weapon.ChargeGlowVisible, "And the flash goes.");
+        }
+
+        [UnityTest]
+        public IEnumerator AWeaponWithItsOwnChargeEffectShowsNoGlow()
+        {
+            // The Captain's power cell is its telegraph, so its weapon grows nothing.
+            var go = new GameObject("Agent");
+            _created.Add(go);
+            go.SetActive(false);
+            go.AddComponent<CharacterController>();
+            AgentController agent = go.AddComponent<AgentController>();
+            AgentWeapon weapon = go.AddComponent<AgentWeapon>();
+            SetField(weapon, "chargeGlow", false);
+            go.SetActive(true);
+            agent.Initialise(new AgentIdentity(AgentType.Captain, 6), new IdleBrain(), new WorldBlackboard());
+            Player(new Vector3(0f, 0f, 5f));
+
+            weapon.RequestShot();
+            for (int i = 0; i < 5; i++)
+                yield return null;
+            Assert.IsTrue(weapon.IsAiming);
+            Assert.IsFalse(weapon.ChargeGlowVisible);
+            Assert.IsNull(go.transform.Find("ChargeGlow"), "No glow is even made.");
+        }
+
+        [UnityTest]
+        public IEnumerator AShotFliesAsABoltInTheRobotsColourAndSparksWhereItLands()
+        {
+            // A bolt and a spark burst made the way the player's blaster assets are.
+            var boltObject = new GameObject("Bolt");
+            _created.Add(boltObject);
+            boltObject.SetActive(false);
+            boltObject.AddComponent<LineRenderer>().sharedMaterial = new Material(Shader.Find("Sprites/Default"));
+            ShotBolt bolt = boltObject.AddComponent<ShotBolt>();
+            var burstObject = new GameObject("Burst");
+            _created.Add(burstObject);
+            burstObject.SetActive(false);
+            burstObject.AddComponent<ParticleSystem>();
+            ImpactBurst burst = burstObject.AddComponent<ImpactBurst>();
+
+            var go = new GameObject("Agent");
+            _created.Add(go);
+            go.SetActive(false);
+            go.layer = LayerMask.NameToLayer("Agents");
+            go.AddComponent<CharacterController>().center = new Vector3(0f, 1f, 0f);
+            AgentController agent = go.AddComponent<AgentController>();
+            AgentWeapon weapon = go.AddComponent<AgentWeapon>();
+            var colour = new Color(1f, 0.22f, 0.2f);
+            SetField(weapon, "boltPrefab", bolt);
+            SetField(weapon, "impactPrefab", burst);
+            SetField(weapon, "boltColour", colour);
+            go.SetActive(true);
+            agent.Initialise(new AgentIdentity(AgentType.Guard, 4), new IdleBrain(), new WorldBlackboard());
+            FakeShotPlayer player = Player(new Vector3(0f, 0f, 6f));
+
+            ShotBolt launched = null;
+            weapon.Fired += _ =>
+            {
+                foreach (ShotBolt b in Object.FindObjectsByType<ShotBolt>(FindObjectsSortMode.None))
+                    if (b.IsFlying)
+                        launched = b;
+            };
+            weapon.RequestShot();
+            yield return Seconds(0.6f);
+
+            Assert.AreEqual(1, weapon.ShotsFired);
+            Assert.AreEqual(1, weapon.BoltsLaunched, "One bolt per shot.");
+            Assert.IsNotNull(launched, "The bolt flies.");
+            Assert.AreEqual(colour, launched.Colour, "In the robot's own colour.");
+            Assert.IsTrue(weapon.LastShotHit);
+            Assert.AreEqual(1, weapon.ImpactsPlayed, "Sparks where it landed, on the player.");
+            Assert.Less(weapon.LastShotTo.z, 6f, "It ends on the player's capsule.");
+            Assert.IsNull(go.transform.Find("ShotLine"), "No laser line any more.");
         }
 
         [UnityTest]
