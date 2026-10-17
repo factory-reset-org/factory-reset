@@ -159,6 +159,13 @@ namespace ToyFactory.Runtime.Agents
         /// </summary>
         public event Action Hit;
 
+        /// <summary>
+        /// Raised when a door, trap or battery action is carried out, with the action and where
+        /// its target is, just before the brain hears it succeeded. The body's hands-on move
+        /// listens (the Saboteur reaching in and pinching).
+        /// </summary>
+        public event Action<AgentAction, Vector3> ActionCarriedOut;
+
         /// <summary>True once <see cref="Scrap"/> has been called. Never becomes false again.</summary>
         public bool IsDead { get; private set; }
 
@@ -539,6 +546,7 @@ namespace ToyFactory.Runtime.Agents
                 {
                     target.Execute();
                 }
+                ActionCarriedOut?.Invoke(_sabotageAction, where.position);
                 ResolveSabotage(true);
             }
             else if (Now - _sabotageSince > sabotageGiveUpSeconds)
