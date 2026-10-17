@@ -293,7 +293,7 @@ Every number the Guard's behaviour depends on is a named constant in `GuardBrain
 
 `GuardTuningEvidenceTests` (EditMode, category Evidence) prints two tables to the test output: the effect of lambda on a route across an exposed band, and the number of route searches a pushed box causes. The per-frame cost of the Guard's decisions is in `AIPerformanceLog.md` (p99 4.93 ms before the fixes, 1.69 ms after).
 
-- **A\* against Dijkstra:** `CostMatchesReferenceDijkstraOnFiftyRandomGrids` checks that A* returns the same cost as a reference Dijkstra on fifty random grids.
+- **A\* against Dijkstra:** `CostMatchesReferenceDijkstraOnFiftyRandomGrids` checks that A* returns the same cost as a reference Dijkstra on fifty random grids. On a level-sized grid (83 x 83, 20 pairs, `AStarVsDijkstraEvidenceTests`, 2026-10-18) A* matched Dijkstra's cost on all 20 pairs with both the octile and the tactical cost, and expanded 19% (octile) and 42% (tactical, lambda 3) of Dijkstra's cells; the table is in `AIPerformanceLog.md`.
 - **Lambda against route** (`Evidence_LambdaAgainstDetourAndExposure`, 2026-10-11). A 41 x 15 grid with a wall at x = 20 and two gaps in it: a short one on the straight route that the player can see across 7 cells, and a long hidden one at the far edge.
 
   | lambda | Exposed step multiplier | Route length (cells) | Exposed cells crossed | Length / shortest |
