@@ -333,20 +333,20 @@ Overall the inference beats the nearest goal; it ties or loses slightly on Chapt
 ### Intercepting against chasing
 
 Chapter 3, the Captain starting at its spawn by the console and the player heading for the open task; 40 seeded trips per row, each starting at least 20 m away and out of its sight.
-Contact = the Captain within 10 m of the player with line of sight, before the player reaches their goal.
+Contact = the Captain within 18 m of the player (its fight range since 15 October) with line of sight, before the player reaches their goal. Re-run 2026-10-17; the 10 m figures from 2026-10-10 are in the last column.
 
-| Player | Route | Captain | Contact before the goal | Median seconds to spare |
-| --- | --- | --- | --- | --- |
-| Walking 4 m/s | Direct | Predicts and intercepts | 85% | 3.2 s |
-| Walking 4 m/s | Direct | Chases | 50% | 4.6 s |
-| Walking 4 m/s | Detour | Predicts and intercepts | 70% | 3.9 s |
-| Walking 4 m/s | Detour | Chases | 78% | 3.8 s |
-| Sprinting 7 m/s | Direct | Predicts and intercepts | 50% | 1.1 s |
-| Sprinting 7 m/s | Direct | Chases | 10% | 5.2 s |
-| Sprinting 7 m/s | Detour | Predicts and intercepts | 63% | 1.5 s |
-| Sprinting 7 m/s | Detour | Chases | 38% | 2.1 s |
+| Player | Route | Captain | Contact before the goal | Median seconds to spare | At 10 m (10 Oct) |
+| --- | --- | --- | --- | --- | --- |
+| Walking 4 m/s | Direct | Predicts and intercepts | 98% | 3.6 s | 85% |
+| Walking 4 m/s | Direct | Chases | 73% | 3.8 s | 50% |
+| Walking 4 m/s | Detour | Predicts and intercepts | 100% | 3.2 s | 70% |
+| Walking 4 m/s | Detour | Chases | 93% | 3.8 s | 78% |
+| Sprinting 7 m/s | Direct | Predicts and intercepts | 75% | 2.2 s | 50% |
+| Sprinting 7 m/s | Direct | Chases | 58% | 1.9 s | 10% |
+| Sprinting 7 m/s | Detour | Predicts and intercepts | 80% | 2.2 s | 63% |
+| Sprinting 7 m/s | Detour | Chases | 75% | 2.0 s | 38% |
 
-"Chases" is the same body re-planning the shortest route to the player every 0.5 s at the Captain's 4.6 m/s. Overall: 67% contact for the Captain against 44% for chasing. Against a sprinting player (7 m/s) chasing almost never works on a straight route (10%), which is why the Captain predicts and waits. The one loss is a walking player on a detour, who stays close enough to be caught from behind.
+"Chases" is the same body re-planning the shortest route to the player every 0.5 s at the Captain's 4.6 m/s. Overall: 88% contact for the Captain against 75% for chasing (67% against 44% at 10 m). Predicting and intercepting now wins every row, including the walking detour it lost at 10 m (100% against 93%). The longer range helps the chaser more, because a chaser behind the player is usually far away but in view down the same corridor, so the gap is smaller than at 10 m; it is largest against a sprinter on a straight route (75% against 58%), the player a chaser cannot catch.
 
 **Limits:** scripted players on the level's grid, not people; detours are random rather than tactical; Chapter 3 had one open task when the snapshot was taken. Re-take the snapshot if the level changes.
 

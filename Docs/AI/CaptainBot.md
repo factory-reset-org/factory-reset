@@ -173,7 +173,7 @@ The gameplay need is a boss that feels smart without cheating: it must anticipat
 **The honest alternative, and why it was not used:** give the Captain only what the team can see. The squad, the Guard and the Tracker would report sightings to the blackboard, and between sightings the Captain would keep a belief over where the player could be: a probability map spread out from the last sighting at walking speed and cleared wherever an agent is looking (an occupancy map, like a grid-based particle filter). That is more honest, but:
 - **The prediction needs a continuous track.** The 5 s window needs the player's cell now and 5 s ago. The player is out of every agent's sight most of the time, so the inference would mostly run on a guessed position, and its accuracy would fall with it.
 - **The intercept timing needs the player's position.** The intercept cell is chosen by racing the player's arrival against the Captain's. With a spread-out belief there is no single arrival time to race.
-- **The cost and the time.** A belief map updated every frame is a second system about as large as the goal inference, and the measured results (intercepting beats chasing 67% to 44%) depend on the current one. With submission on 21 October it would have replaced a tested design with an untested one.
+- **The cost and the time.** A belief map updated every frame is a second system about as large as the goal inference, and the measured results (intercepting beats chasing 88% to 75%) depend on the current one. With submission on 21 October it would have replaced a tested design with an untested one.
 
 It is the natural next step if the Captain is extended: the goal inference would then run on the belief map's most likely cell, and the squad's sightings would become part of the team play.
 
@@ -437,19 +437,20 @@ In game: real priors, and the player heading where the game lets them. In Chapte
 
 Movement only (every goal equally likely beforehand, any goal the true one), the inference on its own beats the nearest goal in both chapters overall (Chapter 3 straight 66% against 47%, Chapter 4 straight 62% against 34%). It ties or loses slightly on Chapter 4 detours and feints (37% against 40%, 36% against 37%): the cores and the console all lie behind the same two Control Room doorways, so until the player is inside, any route there fits every goal. That is the case `PlanShared` covers by holding a chokepoint common to the likely goals.
 
-Intercepting against chasing (Chapter 3, the Captain waking at its spawn, the player heading for the open task from at least 20 m away and out of sight; 40 trips per row): contact (within 10 m with line of sight) before the player reaches the task.
+Intercepting against chasing (Chapter 3, the Captain waking at its spawn, the player heading for the open task from at least 20 m away and out of sight; 40 trips per row): contact (within the 18 m fight range, with line of sight) before the player reaches the task. Re-run on 17 October with the 18 m range; the 10 m results of 10 October are in brackets.
 
 | Player | Predicts and intercepts | Chases |
 | --- | --- | --- |
-| Walking, straight | **85%** | 50% |
-| Walking, detour | 70% | **78%** |
-| Sprinting, straight | **50%** | 10% |
-| Sprinting, detour | **63%** | 38% |
+| Walking, straight | **98%** (85%) | 73% (50%) |
+| Walking, detour | **100%** (70%) | 93% (78%) |
+| Sprinting, straight | **75%** (50%) | 58% (10%) |
+| Sprinting, detour | **80%** (63%) | 75% (38%) |
 
 What this shows:
-- **Predicting pays most against a fast player:** a sprinting player (7 m/s) outruns a 4.6 m/s chaser, which reaches them before the task in 1 of 10 straight runs. The Captain, already heading for the task, reaches them in 5.
+- **Predicting wins every row:** 88% contact overall against 75% for a chaser (67% against 44% at 10 m).
+- **Predicting pays most against a fast player:** a sprinting player (7 m/s) outruns a 4.6 m/s chaser; on a straight route the chaser reaches them before the task in 58% of runs, the Captain, already heading for the task, in 75%.
 - **To see it:** in Play mode, *Factory Reset → Demo → Intercept vs Chase* puts this chaser beside the Captain and *Top-Down View* shows both routes from above (DesignDoc, debug overlay).
-- **The one loss is the case it should lose:** a walking player wandering off their route stays close enough for a chaser to catch, while the detour makes the route the Captain is cutting off less certain.
+- **The gap is smaller than at 10 m, honestly:** the longer fight range helps a chaser more, because a chaser behind the player is usually far away but in view down the same corridor. At 10 m the chaser even won the walking detour (78% against 70%); at 18 m the Captain wins it (100% against 93%).
 - **The sealed-goal priors were a measured fix.** With the old console share (0.45 next to the cores), Chapter 4 accuracy on straight walks was 30% and the Captain was confidently wrong on 53% of them, sure of the sealed console before the player moved. The sealed share (0.05) raised it to 71% and 0%, and feints are now read back in 98% of trips instead of 77%.
 - **Limits:** these are scripted players on the level's grid, not people; detours are random rather than tactical; and the Chapter 3 number is easy because only one task was open when the snapshot was taken.
 
