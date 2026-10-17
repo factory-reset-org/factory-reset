@@ -463,7 +463,7 @@ Systems talk through events and the blackboard, not direct references. The journ
 | Objective changed (`ObjectiveEvents`) | Chapter manager (S1) | `ObjectiveTargetWriter` → blackboard `ObjectiveTargets`, then Captain, Saboteurs, beacon and HUD | Implemented: the chapter manager publishes after every change |
 | Switch unsealed, switch restored, chapter started (`ChapterEvents`) | Chapter manager | Switch cage (opens on unseal), cutscene director (next cutscene 1.3 s after a restore), blackboard writer (`ChapterIndex`), HUD, scoring | Raised by the chapter manager; cutscene director and `ChapterIndex` writer implemented, other listeners planned |
 | Cutscene started, ended (`CutsceneEvents`) | Cutscene director | Chapter manager (starts the next chapter on ended), HUD | Implemented. The director itself sets the Cutscene state through `IGameClock.RequestState` |
-| Dialogue line shown, cleared (`DialogueEvents`) | Cutscene director (`DialogueRunner`) | Subtitles (S3's UI; `PlaceholderSubtitles` until then) | Implemented in the director; S3's subtitles planned |
+| Dialogue line shown, cleared (`DialogueEvents`) | Cutscene director (`DialogueRunner`) | Subtitles (S3's UI, `SubtitleView`) | Implemented in the director and the UI |
 | Critical cutscene signal (`CutsceneEvents.OnCriticalSignal`) | Cutscene Timeline (`CriticalSignalMarker`), through the director | Captain wake (`CaptainWakeWriter` sets `CaptainAwake`), Control Room door unlock, core shields drop, factory shutdown (S1's lighting goes to its shutdown state). Also fired when a cutscene is skipped | Implemented in the director; Captain wake implemented, other listeners planned |
 | Agent disabled, destroyed, rebooted (`AgentEvents`) | `AgentController` | Scoring, Saboteur squad, HUD | Events and raising implemented; nothing calls `Disable` or `Scrap` yet |
 | Game state changed (Title, Playing, Cutscene, Paused, Results) | Game manager (`IGameClock`, published as `GameClock.Current`) | `AgentController` (freezes brain and body outside Playing), player input, timers, HUD | Game clock and agent freezing implemented |
@@ -539,15 +539,11 @@ Every cutscene has a **dialogue script** (`Data/Dialogue/<cutscene id>.asset`), 
 
 **Without a Timeline (now):** every shot is said in order and the cutscene ends with its last line, so all five cutscenes are already watchable, with their real words.
 
-**Subtitles:** the runner raises `DialogueEvents.OnLineShown(DialogueLineView)` (speaker tag, tag colour, whole line, characters typed so far) whenever more is typed, and `OnLineCleared()` at the end or on skip. S3's UI draws the subtitle bar from these; until it exists, `PlaceholderSubtitles` on the director draws a plain bar from the same events, and is switched off when the UI lands. The bar is a screen-space canvas (sorting order 50, above the letterbox's 40) that scales with the screen from a 1920 x 1080 reference, with a dynamic font, so the text is drawn at its size on screen and stays sharp at any resolution. The first version used IMGUI at a fixed 18 px, which looked pixelated once the Game view was scaled. It sits just above the letterbox's bottom bar, on a dark translucent panel with a drop shadow on the text.
+**Subtitles:** the runner raises `DialogueEvents.OnLineShown(DialogueLineView)` (speaker tag, tag colour, whole line, characters typed so far) whenever more is typed, and `OnLineCleared()` at the end or on skip. S3's UI draws the subtitle bar from these (`SubtitleView`, in the UI table below). The director's placeholder bar (`PlaceholderSubtitles`), which drew from the same events until the UI landed, was removed on 2026-10-17.
 
 **Voice blips:** built in code, no audio files. Each speaker has a short tone in their waveform and pitch from the cast table (Factory OS low square, Pip high triangle, Captain sawtooth, Unit 047 sine), played on every second typed letter and slightly detuned each time.
 
-**Chapter card** (`ChapterCard`, on the director). When a chapter starts (`ChapterEvents.OnChapterStarted`), a card shows for 4.5 s without blocking play.
-- **What it shows:** "CHAPTER n OF 4", the chapter's title and subtitle (from S1's chapter data, through `ChapterManager.Flow`), and the four-node journey route. Finished chapters are solid mint, the current one white with a mint ring, the ones ahead dark.
-- **Never over a cutscene:** a chapter that starts during one gets its card 0.5 s after the cutscene ends, once the letterbox has opened. That way the cards follow the intro and each switch cutscene, as Story.md describes. A cutscene that starts while a card is up hides it, and the card comes back afterwards.
-- **How it's drawn:** its own screen-space canvas, scaled from 1920 x 1080 with a dynamic font, at sorting order 45 (above the letterbox, below the subtitles). The route dots come from a circle generated at start-up, so it needs no assets. It fades and slides in over 0.35 s and fades out over the last 0.6 s.
-- **Ownership:** the plan's cutscene schedule (S4) includes chapter cards. The UI scene (S3) holds the HUD and results screen; if S3's UI draws a card later, this one is switched off, like the placeholder subtitles.
+**Chapter card.** S3's UI draws it (`ChapterCardView`, in the UI table below): when a chapter starts it shows the chapter's tag, title, subtitle and four-stop route for 4.5 s, and waits for any cutscene to end first. The director's own card (`ChapterCard`), which did the same until the UI landed, was removed on 2026-10-17 with the placeholder subtitles.
 
 **Cues: the alarm and comic words** (`CutsceneCuePlan`, `CutsceneCueMarker`, `CutsceneCuePlayer` on the director). The shot lists in Story.md call for an alarm and for comic pop-ups.
 
@@ -725,8 +721,8 @@ The alarm colours belong to `LightingState`. A Timeline can frame or activate th
 | Damage vignette | Integrity falling | A flash for 0.5 s after a hit, and a steady glow below 30% integrity |
 | Crosshair | - | Four ticks round an empty centre |
 | Objective arrow with distance | The chapter manager's current beacon target and `Camera.main` | Shown only when the objective is off screen, on the screen edge, pointing at it (or the way to turn if it is behind) |
-| Chapter card: tag, title, subtitle, four-stop route | `ChapterEvents.OnChapterStarted` | 4.5 s, fades, never blocks; waits for a cutscene to end; does not look up the director's `ChapterCard`, which S4 removes |
-| Subtitle bar | `DialogueEvents` | Sorts above the letterbox; does not look up the director's `PlaceholderSubtitles`, which S4 removes |
+| Chapter card: tag, title, subtitle, four-stop route | `ChapterEvents.OnChapterStarted` | 4.5 s, fades, never blocks; waits for a cutscene to end; does not look up the director's `ChapterCard`, which S4 removed on 2026-10-17 |
+| Subtitle bar | `DialogueEvents` | Sorts above the letterbox; does not look up the director's `PlaceholderSubtitles`, which S4 removed on 2026-10-17 |
 
 - **Visibility.** The HUD shows while the game is playing or paused and no cutscene is running (`GameClock` state, `CutsceneEvents`). It is hidden on the title screen, in cutscenes and on the results screen. The subtitle bar is not part of that: it shows in cutscenes.
 - **Two canvases.** Panels and labels sit on the main canvas; the bars' fills, the arrow and the vignette sit on nested canvases, so a moving bar does not rebuild the text. The batch counts have not been measured yet.
