@@ -124,8 +124,8 @@ namespace ToyFactory.Editor.Animation
 
         /// <summary>
         /// Adds or refreshes only the hit effects (knock-down pose, dizzy stars, lights), the
-        /// Tracker's excitement and the Saboteur's hands-on move on the four existing bodies,
-        /// without rebuilding their clips and controllers.
+        /// Tracker's excitement, the Guard's tread scroll and the Saboteur's hands-on move on the
+        /// four existing bodies, without rebuilding their clips and controllers.
         /// </summary>
         [MenuItem("Factory Reset/Animation/Update Agent Hit Effects")]
         public static void UpdateHitEffects()
@@ -475,6 +475,17 @@ namespace ToyFactory.Editor.Animation
 
             if (modelName == "TrackerToy")
                 AddExcitement(root, model);
+
+            // The Guard's treads scroll with how each side really moves over the ground.
+            if (modelName == "GuardBot")
+            {
+                var treads = new SerializedObject(GetOrAdd<GuardTreadScroll>(root));
+                treads.FindProperty("treadLeft").objectReferenceValue =
+                    Pivot(model, modelName, "GuardBot_Root/Tread_L_Pivot/Tread_L").GetComponent<Renderer>();
+                treads.FindProperty("treadRight").objectReferenceValue =
+                    Pivot(model, modelName, "GuardBot_Root/Tread_R_Pivot/Tread_R").GetComponent<Renderer>();
+                treads.ApplyModifiedPropertiesWithoutUndo();
+            }
 
             // The Saboteur reaches in and pinches when it closes a door, arms a trap or takes a
             // battery, and a stolen battery shows in the crate on its back.

@@ -109,6 +109,72 @@ namespace ToyFactory.Tests
         }
 
         [Test]
+        public void TreadsSteerLikeATank()
+        {
+            Assert.AreEqual(2f, GuardTreadScroll.SideSpeed(2f, 0f, 0.335f, left: true), 1e-5f, "Straight ahead: both at the body's speed.");
+            Assert.AreEqual(2f, GuardTreadScroll.SideSpeed(2f, 0f, 0.335f, left: false), 1e-5f);
+            float spin = 90f;   // turning right on the spot, a quarter turn a second
+            float side = 90f * Mathf.Deg2Rad * 0.335f;
+            Assert.AreEqual(side, GuardTreadScroll.SideSpeed(0f, spin, 0.335f, left: true), 1e-5f, "The left tread drives forward...");
+            Assert.AreEqual(-side, GuardTreadScroll.SideSpeed(0f, spin, 0.335f, left: false), 1e-5f, "...and the right one backward.");
+        }
+
+        [UnityTest]
+        public IEnumerator TreadsScrollOneTileForEachQuarterMetreTheGuardDrives()
+        {
+            var ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            _created.Add(ground);
+            ground.transform.localScale = new Vector3(40f, 1f, 40f);
+            ground.transform.position = new Vector3(0f, -0.5f, 0f);
+
+            var body = new GameObject("TrackedAgent");
+            _created.Add(body);
+            body.SetActive(false);
+            var capsule = body.AddComponent<CharacterController>();
+            capsule.radius = 0.3f;
+            capsule.height = 1f;
+            capsule.center = new Vector3(0f, 0.5f, 0f);
+            AgentController agent = body.AddComponent<AgentController>();
+
+            var material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            _created.Add(material);
+            var left = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            left.transform.SetParent(body.transform, false);
+            left.GetComponent<Renderer>().sharedMaterial = material;
+            var right = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            right.transform.SetParent(body.transform, false);
+            right.GetComponent<Renderer>().sharedMaterial = material;
+            GuardTreadScroll treads = body.AddComponent<GuardTreadScroll>();
+            SetPrivate(treads, "treadLeft", left.GetComponent<Renderer>());
+            SetPrivate(treads, "treadRight", right.GetComponent<Renderer>());
+            body.transform.position = new Vector3(0f, 0.05f, 0f);
+            body.SetActive(true);
+
+            // Straight ahead (+Z, the way it faces), so it never turns and both treads match.
+            agent.Initialise(new AgentIdentity(AgentType.Guard, 0), new StraightLineBrain(Vector3.zero, new Vector3(0f, 0f, 10f)),
+                new WorldBlackboard());
+
+            // Drive just under one metre, so the offsets (which wrap at one tile) stay readable.
+            Vector3 start = body.transform.position;
+            float giveUp = Time.time + 5f, scrolled = 0f, previous = 0f;
+            while (FlatDistance(start, body.transform.position) < 0.9f && Time.time < giveUp)
+            {
+                yield return null;
+                scrolled += Mathf.Repeat(treads.LeftOffset - previous, 1f);
+                previous = treads.LeftOffset;
+            }
+            float driven = FlatDistance(start, body.transform.position);
+            Assert.Greater(driven, 0.8f, "The agent moved.");
+            Assert.AreEqual(4f * driven, scrolled, 0.35f, "Four tiles a metre: the pattern stays still on the floor.");
+            Assert.AreEqual(treads.LeftOffset, treads.RightOffset, 0.05f, "Driving straight, both treads run together.");
+            Assert.AreNotSame(left.GetComponent<Renderer>().sharedMaterial, right.GetComponent<Renderer>().sharedMaterial,
+                "Each tread scrolls its own copy of the material.");
+        }
+
+        static void SetPrivate(object target, string field, object value) =>
+            target.GetType().GetField(field, BindingFlags.NonPublic | BindingFlags.Instance).SetValue(target, value);
+
+        [Test]
         public void BridgeWithoutAnAnimatorTurnsItselfOff()
         {
             var body = new GameObject("NoAnimator");
