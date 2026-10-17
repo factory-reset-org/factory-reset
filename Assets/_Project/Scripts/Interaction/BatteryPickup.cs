@@ -1,6 +1,7 @@
 using UnityEngine;
 using ToyFactory.Interfaces;
 using ToyFactory.Player;
+using ToyFactory.UI;
 
 namespace ToyFactory.Interaction
 {
@@ -45,7 +46,17 @@ namespace ToyFactory.Interaction
         protected override void OnRestored() =>
             SabotageTargets.Register(SabotageKind.Battery, sabotageId, this, transform);
 
-        protected override bool Collect(PlayerBattery battery) => battery.AddSpareCell();
+        // A cell the player takes scores 50 (the Saboteur stealing one does not come through here).
+        protected override bool Collect(PlayerBattery battery)
+        {
+            if (!battery.AddSpareCell())
+                return false;
+
+            ScoreManager score = ScoreManager.Current;
+            if (score != null)
+                score.BatteryPickedUp();
+            return true;
+        }
 
         /// <summary>Saboteur action: steal the battery, so it is gone for the player.</summary>
         void ISabotageable.Execute() => Take();
