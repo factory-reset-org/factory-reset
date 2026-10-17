@@ -121,6 +121,7 @@ namespace ToyFactory.Tests
             yield return Until(() => CutsceneDirector.Current != null && CutsceneDirector.Current.IsPlaying, 10f, "the intro");
             CutsceneDirector.Current.Skip();
             yield return Until(() => GameClock.Current.State == GameState.Playing, 10f, "Playing");
+            PropTestLevel.RemoveAgents();   // nothing walks into the crate mid-test
 
             GameObject crate = GameObject.Find("Crate_2");
             Component box = crate.GetComponent("PushableBox");
@@ -151,7 +152,7 @@ namespace ToyFactory.Tests
             Physics.SyncTransforms();
 
             teleport.Invoke(box, new object[] { spot, Quaternion.identity });
-            yield return new WaitForSeconds(0.3f);
+            yield return PropTestLevel.UntilAtRest(rb, 5f, "the crate to settle in the corner");
             Vector3 start = crate.transform.position;
 
             // The player is east of it: away is west, into the wall. It must come out north.
@@ -163,7 +164,8 @@ namespace ToyFactory.Tests
             Vector3 playerAt = playerBody.transform.position;
             interact.Invoke(box, null);
             Vector3 speedAfter = rb.linearVelocity;
-            yield return new WaitForSeconds(2.5f);
+            yield return PropTestLevel.UntilGameTime(() => rb.linearVelocity.sqrMagnitude > 0.25f, 2f, "the crate to start sliding");
+            yield return PropTestLevel.UntilAtRest(rb, 8f, "the crate to come to rest");
             Assert.Greater(crate.transform.position.z, start.z + 0.3f,
                 $"the box slid north along the west wall (start {start}, player {playerAt}, speed right after Interact {speedAfter}, now {crate.transform.position})");
             Assert.Less(rb.linearVelocity.sqrMagnitude, 0.0025f, "and came to rest");
@@ -171,7 +173,7 @@ namespace ToyFactory.Tests
 
             // Walking straight into a box does not push it.
             teleport.Invoke(box, new object[] { spot, Quaternion.identity });
-            yield return new WaitForSeconds(0.3f);
+            yield return PropTestLevel.UntilAtRest(rb, 5f, "the crate to settle again");
             Vector3 before = crate.transform.position;
             controller.enabled = false;
             controller.transform.position = new Vector3(before.x + 1.6f, 0.05f, before.z);
