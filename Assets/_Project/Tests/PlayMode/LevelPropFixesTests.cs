@@ -324,5 +324,114 @@ namespace ToyFactory.Tests
             yield return PropTestLevel.UntilGameTime(() => Time.time > until, 3f, "a second");
             Assert.Less(Vector3.Distance(before, crate.transform.position), 0.05f, "the crate stayed under the player");
         }
+
+        [UnityTest]
+        public IEnumerator ACrateRidingAtTheEdgeOfTheBeltStillReachesThePlateAndLatchesIt()
+        {
+            yield return LoadLevel();
+            yield return StartPlaying();
+            PropTestLevel.RemoveAgents();
+
+            Component lever = (Component)UnityEngine.Object.FindAnyObjectByType(PropType("ConveyorLever"));
+            lever.GetType().GetMethod("Interact").Invoke(lever, null);
+            Component plate = (Component)UnityEngine.Object.FindAnyObjectByType(PropType("PressurePlate"));
+            Assert.Greater(plate.transform.lossyScale.z, 2.1f, "the plate is as wide as the belt");
+
+            // Pushed onto the belt near its south edge (belt z 16.4 to 18.6), well off the plate's centre line.
+            GameObject crate = GameObject.Find("Crate_1");
+            Component box = crate.GetComponent(PropType("PushableBox"));
+            box.GetType().GetMethod("Teleport").Invoke(box, new object[] { new Vector3(8f, 0.5f, 16.95f), Quaternion.identity });
+            var completed = plate.GetType().GetProperty("IsCompleted");
+            yield return PropTestLevel.UntilGameTime(() => (bool)completed.GetValue(plate), 30f,
+                "a crate at the belt's edge to reach the plate and latch it");
+            Assert.Greater(crate.transform.position.x, 15f, "it went off the end of the belt onto the plate");
+        }
+
+        [UnityTest]
+        public IEnumerator ABatteryPickupRepairsTheRobotAndFillsTheBlaster()
+        {
+            yield return LoadLevel();
+            yield return StartPlaying();
+            PropTestLevel.RemoveAgents();
+
+            var player = (Component)PlayerState.Current;
+            Component health = player.GetComponent(Type.GetType("ToyFactory.Player.PlayerHealth, Assembly-CSharp"));
+            Component battery = player.GetComponent(Type.GetType("ToyFactory.Player.PlayerBattery, Assembly-CSharp"));
+            health.GetType().GetMethod("TakeDamage").Invoke(health, new object[] { 40f, -1 });
+            for (int i = 0; i < 8; i++)
+                battery.GetType().GetMethod("TrySpendShot").Invoke(battery, null);
+            float healthBefore = (float)health.GetType().GetProperty("Current").GetValue(health);
+            float chargeBefore = (float)battery.GetType().GetProperty("Fraction").GetValue(battery);
+
+            Component pickup = (Component)UnityEngine.Object.FindAnyObjectByType(PropType("BatteryPickup"));
+            bool taken = (bool)pickup.GetType().GetMethod("Collect", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(pickup, new object[] { battery });
+            Assert.IsTrue(taken);
+            Assert.AreEqual(healthBefore + 25f, (float)health.GetType().GetProperty("Current").GetValue(health), 0.5f, "it repairs 25 integrity");
+            Assert.Less(chargeBefore, 1f);
+            Assert.AreEqual(1f, (float)battery.GetType().GetProperty("Fraction").GetValue(battery), 0.001f, "and fills the blaster's cell");
+        }
+
+        [UnityTest]
+        public IEnumerator AnEmptyBlasterOnlyClicks_ItReloadsOnlyOnR()
+        {
+            yield return LoadLevel();
+            yield return StartPlaying();
+            PropTestLevel.RemoveAgents();
+
+            var player = (Component)PlayerState.Current;
+            Component battery = player.GetComponent(Type.GetType("ToyFactory.Player.PlayerBattery, Assembly-CSharp"));
+            Component blaster = player.GetComponentInChildren(Type.GetType("ToyFactory.Player.PlayerBlaster, Assembly-CSharp"));
+            while (!(bool)battery.GetType().GetProperty("IsEmpty").GetValue(battery))
+                battery.GetType().GetMethod("TrySpendShot").Invoke(battery, null);
+            int spare = (int)battery.GetType().GetProperty("SpareCells").GetValue(battery);
+
+            for (int i = 0; i < 5; i++)
+            {
+                blaster.GetType().GetMethod("TryShoot").Invoke(blaster, null);
+                yield return null;
+            }
+            Assert.IsFalse((bool)battery.GetType().GetProperty("IsReloading").GetValue(battery), "pulling the trigger did not start a reload");
+            Assert.AreEqual(spare, (int)battery.GetType().GetProperty("SpareCells").GetValue(battery), "no spare cell was used");
+            Assert.IsTrue((bool)battery.GetType().GetMethod("StartReload").Invoke(battery, null), "R still reloads");
+        }
+
+        [UnityTest]
+        public IEnumerator TrapsStartArmed_HurtWhenSteppedOn_AndEDisarmsThem()
+        {
+            yield return LoadLevel();
+            yield return StartPlaying();
+            PropTestLevel.RemoveAgents();
+
+            Type trapType = PropType("Trap");
+            var traps = UnityEngine.Object.FindObjectsByType(trapType, FindObjectsSortMode.None);
+            Assert.AreEqual(4, traps.Length);
+            foreach (UnityEngine.Object each in traps)
+                Assert.IsTrue((bool)trapType.GetProperty("IsArmed").GetValue(each), ((Component)each).name + " is armed from the start");
+
+            // E on an armed trap disarms it, and then it offers nothing.
+            var first = (Component)traps[0];
+            Assert.AreEqual("disarm the trap", (string)trapType.GetProperty("PromptText").GetValue(first));
+            trapType.GetMethod("Interact").Invoke(first, null);
+            Assert.IsFalse((bool)trapType.GetProperty("IsArmed").GetValue(first), "E disarmed it");
+            Assert.IsNull(trapType.GetProperty("PromptText").GetValue(first), "a safe trap offers no prompt");
+
+            // Stepping on an armed one hurts.
+            var second = (Component)traps[1];
+            var player = (Component)PlayerState.Current;
+            Component health = player.GetComponent(Type.GetType("ToyFactory.Player.PlayerHealth, Assembly-CSharp"));
+            float before = (float)health.GetType().GetProperty("Current").GetValue(health);
+            var controller = player.GetComponent<CharacterController>();
+            controller.enabled = false;
+            controller.transform.position = second.transform.position + new Vector3(0f, 0.05f, -1.5f);
+            controller.enabled = true;
+            Physics.SyncTransforms();
+            for (int i = 0; i < 30; i++)
+            {
+                controller.Move(Vector3.forward * 0.1f + Vector3.down * 0.01f);
+                yield return null;
+            }
+            Assert.Less((float)health.GetType().GetProperty("Current").GetValue(health), before, "the trap hurt the player");
+            Assert.IsFalse((bool)trapType.GetProperty("IsArmed").GetValue(second), "and is spent");
+        }
     }
 }
