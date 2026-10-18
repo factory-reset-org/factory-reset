@@ -81,7 +81,7 @@ namespace ToyFactory.Journey.Chapters
             }
 
             BeaconTarget current = target.Value;
-            Vector3 goal = new Vector3(current.Position.x, transform.position.y, current.Position.z);
+            Vector3 goal = GoalFor(current.Position);
             bool jump = !_wasShowing || (current.Id != _targetId && Vector3.Distance(transform.position, goal) > snapDistance);
             transform.position = jump || glideTime <= 0f
                 ? goal
@@ -92,6 +92,41 @@ namespace ToyFactory.Journey.Chapters
             _wasShowing = true;
 
             Animate(Time.time);
+        }
+
+        // Where the ring goes for a target: on the first surface of the level below the target's real position,
+        // 0.05 m above it, so a power core's ring lies on its rack top and a floor task's on the floor. The same
+        // rule and numbers as the Captain's ring (Runtime/World/RingPlacement, which this assembly cannot see).
+        // The ray is cast again only when the target moves.
+        const float RingLift = 0.05f;
+        const float RingMaxDrop = 20f;
+        readonly RaycastHit[] _ringHits = new RaycastHit[16];
+        Vector3 _lastTargetPosition = new Vector3(float.NaN, 0f, 0f);
+        Vector3 _lastGoal;
+
+        Vector3 GoalFor(Vector3 targetPosition)
+        {
+            if (targetPosition == _lastTargetPosition)
+                return _lastGoal;
+
+            int count = Physics.RaycastNonAlloc(targetPosition + Vector3.up * 0.01f, Vector3.down, _ringHits, RingMaxDrop,
+                LayerMask.GetMask("Default", "Environment"), QueryTriggerInteraction.Ignore);
+            float nearest = float.MaxValue;
+            float surface = 0f;
+            for (int i = 0; i < count; i++)
+            {
+                if (_ringHits[i].distance < nearest)
+                {
+                    nearest = _ringHits[i].distance;
+                    surface = _ringHits[i].point.y;
+                }
+            }
+
+            _lastTargetPosition = targetPosition;
+            _lastGoal = count > 0
+                ? new Vector3(targetPosition.x, surface + RingLift, targetPosition.z)
+                : new Vector3(targetPosition.x, transform.position.y, targetPosition.z);
+            return _lastGoal;
         }
 
         void Animate(float time)

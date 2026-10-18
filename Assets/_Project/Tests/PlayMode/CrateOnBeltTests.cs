@@ -61,6 +61,7 @@ namespace ToyFactory.Tests
             yield return Until(() => CutsceneDirector.Current != null && CutsceneDirector.Current.IsPlaying, 10f, "the intro");
             CutsceneDirector.Current.Skip();
             yield return Until(() => GameClock.Current.State == GameState.Playing, 10f, "Playing");
+            PropTestLevel.RemoveAgents();   // nothing walks into the crate mid-test
         }
 
         [UnityTest]
@@ -74,9 +75,10 @@ namespace ToyFactory.Tests
             GameObject crate = GameObject.Find("Crate_1");
             Component box = crate.GetComponent("PushableBox");
             Rigidbody rb = crate.GetComponent<Rigidbody>();
-            // On the floor just south of the top belt (z 16.75 to 18.25), with the player south of it.
-            box.GetType().GetMethod("Teleport").Invoke(box, new object[] { new Vector3(6f, 0.5f, 15.4f), Quaternion.identity });
-            yield return new WaitForSeconds(0.3f);
+            // On the floor just south of the top belt (z 16.4 to 18.6, its edge slope from about 16.2), with
+            // the player south of it.
+            box.GetType().GetMethod("Teleport").Invoke(box, new object[] { new Vector3(6f, 0.5f, 15.15f), Quaternion.identity });
+            yield return PropTestLevel.UntilAtRest(rb, 5f, "the crate to settle on the floor");
             Assert.AreEqual(0.5f, crate.transform.position.y, 0.03f, "it starts on the floor, not on the belt");
 
             Component player = (Component)PlayerState.Current;
@@ -88,9 +90,10 @@ namespace ToyFactory.Tests
             yield return null;
 
             box.GetType().GetMethod("Interact").Invoke(box, null);
-            yield return new WaitForSeconds(4f);
+            yield return PropTestLevel.UntilGameTime(() => crate.transform.position.z > 16.5f && crate.transform.position.y > 0.52f
+                && crate.transform.position.x > 7f, 8f, "the crate to climb onto the belt and be carried");
 
-            Assert.Greater(crate.transform.position.z, 16.9f, "it went over the belt's edge");
+            Assert.Greater(crate.transform.position.z, 16.5f, "it went over the belt's edge");
             Assert.Greater(crate.transform.position.y, 0.52f, "and is standing on the belt, not beside it");
             Assert.Greater(crate.transform.position.x, 7f, "and the belt carried it along");
         }
@@ -134,6 +137,7 @@ namespace ToyFactory.Tests
             yield return Until(() => CutsceneDirector.Current != null && CutsceneDirector.Current.IsPlaying, 10f, "the intro");
             CutsceneDirector.Current.Skip();
             yield return Until(() => GameClock.Current.State == GameState.Playing, 10f, "Playing");
+            PropTestLevel.RemoveAgents();
 
             Type leverType = Type.GetType("ToyFactory.Interaction.ConveyorLever, Assembly-CSharp");
             Type plateType = Type.GetType("ToyFactory.Interaction.PressurePlate, Assembly-CSharp");
@@ -150,7 +154,7 @@ namespace ToyFactory.Tests
             box.GetType().GetMethod("Teleport").Invoke(box, new object[] { new Vector3(10f, 0.5f, 17.5f), Quaternion.identity });
 
             var completed = plateType.GetProperty("IsCompleted");
-            yield return Until(() => (bool)completed.GetValue(plate), 20f, "the crate to reach the plate and latch it");
+            yield return PropTestLevel.UntilGameTime(() => (bool)completed.GetValue(plate), 30f, "the crate to reach the plate and latch it");
             Assert.Greater(crate.transform.position.x, 14.5f, "it rode the belt to the end");
         }
     }

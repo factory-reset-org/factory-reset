@@ -92,7 +92,7 @@ Higher priority wins when several conditions are true on the same tick. This is 
 | 60 | TakeCover, InCover, PeekAndShoot, Advance, Retreat | Relocate | The cover choice changed: exposed, blocked, lost, found, or beaten by a better one |
 | 50 | PeekAndShoot | InCover | Peek timer elapses (2 s) |
 | 40 | Relocate | TakeCover | A cover cell is reserved and the player is not low on battery |
-| 30 | Relocate | Advance | Player battery below 25% or reloading |
+| 30 | Relocate | Advance | Player battery below 25% or reloading, or no cover it can peek from (see below) |
 | 20 | Relocate | Retreat | No valid cover |
 
 ```text
@@ -108,6 +108,8 @@ Higher priority wins when several conditions are true on the same tick. This is 
 
    Any --stunned--> Stunned --reboot--> Relocate        Any --player gone--> Patrol
 ```
+
+**A cover with nowhere to peek from (fixed 18 October).** S4 saw a Guard sit in cover for about a minute against a player standing 7.5 m away who never fired. The cover protected it, but no neighbouring cell could see the player, so `PeekAllowed` was never true, the hold ran out again and again, and no rule moved it. Now, when the hold runs out on such a cover (not in overcharge), the Guard asks for a cover it can peek from (`_wantPeekCover`, which also drops the held cover from the choice). If one is free it relocates to it; if none is, it advances (`_pushForShot`) and keeps walking past its ideal range until it can see the player, then fires. Moving the player clears the wish, so any cover may do again. Test: `Guard_CoverWithNoPeek_PushesInAndShootsAPlayerWhoNeverFires`.
 
 ## Why this architecture over the alternatives
 
@@ -212,6 +214,7 @@ All of these are in `GuardBrainTests` unless the status says otherwise.
 | Chapter 1 | Not held back: the room is its own from the start | `Guard_IsNotHeldBackByTheChapter` | Built |
 | Cover candidates outside its room | Never taken, and it does not leave to find some | `Guard_TakesCoverOnlyInsideItsRoom`, `Guard_NoCoverInsideItsRoom_DoesNotLeaveToFindSome` | Built |
 | Player unreachable | Hold current cover, keep peeking | `Guard_PlayerUnreachable_HoldsCoverWithoutFreezing` | Built |
+| Held cover has nowhere to peek from, player never fires | When the hold runs out, relocate to a cover it can peek from, or advance until it sees the player, and fire | `Guard_CoverWithNoPeek_PushesInAndShootsAPlayerWhoNeverFires` | Built |
 | Cutscene or pause mid-route | Brain is not ticked; game time (`ctx.Time`) resumes from the same value. This is the controller's behaviour, so the test is a Runtime (PlayMode) one in `GuardFreezeTests` | `Guard_CutsceneFreezesGameTime` | Built |
 
 ## Tests
@@ -264,6 +267,7 @@ Status says whether a test exists in the repo today (**Built**) or is still to b
 | `Guard_PlayerOutsideItsRoom_IsNotFought`, `Guard_PlayerJustOutsideItsDoor_IsFought`, `Guard_PlayerLeavesItsRoomMidFight_ReturnsToPatrolAndReleasesCover`, `Guard_TakesCoverOnlyInsideItsRoom`, `Guard_NoCoverInsideItsRoom_DoesNotLeaveToFindSome` | Built | It holds its room and stays in it |
 | `Guard_PlayerStepsIntoItsRoom_IsDetectedWithoutALineOfSight`, `Guard_PlayerJustOutsideItsDoor_NeedsASightOrASoundToBeDetected`, `Guard_IsNotHeldBackByTheChapter` | Built | Stepping into the room is detection; the chapter does not gate it |
 | `Guard_HoldTimerElapses_PeeksAndShoots`, `Guard_PeekTimerElapses_ReturnsToCover` | Built | The peek-and-fire cycle, with shooting as an intent |
+| `Guard_CoverWithNoPeek_PushesInAndShootsAPlayerWhoNeverFires` | Built | A cover it cannot shoot from is not held for ever: it pushes in and fires at a player who never fires |
 | `Guard_BatteryBelow25_ReducesIdealDistanceAndAdvances`, `Guard_PlayerReloading_Advances`, `Guard_BatteryTiers_SetTheIdealDistance`, `Guard_OverchargeActive_UsesTwelveMetresAndDoesNotPeek` | Built | The battery-adaptive creative hook actually works |
 
 **Cell reservations** (`CellReservationsTests`, built): reserving, refusing a held cell, swapping cells, and release.
@@ -289,7 +293,7 @@ Every number the Guard's behaviour depends on is a named constant in `GuardBrain
 
 `GuardTuningEvidenceTests` (EditMode, category Evidence) prints two tables to the test output: the effect of lambda on a route across an exposed band, and the number of route searches a pushed box causes. The per-frame cost of the Guard's decisions is in `AIPerformanceLog.md` (p99 4.93 ms before the fixes, 1.69 ms after).
 
-- **A\* against Dijkstra:** `CostMatchesReferenceDijkstraOnFiftyRandomGrids` checks that A* returns the same cost as a reference Dijkstra on fifty random grids.
+- **A\* against Dijkstra:** `CostMatchesReferenceDijkstraOnFiftyRandomGrids` checks that A* returns the same cost as a reference Dijkstra on fifty random grids. On a level-sized grid (83 x 83, 20 pairs, `AStarVsDijkstraEvidenceTests`, 2026-10-18) A* matched Dijkstra's cost on all 20 pairs with both the octile and the tactical cost, and expanded 19% (octile) and 42% (tactical, lambda 3) of Dijkstra's cells; the table is in `AIPerformanceLog.md`.
 - **Lambda against route** (`Evidence_LambdaAgainstDetourAndExposure`, 2026-10-11). A 41 x 15 grid with a wall at x = 20 and two gaps in it: a short one on the straight route that the player can see across 7 cells, and a long hidden one at the far edge.
 
   | lambda | Exposed step multiplier | Route length (cells) | Exposed cells crossed | Length / shortest |

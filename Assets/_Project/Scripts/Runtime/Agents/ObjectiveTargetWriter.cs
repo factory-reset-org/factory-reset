@@ -4,6 +4,7 @@ using ToyFactory.AI.Core.Blackboard;
 using ToyFactory.AI.Core.Grid;
 using ToyFactory.Interfaces;
 using ToyFactory.Runtime.World;
+using UnityEngine;
 
 namespace ToyFactory.Runtime.Agents
 {
@@ -27,9 +28,39 @@ namespace ToyFactory.Runtime.Agents
         bool _hasPending;
         bool _disposed;
 
+        // The writer in use, for the world-position lookup. Domain reload is off, so it is cleared on load.
+        static ObjectiveTargetWriter s_current;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics() => s_current = null;
+
+        /// <summary>
+        /// The real world position of an objective, as the chapter published it, before it became a grid cell.
+        /// A cell is always at floor height; this keeps a power core's orb at its true height, for markers.
+        /// </summary>
+        public static bool TryGetWorldPosition(int id, out Vector3 position)
+        {
+            ObjectiveTargetWriter writer = s_current;
+            if (writer != null)
+            {
+                for (int i = 0; i < writer._latest.Count; i++)
+                {
+                    if (writer._latest[i].Id == id)
+                    {
+                        position = writer._latest[i].Position;
+                        return true;
+                    }
+                }
+            }
+
+            position = default;
+            return false;
+        }
+
         public ObjectiveTargetWriter(WorldBlackboard blackboard)
         {
             _blackboard = blackboard ?? throw new ArgumentNullException(nameof(blackboard));
+            s_current = this;
             ObjectiveEvents.OnTargetsChanged += HandleTargetsChanged;
             GridManager.Ready += HandleGridReady;
         }
@@ -40,6 +71,8 @@ namespace ToyFactory.Runtime.Agents
             if (_disposed)
                 return;
             _disposed = true;
+            if (s_current == this)
+                s_current = null;
             ObjectiveEvents.OnTargetsChanged -= HandleTargetsChanged;
             GridManager.Ready -= HandleGridReady;
         }

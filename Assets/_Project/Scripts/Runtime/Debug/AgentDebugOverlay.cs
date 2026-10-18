@@ -67,7 +67,9 @@ namespace ToyFactory.Runtime.Debugging
             LabelCamera = null;
         }
 
-        static bool Allowed => Application.isEditor || Debug.isDebugBuild;
+        // The plan's IS checklist asks for the debug overlay working in the submitted build, which is a
+        // release build, so it is allowed everywhere. It still starts hidden (unless showOnStart) and F3 toggles it.
+        static bool Allowed => true;
 
         void Awake()
         {

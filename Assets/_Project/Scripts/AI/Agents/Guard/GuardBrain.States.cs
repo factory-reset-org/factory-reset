@@ -159,7 +159,8 @@ namespace ToyFactory.AI.Agents.Guard
                 if (b._hasCover)
                     return;
 
-                if (FlatDistance(b._ctx.Position, b.Player.Position) <= b._idealRange)
+                // In range is enough, unless it came out to get a shot: then it walks on until it sees the player.
+                if (FlatDistance(b._ctx.Position, b.Player.Position) <= b._idealRange && (!b._pushForShot || b._seesPlayer))
                 {
                     if (b._routeCells != null)
                         b.StopMoving();

@@ -44,6 +44,20 @@ Level grid with the prototype rooms (`Env.unity`, 83 x 83 cells of 0.5 m, 4,963 
 - Worst case for A*, pair 18 (2,260 nodes, from the Assembly Floor to the far corner of Storage through two doorways and the maze): GBFS needed 435. For a chaser replanning every 0.5 s, that is the trade the Tracker is designed to make.
 - **Before the prototype rooms** (2026-10-04, 5,318 walkable cells, a different set of pairs from the same seed): 77% fewer nodes, 4.7x faster, 13.6% longer. The conclusion is unchanged.
 
+### A* vs Dijkstra (Guard search, S2)
+
+The Guard plans with `AStarSearch` (octile heuristic) under two costs: the plain octile step and the tactical cost `TacticalCostModel` (each exposed step costs (1 + lambda) times, lambda = 3). The admissibility argument (the heuristic never overestimates because no step costs less than its octile length) says A* must return the same cost as Dijkstra under both. `Tests/EditMode/AStarVsDijkstraEvidenceTests` (category Evidence) checks it on a level-sized grid: 83 x 83 cells, a quarter blocked, a third exposed, all seeded, 20 seeded start/goal pairs. Dijkstra is `DijkstraField` run from the start and stopped at the A* answer's cost, so both answer the same question. Run 2026-10-18, Unity 6000.6.2f1 editor.
+
+| Cost | Pairs found | Cost equal on | A* cells expanded (total) | Dijkstra cells expanded (total) | A* ms (total) | Dijkstra ms (total) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Octile | 20 | 20 | 10,367 | 53,704 | 5.02 | 15.66 |
+| Tactical, lambda 3 | 20 | 20 | 22,355 | 53,096 | 11.00 | 14.95 |
+
+- **Optimal in both costs:** A* matched Dijkstra's cost on all 20 pairs, plain and tactical. `AStarSearchTests.CostMatchesReferenceDijkstraOnFiftyRandomGrids` checks the same on 50 small random grids against a simple uniform-cost search.
+- **Work saved:** A* expanded 19% of Dijkstra's cells with the octile cost and 42% with the tactical cost. The tactical cost makes the heuristic weaker (it still only counts octile length, while exposed steps cost four times as much), so A* looks round more of the grid, but stays well under Dijkstra.
+- **Why not Dijkstra for the Guard:** the Guard needs one route to one cover cell at a time. A whole field (what the Captain uses, because it asks about many goals at once) costs two to five times the search here for a single answer.
+- **Limits:** a generated grid, not the level's; editor timings on one machine.
+
 ### Noise propagation (Tracker hearing, S1)
 
 `NoisePropagation.Propagate` on the level grid with the prototype rooms (83 x 83 cells, 4,963 walkable), one noise from the middle of the Assembly Floor (10.5, 10.5), doors 3 and 4 closed. Average of 50 runs after one warm-up, Unity editor (Mono), 2026-10-09.

@@ -10,7 +10,7 @@ Which layers collide with which, as set in **Edit > Project Settings > Physics >
 | 6 | Player | The player's character controller |
 | 7 | Environment | Floors, walls, ceilings, static room furniture |
 | 8 | Pushable | Pushable boxes and crates |
-| 9 | HeldItem | A box or toy while the player carries it (kinematic) |
+| 9 | HeldItem | Reserved for a carried item. Nothing is carried in the final game (boxes are shoved, toys are thrown straight from Q), so nothing is on it; the matrix row and the masks that name it are kept so a carried item could be added without touching them |
 | 10 | Throwable | Thrown wind-up toys |
 | 11 | Agents | The four robot types |
 | 12 | Debris | Pieces thrown out of an exploding power core |
@@ -45,9 +45,9 @@ Short names: Def = Default, Ply = Player, Env = Environment, Psh = Pushable, Hld
 - **Tracer collides with nothing.** Bolts and impact bursts are only the picture of a hitscan shot; the hit was decided by the raycast the moment the shot was fired.
 - **Pickup collides with Player only.** Battery and overcharge pickups are trigger zones; nothing else should be able to take one, so agents, boxes and toys pass through them.
 - **Debris collides with the level and boxes only.** Core debris falls and settles on Default, Environment and Pushable, and ignores the player, the agents and toys so a burst never trips or blocks anyone.
-- **HeldItem does not collide with Player.** A carried box or toy sits in front of the player's controller, and without this it would push the player back every frame.
+- **HeldItem does not collide with Player.** Set up for a carried box or toy, which would sit in front of the player's controller and push it back every frame. Nothing uses the layer in the final game (see the layer table).
 - **Player and Throwable collide**, so a toy bounces off the player if thrown at their feet; the thrower ignores the pair explicitly while a toy is leaving the hand.
-- **Shot masks.** The blaster's hit mask is Default, Environment, Pushable, Agents, TaskProp and Throwable. It leaves out Player, HeldItem, Debris, Tracer and Pickup on purpose, so a shot is never stopped by a pickup or by the player's own held box.
+- **Shot masks.** The blaster's hit mask is Default, Environment, Pushable, Agents, TaskProp and Throwable. It leaves out Player, HeldItem, Debris, Tracer and Pickup on purpose, so a shot is never stopped by a pickup or by the player's own body.
 
 ## Screenshot
 
