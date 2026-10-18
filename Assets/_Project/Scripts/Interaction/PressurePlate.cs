@@ -38,6 +38,19 @@ namespace ToyFactory.Interaction
             if (crateMask.value == 0)
                 crateMask = LayerMask.GetMask("Pushable");
 
+            // The plate's top is slick, so a crate coming off the end of the belt glides on over it to the stop
+            // instead of halting at the belt's edge.
+            if (TryGetComponent(out Collider top) && top.sharedMaterial == null)
+            {
+                top.sharedMaterial = new PhysicsMaterial("Plate top")
+                {
+                    dynamicFriction = 0f,
+                    staticFriction = 0f,
+                    frictionCombine = PhysicsMaterialCombine.Minimum,
+                    bounceCombine = PhysicsMaterialCombine.Minimum
+                };
+            }
+
             // Red until a crate is on it, green after.
             if (body == null)
                 body = GetComponentInChildren<Renderer>();
