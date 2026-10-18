@@ -49,9 +49,11 @@ namespace ToyFactory.Player
         string _promptShown = string.Empty;
         IHoldable _held;
         Collider _heldCollider;
+        PlayerBattery _battery;
 
         void Awake()
         {
+            _battery = GetComponent<PlayerBattery>();
             InputActionMap map = inputActions.FindActionMap("Player");
             _interactAction = map.FindAction("Interact");
             map.Enable();
@@ -144,11 +146,23 @@ namespace ToyFactory.Player
             if (_held == null)
             {
                 IInteractable target = FindTarget(out Collider _, out float distance);
-                if (target != null && distance <= promptReach)
+                // A prop whose prompt is null has nothing to offer right now (a trap that is not armed).
+                bool offers = !(target is IInteractionPrompt silent) || silent.PromptText != null;
+                if (target != null && distance <= promptReach && offers)
                 {
                     string what = target is IInteractionPrompt p && !string.IsNullOrEmpty(p.PromptText) ? p.PromptText : "use it";
                     text = target is IHoldable ? $"Hold E to {what}" : $"Press E to {what}";
                 }
+            }
+
+            // With nothing to use in front of it, an empty blaster says how to get going again: it does not reload
+            // by itself.
+            if (text.Length == 0 && _battery != null && _battery.IsEmpty && !_battery.IsReloading
+                && _battery.OverchargeTimeLeft <= 0f)
+            {
+                text = _battery.SpareCells > 0
+                    ? $"Press R to reload ({_battery.SpareCells} spare {(_battery.SpareCells == 1 ? "cell" : "cells")})"
+                    : "Out of cells: find a battery or the charger";
             }
 
             // Only what this script showed is ever cleared, so a prompt fed by something else stays.
