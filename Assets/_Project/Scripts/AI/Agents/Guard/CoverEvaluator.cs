@@ -14,6 +14,12 @@ namespace ToyFactory.AI.Agents.Guard
     {
         public const float LowCoverHeight = 0.5f;
         public const float ChestHeight = 1.2f;
+
+        /// <summary>
+        /// Height of the Guard's cannon muzzle above the floor (measured on the model: 0.89 m). A cell only counts as
+        /// one to shoot from if the line at this height is clear too: chest height alone let low cover take the shot.
+        /// </summary>
+        public const float MuzzleHeight = 0.85f;
         public const float MaxSearchRange = 15f;
 
         public const float ProtectionWeight = 0.40f;
@@ -314,7 +320,8 @@ namespace ToyFactory.AI.Agents.Guard
             for (int i = 0; i < NeighbourOffsets.Length; i++)
             {
                 Vector2Int neighbour = cell + NeighbourOffsets[i];
-                if (_grid.IsTraversable(neighbour) && !_visibility.IsBlocked(neighbour, ChestHeight))
+                if (_grid.IsTraversable(neighbour) && !_visibility.IsBlocked(neighbour, ChestHeight)
+                    && !_visibility.IsBlocked(neighbour, MuzzleHeight))
                 {
                     return true;
                 }

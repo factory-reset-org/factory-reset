@@ -106,15 +106,20 @@ namespace ToyFactory.AI.Agents.Guard
             {
                 base.Enter(b);
                 b._peekUntil = b.Now + PeekDuration;
-                if (b.TryFindPeekCell(out Vector2Int peekCell))
+                b._peekStartedAt = b.Now;
+                b._hasPeekCell = b.TryFindPeekCell(out Vector2Int peekCell);
+                b._peekCell = peekCell;
+                if (b._hasPeekCell)
                     b.MoveTo(peekCell, BaseCostModel.Instance);
             }
 
+            // It fires only once out on the peek cell: stepping out, its cannon is still behind the cover.
             public override void Tick(GuardBrain b)
             {
                 b._outSpeed = WalkSpeed;
                 b._outLook = b.Player.Position;
-                b.TryShoot();
+                if (b.AtPeekCell())
+                    b.TryShoot();
             }
         }
 

@@ -75,6 +75,11 @@ namespace ToyFactory.AI.Agents.Guard
         public const float HoldTime = 1.3f;
         public const float AggressiveHoldTime = 0.7f;
         public const float PeekDuration = 2f;
+        public const float MinHoldBeforeOpportunisticPeek = 0.35f;   // the player looks away: peek this soon
+        public const float LooksAwayDegrees = 60f;
+        public const float AimedAtDegrees = 12f;                       // the player's aim is on the Guard
+        public const float UnderFireWindow = 0.35f;                    // a shot this recent counts as firing now
+        public const int CaughtPeeksBeforeMoving = 2;                  // ducked this often at one cover: find another
         public const float QuietTimeBeforePeek = 1.5f;   // high battery: peek only after the player stops firing
 
         // Distances.
@@ -177,6 +182,15 @@ namespace ToyFactory.AI.Agents.Guard
         // allow a peek, and with none on offer the Guard pushes in to get a shot instead of hiding for ever.
         bool _wantPeekCover;
         bool _pushForShot;
+
+        // Peeks alternate sides, and a cover where the player keeps catching it is given up.
+        int _lastPeekIndex = -1;
+        Vector2Int _peekCell;
+        bool _hasPeekCell;
+        int _caughtPeeks;
+        Vector2Int _burnedCover;
+        bool _hasBurnedCover;
+        float _peekStartedAt;
         float _nextCoverTime = float.NegativeInfinity;
         bool _evaluateNow;
         Vector3 _lastEvalPlayerPosition;
@@ -246,6 +260,9 @@ namespace ToyFactory.AI.Agents.Guard
             Rule(rules, _patrol, _relocate, 85, "a living player within alert range", b => b._engaged);
             Rule(rules, _takeCover, _inCover, 80, "reached the reserved cover cell", b => b.AtCover());
             Rule(rules, _advance, _inCover, 80, "reached the reserved cover cell", b => b.AtCover());
+            Rule(rules, _inCover, _peek, 72, "the player looks away: peek at once",
+                b => !b._reconsider && b.PeekAllowed() && b.PlayerLooksAway()
+                     && b.Now >= b._holdUntil - b._holdTime + MinHoldBeforeOpportunisticPeek);
             Rule(rules, _inCover, _peek, 70, "hold timer elapsed and peeking is allowed",
                 b => !b._reconsider && b.Now >= b._holdUntil && b.PeekAllowed());
             Rule(rules, _peek, _inCover, 65, "overcharge active: no peeking until it ends",
@@ -255,6 +272,7 @@ namespace ToyFactory.AI.Agents.Guard
             Rule(rules, _peek, _relocate, 60, "cover changed, lost or exposed", b => b._reconsider);
             Rule(rules, _advance, _relocate, 60, "cover changed, lost or found", b => b._reconsider);
             Rule(rules, _retreat, _relocate, 60, "cover found, or the battery tier changed", b => b._reconsider);
+            Rule(rules, _peek, _inCover, 55, "the player is shooting at it: duck back", b => b.DuckUnderFire());
             Rule(rules, _peek, _inCover, 50, "peek timer elapsed", b => b.Now >= b._peekUntil);
             Rule(rules, _relocate, _takeCover, 40, "a cover cell is reserved", b => b._hasCover && !b._aggressive);
             Rule(rules, _relocate, _advance, 30, "player battery below 25% or reloading, or no cover to shoot from",
@@ -433,6 +451,8 @@ namespace ToyFactory.AI.Agents.Guard
                 _evaluateNow = true;
                 _wantPeekCover = false;
                 _pushForShot = false;
+                _caughtPeeks = 0;
+                _hasBurnedCover = false;
                 return;
             }
 
@@ -453,7 +473,11 @@ namespace ToyFactory.AI.Agents.Guard
                 _sight.Invalidate();
             bool playerMoved = FlatDistance(player.Position, _lastEvalPlayerPosition) > ReevaluateDistance;
             if (playerMoved)
+            {
                 _wantPeekCover = false;   // new ground: any cover may do again
+                _hasBurnedCover = false;
+                _caughtPeeks = 0;
+            }
 
             if (_evaluateNow || tierChanged || exposed || playerMoved || Now >= _nextCoverTime)
                 EvaluateCover(player);
@@ -474,8 +498,11 @@ namespace ToyFactory.AI.Agents.Guard
             if (wasAggressive != _aggressive && !_hasCover)
                 _reconsider = true;
 
+            // A shot needs a clear line at the muzzle's height too: low cover the player can see over still
+            // stops a shot from the cannon, which is lower than the chest.
             _seesPlayer = FlatDistance(_ctx.Position, player.Position) <= ShootRange
-                && !_visibility.IsBlocked(_ctx.Cell, CoverEvaluator.ChestHeight);
+                && !_visibility.IsBlocked(_ctx.Cell, CoverEvaluator.ChestHeight)
+                && !_visibility.IsBlocked(_ctx.Cell, CoverEvaluator.MuzzleHeight);
         }
 
         // Distance alone is not a reason to fight: a player on the far side of a wall is not a
@@ -560,6 +587,10 @@ namespace ToyFactory.AI.Agents.Guard
         // A cover cell another agent has reserved is not on offer, nor is one outside the room.
         bool IsAvailable(Vector2Int cell)
         {
+            if (_hasBurnedCover && cell == _burnedCover)
+                return false;
+            if (_home != null && !_home.AllowsCover(_grid.CellToWorld(cell)))
+                return false;
             int? holder = World.Reservations.ReservedBy(cell);
             if (holder.HasValue && holder.Value != _agentId)
                 return false;
@@ -698,14 +729,21 @@ namespace ToyFactory.AI.Agents.Guard
 
         bool AtCover() => _hasCover && !_reconsider && ArrivedAt(_coverCell);
 
-        /// <summary>A cell next to the cover from which the player's chest is visible.</summary>
+        /// <summary>
+        /// A cell next to the cover from which the player can be shot (chest and muzzle height clear). It starts
+        /// looking one place after the last peek, so a Guard with two sides to peek from alternates them and the
+        /// player cannot hold an aim on one corner.
+        /// </summary>
         bool TryFindPeekCell(out Vector2Int peekCell)
         {
-            for (int i = 0; i < PeekOffsets.Length; i++)
+            for (int n = 1; n <= PeekOffsets.Length; n++)
             {
+                int i = (_lastPeekIndex + n) % PeekOffsets.Length;
                 Vector2Int cell = _coverCell + PeekOffsets[i];
-                if (_grid.IsTraversable(cell) && !_visibility.IsBlocked(cell, CoverEvaluator.ChestHeight))
+                if (_grid.IsTraversable(cell) && !_visibility.IsBlocked(cell, CoverEvaluator.ChestHeight)
+                    && !_visibility.IsBlocked(cell, CoverEvaluator.MuzzleHeight))
                 {
+                    _lastPeekIndex = i;
                     peekCell = cell;
                     return true;
                 }
@@ -713,6 +751,46 @@ namespace ToyFactory.AI.Agents.Guard
             peekCell = _coverCell;
             return false;
         }
+
+        // The player faces well away from the Guard: a chance to peek before the hold runs out.
+        bool PlayerLooksAway()
+        {
+            Vector3 toGuard = _ctx.Position - Player.Position;
+            Vector3 facing = Player.Forward;
+            toGuard.y = 0f;
+            facing.y = 0f;
+            if (toGuard.sqrMagnitude < 0.01f || facing.sqrMagnitude < 0.01f)
+                return false;
+            return Vector3.Angle(facing, toGuard) > LooksAwayDegrees;
+        }
+
+        // While peeking: the player is firing with its aim on the Guard. It ducks back, and a cover where it is
+        // caught again and again is given up for another until the player moves.
+        bool DuckUnderFire()
+        {
+            float lastShot = Player.LastShotTime;
+            if (lastShot < 0f || Now - lastShot > UnderFireWindow || Now - _peekStartedAt < 0.3f)
+                return false;
+            Vector3 toGuard = _ctx.Position - Player.Position;
+            Vector3 facing = Player.Forward;
+            toGuard.y = 0f;
+            facing.y = 0f;
+            if (toGuard.sqrMagnitude < 0.01f || facing.sqrMagnitude < 0.01f || Vector3.Angle(facing, toGuard) > AimedAtDegrees)
+                return false;
+
+            _caughtPeeks++;
+            if (_caughtPeeks >= CaughtPeeksBeforeMoving && _hasCover)
+            {
+                _burnedCover = _coverCell;
+                _hasBurnedCover = true;
+                _caughtPeeks = 0;
+                _evaluateNow = true;
+            }
+            return true;
+        }
+
+        /// <summary>True once it stands on its peek cell (or has none and peeks from where it is).</summary>
+        bool AtPeekCell() => !_hasPeekCell || ArrivedAt(_peekCell);
 
         /// <summary>
         /// The reachable hidden cell farthest from the player, for when no cover exists.
