@@ -335,6 +335,40 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreNotEqual(usual, brain.CoverCell, "but not by the task prop");
         }
 
+        // The weapon holds fire when the real shot line is blocked, and the brain cannot see that; it can see that
+        // the player is not getting hurt. Three harmless shots from one cover and it gives that cover up.
+        [Test]
+        public void Guard_ThreeShotsThatDoNoHarm_GivesUpTheCoverForAnother()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+            float t = 2f;
+            int shots = 0;
+            for (int i = 0; i < 40 && shots < 3; i++, t += 0.4f)
+            {
+                Vector2Int at = brain.StateName == "PeekAndShoot" && brain.HasCover ? PeekOf(brain, cover) : cover;
+                AgentIntent intent = TickAt(brain, at, t);
+                if (intent.Action == AgentAction.Shoot)
+                    shots++;
+            }
+            Assert.AreEqual(3, shots, "it fired three times at a player whose health never changed");
+            TickAt(brain, cover, t + 0.1f);
+            Assert.AreNotEqual(cover, brain.CoverCell, "and then moved to another cover");
+        }
+
+        // The peek cell the brain would step to from its cover: the first open neighbour seen by the player.
+        Vector2Int PeekOf(GuardBrain brain, Vector2Int cover)
+        {
+            foreach (var offset in new[] { new Vector2Int(0, 1), new Vector2Int(0, -1), new Vector2Int(1, 0), new Vector2Int(-1, 0) })
+            {
+                Vector2Int cell = cover + offset;
+                if (_grid.IsTraversable(cell) && !_visibility.IsBlocked(cell, 1.2f) && !_visibility.IsBlocked(cell, 0.85f))
+                    return cell;
+            }
+            return cover;
+        }
+
         [Test]
         public void Guard_PeekTimerElapses_ReturnsToCover()
         {
