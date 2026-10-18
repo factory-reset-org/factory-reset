@@ -80,6 +80,7 @@ namespace ToyFactory.AI.Agents.Guard
         public const float AimedAtDegrees = 12f;                       // the player's aim is on the Guard
         public const float UnderFireWindow = 0.35f;                    // a shot this recent counts as firing now
         public const int CaughtPeeksBeforeMoving = 2;                  // ducked this often at one cover: find another
+        public const int WastedShotsBeforeMoving = 3;                  // shots that did no harm in a row: find another
         public const float QuietTimeBeforePeek = 1.5f;   // high battery: peek only after the player stops firing
 
         // Distances.
@@ -191,6 +192,10 @@ namespace ToyFactory.AI.Agents.Guard
         Vector2Int _burnedCover;
         bool _hasBurnedCover;
         float _peekStartedAt;
+
+        // Shots from here that did the player no harm in a row (blocked, or the weapon held fire on a blocked line).
+        int _wastedShots;
+        float _healthAtLastShot = -1f;
         float _nextCoverTime = float.NegativeInfinity;
         bool _evaluateNow;
         Vector3 _lastEvalPlayerPosition;
@@ -842,6 +847,29 @@ namespace ToyFactory.AI.Agents.Guard
             _outLook = Player.Position;
             _outAction = AgentAction.Shoot;
             _lastShotAt = Now;
+            CountWastedShot();
+        }
+
+        // The brain cannot see where its shots go, but it can see whether the player got hurt. Three shots in a row
+        // that left the player's health where it was mean this spot does not give a real line: the cover is given up
+        // and it finds another, so a player cannot sit safe behind something the Guard keeps aiming over.
+        void CountWastedShot()
+        {
+            float health = Player.HealthFraction;
+            if (_healthAtLastShot >= 0f && health >= _healthAtLastShot)
+                _wastedShots++;
+            else
+                _wastedShots = 0;
+            _healthAtLastShot = health;
+
+            if (_wastedShots >= WastedShotsBeforeMoving && _hasCover)
+            {
+                _burnedCover = _coverCell;
+                _hasBurnedCover = true;
+                _wastedShots = 0;
+                _healthAtLastShot = -1f;
+                _evaluateNow = true;
+            }
         }
 
         // ---- Movement ------------------------------------------------------------------
