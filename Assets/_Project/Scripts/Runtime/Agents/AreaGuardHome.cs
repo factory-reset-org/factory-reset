@@ -53,5 +53,33 @@ namespace ToyFactory.Runtime.Agents
             outside = Vector3.Scale(outside, box.lossyScale);
             return outside.sqrMagnitude <= margin * margin;
         }
+
+        // Task props in the room (the terminal, the switch, its cage), found on the first ask: the room's scenes are all
+        // loaded by the time a Guard looks for cover. Cover within this distance of one is not taken.
+        const float PropClearance = 1.2f;
+        List<Bounds> _props;
+
+        public bool AllowsCover(Vector3 position)
+        {
+            if (_volume == null)
+                return true;
+            if (_props == null)
+            {
+                _props = new List<Bounds>();
+                Bounds room = _volume.bounds;
+                foreach (Collider prop in Physics.OverlapBox(room.center, room.extents, Quaternion.identity,
+                             LayerMask.GetMask("TaskProp"), QueryTriggerInteraction.Ignore))
+                    _props.Add(prop.bounds);
+            }
+
+            for (int i = 0; i < _props.Count; i++)
+            {
+                Bounds near = _props[i];
+                near.Expand(new Vector3(PropClearance * 2f, 100f, PropClearance * 2f));
+                if (near.Contains(position))
+                    return false;
+            }
+            return true;
+        }
     }
 }

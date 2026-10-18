@@ -14,5 +14,11 @@ namespace ToyFactory.AI.Agents.Guard
         /// <paramref name="margin"/> metres of it.
         /// </summary>
         bool Contains(Vector3 position, float margin);
+
+        /// <summary>
+        /// False where the Guard must not take cover even inside its room: next to a task prop (the terminal in the
+        /// middle of the Painting Room), where it would stand on the thing the player has to use.
+        /// </summary>
+        bool AllowsCover(Vector3 position) => true;
     }
 }
