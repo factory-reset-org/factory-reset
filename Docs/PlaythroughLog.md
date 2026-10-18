@@ -11,7 +11,7 @@ Full runs from the title screen to the results screen, kept as evidence for the 
 | Field | Value |
 | --- | --- |
 | Date | 2026-10-18 |
-| Build | Unity 6000.6.2f1 editor, Play Mode (the Windows build of the same commit is in `Docs/BuildLog.md`) |
+| Build | Unity 6000.6.2f1 editor, Play Mode. The Windows build of the same commit (`ad6742e`, 2026-10-18 02:59 in `Docs/BuildLog.md`) starts to the title screen with no errors in its log (`build_title.png`) |
 | Commit | `s2/fix/final-systems` at the commit that adds this run |
 | Machine | S2's laptop (Windows 11) |
 | Player | Scripted (S2's evidence test) |
