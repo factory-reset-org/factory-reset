@@ -48,9 +48,12 @@ namespace ToyFactory.Tests.EditMode
         sealed class FakeHome : IGuardHome
         {
             public float MinX, MaxX;
+            public readonly HashSet<Vector3> NoCover = new HashSet<Vector3>();
 
             public bool Contains(Vector3 position, float margin) =>
                 position.x >= MinX - margin && position.x <= MaxX + margin;
+
+            public bool AllowsCover(Vector3 position) => !NoCover.Contains(position);
         }
 
         GridGraph _grid;
@@ -71,7 +74,7 @@ namespace ToyFactory.Tests.EditMode
             new GuardBrain(_grid, new AStarSearch(_grid), _world, _visibility, id, patrol, home);
 
         void SetPlayer(float ammo = 1f, float overcharge = 0f, bool alive = true, bool reloading = false,
-            Vector2Int? at = null)
+            Vector2Int? at = null, Vector3? facing = null, float lastShot = -1f)
         {
             Vector2Int cell = at ?? PlayerCell;
             _world.SetPlayer(new PlayerSnapshot(
@@ -79,14 +82,14 @@ namespace ToyFactory.Tests.EditMode
                 cell: cell,
                 position: _grid.CellToWorld(cell),
                 velocity: Vector3.zero,
-                forward: Vector3.right,
+                forward: facing ?? Vector3.right,
                 sprintSpeed: 7f,
                 isAlive: alive,
                 healthFraction: 1f,
                 ammoFraction: ammo,
                 isReloading: reloading,
                 overchargeTimeLeft: overcharge,
-                lastShotTime: -1f));
+                lastShotTime: lastShot));
         }
 
         AgentIntent TickAt(GuardBrain brain, Vector3 position, float time) =>
@@ -247,6 +250,89 @@ namespace ToyFactory.Tests.EditMode
             for (int i = 0; i < 5 && shot.Action != AgentAction.Shoot; i++)
                 shot = TickAt(brain, inView, 4.5f + i * 0.5f);
             Assert.AreEqual(AgentAction.Shoot, shot.Action, "it shoots the player who never fired");
+        }
+
+        // The cannon fires from 0.89 m. Low cover the player sees over at chest height still stops it, so a cell
+        // that is clear at the chest but blocked at the muzzle is not one to shoot from.
+        [Test]
+        public void Guard_ChestVisibleButMuzzleBlocked_DoesNotShoot()
+        {
+            _visibility.HalfHeightOnly = true;   // the shadow cells are hidden below 1 m only
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int behindLowCover = new Vector2Int(WallX + 1, 5);
+            for (int i = 0; i < 6; i++)
+            {
+                AgentIntent intent = TickAt(brain, behindLowCover, 2f + i * 1.5f);
+                Assert.AreNotEqual(AgentAction.Shoot, intent.Action, "no shot through the low cover at " + (2f + i * 1.5f) + " s");
+            }
+        }
+
+        [Test]
+        public void Guard_PeeksFromAlternatingSidesWhenItHasTwo()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+            var peeks = new HashSet<Vector3>();
+            float t = 2f;
+            for (int round = 0; round < 3; round++)
+            {
+                AgentIntent peek = TickAt(brain, cover, t);
+                if (brain.StateName == "PeekAndShoot" && peek.Path != null && peek.Path.Count > 0)
+                    peeks.Add(peek.Path[peek.Path.Count - 1]);
+                t += PeekTimerAndHold;
+                TickAt(brain, cover, t);   // back in cover
+                t += 2f;
+            }
+            Assert.Greater(peeks.Count, 1, "it does not peek from the same corner every time");
+        }
+
+        const float PeekTimerAndHold = GuardBrain.PeekDuration + 0.1f;
+
+        [Test]
+        public void Guard_PlayerFiringWithItsAimOnTheGuard_DucksBackEarly()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+            AgentIntent peek = TickAt(brain, cover, 2f);
+            Assert.AreEqual("PeekAndShoot", brain.StateName);
+            Vector3 peekPosition = peek.Path[peek.Path.Count - 1];
+
+            // The player fires at it 0.5 s into the peek, well before the 2 s peek timer.
+            Vector3 toGuard = peekPosition - _grid.CellToWorld(PlayerCell);
+            toGuard.y = 0f;
+            SetPlayer(facing: toGuard.normalized, lastShot: 2.5f);
+            TickAt(brain, peekPosition, 2.6f);
+            Assert.AreEqual("InCover", brain.StateName, "it ducks back under fire");
+        }
+
+        [Test]
+        public void Guard_PlayerLooksAway_PeeksBeforeTheHoldRunsOut()
+        {
+            SetPlayer(facing: Vector3.left);   // the Guard is to the east
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+            TickAt(brain, cover, 0.5f + GuardBrain.MinHoldBeforeOpportunisticPeek + 0.05f);
+            Assert.AreEqual("PeekAndShoot", brain.StateName, "it takes the chance while the player looks away");
+        }
+
+        [Test]
+        public void Guard_NeverTakesCoverWhereItsRoomForbidsIt()
+        {
+            SetPlayer();
+            var home = new FakeHome { MinX = -100f, MaxX = 100f };
+            GuardBrain first = Guard(id: 1, home: home);
+            TickAt(first, GuardStart, 0f);
+            Vector2Int usual = first.CoverCell;
+            _world.Reservations.Release(1);
+
+            home.NoCover.Add(_grid.CellToWorld(usual));
+            GuardBrain brain = Guard(id: 2, home: home);
+            TickAt(brain, GuardStart, 0f);
+            Assert.IsTrue(brain.HasCover, "it still finds cover");
+            Assert.AreNotEqual(usual, brain.CoverCell, "but not by the task prop");
         }
 
         [Test]
