@@ -1,0 +1,8 @@
+Guard accuracy in the real Painting Room (Tests/PlayMode/GuardAccuracyEvidenceTests, 2026-10-19).
+The player stands still at four spots in turn, 6 s each, two rounds (48 s); only the Guard is awake.
+
+Before (develop):                                        26 fired, 11 hit the player (42%)
+  missed on the terminal 2.0-2.2 m from the muzzle:      9
+  missed on a paint crate 0.3-0.5 m from the muzzle:     6
+Weapon holds fire on a blocked line (AgentWeapon):       11 fired, 11 hit (100%)
+Plus: three harmless shots and the Guard moves cover:    17 fired, 17 hit (100%)
