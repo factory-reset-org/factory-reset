@@ -387,7 +387,15 @@ namespace ToyFactory.Runtime.Agents
                 if (Now >= _fireAt)
                 {
                     bool facing = _follower == null || _follower.FacingErrorTo(player.Position) <= maxFireAngle;
-                    if (facing)
+                    if (facing && !LineClear(from, to, player))
+                    {
+                        // The brain judges sight from the player's eye to its cell; the real shot leaves the muzzle,
+                        // lower and off the cell's centre, and low cover or a crate next to it can be in the way.
+                        // Holding fire beats wasting the shot on the obstacle: the brain tries again next interval.
+                        ShotsDropped++;
+                        Cancel();
+                    }
+                    else if (facing)
                         Fire(from, to, player);
                     else if (Now >= _fireAt + maxTurnWait)
                     {
@@ -409,6 +417,20 @@ namespace ToyFactory.Runtime.Agents
             if (_ownsFacing && _follower != null)
                 _follower.StopFacing();
             _ownsFacing = false;
+        }
+
+        /// <summary>True if a shot from <paramref name="from"/> to <paramref name="to"/> would reach the player first.</summary>
+        bool LineClear(Vector3 from, Vector3 to, IPlayerState player)
+        {
+            Vector3 body = new Vector3(transform.position.x, from.y, transform.position.z);
+            if (Physics.Linecast(body, from, out RaycastHit inBody, _hitMask, QueryTriggerInteraction.Ignore))
+                return false;   // the cannon is pushed into something
+            Vector3 direction = to - from;
+            float distance = Mathf.Min(direction.magnitude + 0.5f, range);
+            if (!Physics.Raycast(from, direction.normalized, out RaycastHit hit, distance, _hitMask, QueryTriggerInteraction.Ignore))
+                return true;
+            var hitPlayer = hit.collider.GetComponentInParent<IPlayerState>();
+            return hitPlayer != null && ReferenceEquals(hitPlayer, player);
         }
 
         void Fire(Vector3 from, Vector3 to, IPlayerState player)
