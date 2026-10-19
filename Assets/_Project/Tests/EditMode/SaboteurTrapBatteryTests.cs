@@ -171,10 +171,11 @@ namespace ToyFactory.Tests.EditMode
         public void NearerSaboteurAndSoonerPassScoreHigher()
         {
             float near = Trapped(new Vector2Int(40, 26), Trap(11, 40, 30))[0].BaseScore;
-            float far = Trapped(new Vector2Int(40, 12), Trap(11, 40, 30))[0].BaseScore;
+            float far = Trapped(new Vector2Int(40, 16), Trap(11, 40, 30))[0].BaseScore;   // 7 m: still there a second before the player
             Assert.Greater(near, far, "The nearer Saboteur wants it more.");
 
-            SetPlayer(new Vector2Int(30, 30));
+            // 10 m from the trap: soon, but with time to see it armed (the Saboteur must be there a second early).
+            SetPlayer(new Vector2Int(20, 30));
             float soon = Trapped(new Vector2Int(40, 26), Trap(11, 40, 30))[0].BaseScore;
             SetPlayer(new Vector2Int(10, 30));
             float later = Trapped(new Vector2Int(40, 26), Trap(11, 40, 30))[0].BaseScore;

@@ -21,12 +21,6 @@ namespace ToyFactory.Tests.EditMode
             public bool CanSeeCell(Vector2Int cell) => true;
         }
 
-        // The player is never in sight, so only the door is on offer in the door tests.
-        sealed class NeverSight : IPlayerSight
-        {
-            public bool CanSeeCell(Vector2Int cell) => false;
-        }
-
         static readonly Vector2Int Door1Cell = new Vector2Int(20, 10);
         static readonly Vector2Int Door2Cell = new Vector2Int(20, 0);
         static readonly Vector2Int PlayerCell = new Vector2Int(5, 10);
@@ -66,7 +60,8 @@ namespace ToyFactory.Tests.EditMode
             var pathfinder = new AStarSearch(_grid);
             cache = DetourCache.For(_world, _grid, pathfinder);
             cache.SearchesPerCall = int.MaxValue;   // these tests are about feedback, not about spreading the searches
-            var source = new CompositeCandidateSource(new AttackPlayerSource(new NeverSight()), new CloseDoorSource(cache));
+            // No sight-bearing source: these tests are about the runtime's answers, not about what the Saboteur sees.
+            var source = new CompositeCandidateSource(new CloseDoorSource(cache));
             return new SaboteurBrain(new SaboteurIdentity((int)letter + 1, letter), _grid, pathfinder, _claims,
                 new List<Vector3> { _grid.CellToWorld(new Vector2Int(2, 2)) }, null, 0, source, cache);
         }

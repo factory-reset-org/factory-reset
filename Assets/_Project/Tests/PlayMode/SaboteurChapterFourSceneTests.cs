@@ -153,6 +153,8 @@ namespace ToyFactory.Tests
             float until = Time.realtimeSinceStartup + 40f;
             while (!grid.GetNode(door4).IsDoorClosed && Time.realtimeSinceStartup < until)
             {
+                // The player keeps shooting, so the squad knows they are about (a Saboteur acts only on a player it saw or heard).
+                PlayerShotNoise.Every(1f);
                 sawCloseDoor |= closer.DebugState == "CloseDoor";
                 yield return null;
             }
@@ -199,13 +201,19 @@ namespace ToyFactory.Tests
 
             float until = Time.realtimeSinceStartup + 40f;
             while (!grid.GetNode(door3).IsDoorClosed && Time.realtimeSinceStartup < until)
+            {
+                // The player keeps shooting, so the squad knows they are about (a Saboteur acts only on a player it saw or heard).
+                PlayerShotNoise.Every(1f);
                 yield return null;
+            }
             Assert.IsTrue(grid.GetNode(door3).IsDoorClosed, "Door 3, the player's short way, was closed.");
 
             // Door 4 is now the only way into the Control Room, so closing it would lock the player out.
             float watchUntil = Time.realtimeSinceStartup + 12f;
             while (Time.realtimeSinceStartup < watchUntil)
             {
+                // Still shooting: the squad knows exactly where the player is, and still leaves the last way in open.
+                PlayerShotNoise.Every(1f);
                 Assert.IsFalse(grid.GetNode(door4).IsDoorClosed, "Door 4 must stay open: both entrances shut would seal the room.");
                 yield return null;
             }

@@ -138,6 +138,9 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// <summary>True when the latest refresh found a player, an objective and a route between them.</summary>
         public bool HasObjective { get; private set; }
 
+        /// <summary>The grid the cache searches over.</summary>
+        public GridGraph Grid => _grid;
+
         /// <summary>
         /// The player's open route from the latest refresh, from the player's cell to the objective, so
         /// the trap source can predict which traps the player will pass and when. Empty while

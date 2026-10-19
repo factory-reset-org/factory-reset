@@ -77,15 +77,17 @@ namespace ToyFactory.Tests
             yield return Until(() => GameClock.Current != null && GameClock.Current.State == GameState.Playing, 10f, "Playing");
         }
 
-        // The player 4 m east of the Saboteur, looking straight at it, held there while it decides.
-        static IEnumerator FaceFromEast(AgentController saboteur, Component player, Func<bool> done, float seconds)
+        // The player 4 m in front of the Saboteur (inside its vision cone), looking straight at it, held there while
+        // it decides.
+        static IEnumerator FaceFromFront(AgentController saboteur, Component player, Func<bool> done, float seconds)
         {
-            Vector3 near = saboteur.transform.position + new Vector3(4f, 0f, 0f);
-            Quaternion facingWest = Quaternion.LookRotation(Vector3.left, Vector3.up);
             float until = Time.time + seconds;
             while (!done() && Time.time < until)
             {
-                Place(player, near, facingWest);
+                Vector3 near = SaboteurScenePlacement.InFront(saboteur, 4f);
+                Vector3 back = saboteur.transform.position - near;
+                back.y = 0f;
+                Place(player, near, Quaternion.LookRotation(back, Vector3.up));
                 yield return null;
             }
         }
@@ -103,7 +105,7 @@ namespace ToyFactory.Tests
                 saboteur.TakeHit();
             Assert.AreEqual(1, saboteur.HitPointsLeft);
 
-            yield return FaceFromEast(saboteur, player, () => saboteur.DebugState == "Flee", 10f);
+            yield return FaceFromFront(saboteur, player, () => saboteur.DebugState == "Flee", 10f);
 
             Assert.AreEqual("Flee", saboteur.DebugState, "A hurt Saboteur the player is aiming at runs.");
             Assert.AreEqual(AlertLevel.Alert, saboteur.Alert);
@@ -131,7 +133,7 @@ namespace ToyFactory.Tests
                 .First(a => a.Type == AgentType.Saboteur && a.Identity.SquadLetter == 'A');
             var player = (Component)PlayerState.Current;
 
-            yield return FaceFromEast(saboteur, player, () => saboteur.DebugState == "AttackPlayer" || saboteur.DebugState == "Flee", 10f);
+            yield return FaceFromFront(saboteur, player, () => saboteur.DebugState == "AttackPlayer" || saboteur.DebugState == "Flee", 10f);
 
             Assert.AreEqual("AttackPlayer", saboteur.DebugState);
         }

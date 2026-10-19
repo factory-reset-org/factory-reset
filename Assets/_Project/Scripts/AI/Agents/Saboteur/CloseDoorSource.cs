@@ -15,14 +15,22 @@ namespace ToyFactory.AI.Agents.Saboteur
     /// another Saboteur has claimed.
     /// </summary>
     /// <remarks>
-    /// A door is not offered when it is already closed, when closing it would lock the player out
+    /// <para>A door is not offered when it is already closed, when closing it would lock the player out
     /// (no route at all), when it does not lengthen the route, or when the player stands in or next
-    /// to it. The Saboteur's travel distance is the straight octile distance to the door, not a
-    /// search: it only ranks doors, so it must stay cheap for four Saboteurs deciding at 4 Hz, and
-    /// the brain finds the real route once it commits.
+    /// to it.</para>
+    /// <para><b>Awareness.</b> Once a brain has bound its <see cref="SaboteurAwareness"/>, a door is only
+    /// offered while the Saboteur knows the player is about (sees them, saw them in the last few seconds or
+    /// heard them), so it does not shut doors in the path of a player it cannot know is coming.</para>
+    /// <para><b>Distance.</b> The straight octile distance ranks the doors cheaply; with the brain's
+    /// pathfinder bound, the real walk to the nearest door cell is then measured for up to
+    /// <see cref="MaxSearchesPerDecision"/> doors, and a door with no route or a walk longer than
+    /// <see cref="MaxTravelMetres"/> is not offered. The squad layer vetoes a door a squad mate failed to close.</para>
     /// </remarks>
-    public sealed class CloseDoorSource : ICandidateSource
+    public sealed class CloseDoorSource : ICandidateSource, ISaboteurAwarenessUser
     {
+        /// <summary>The most walks measured with the pathfinder in one decision.</summary>
+        public const int MaxSearchesPerDecision = 2;
+
         /// <summary>Travel distance, in metres, at which a door is too far to be worth it.</summary>
         public const float MaxTravelMetres = 30f;
 
@@ -32,6 +40,8 @@ namespace ToyFactory.AI.Agents.Saboteur
         readonly DetourCache _detours;
         readonly UtilityAction _action;
         readonly float[] _inputs = new float[2];
+        SaboteurAwareness _awareness;
+        IPathfinder _pathfinder;
 
         /// <summary>Creates the source over the squad's shared detour cache.</summary>
         public CloseDoorSource(DetourCache detours)
@@ -57,11 +67,19 @@ namespace ToyFactory.AI.Agents.Saboteur
             if (!player.IsKnown || !player.IsAlive)
                 return;
 
+            if (_awareness != null)
+            {
+                _awareness.Update(ctx);
+                if (!_awareness.IsAlerted(ctx.Time))
+                    return;
+            }
+
             _detours.Refresh(ctx.World, ctx.Time);
             if (!_detours.HasObjective)
                 return;
 
             IReadOnlyList<DoorDetour> doors = _detours.Doors;
+            int searches = 0;
             for (int i = 0; i < doors.Count; i++)
             {
                 DoorDetour door = doors[i];
@@ -72,8 +90,22 @@ namespace ToyFactory.AI.Agents.Saboteur
                 if (gain <= 0f || IsInDoorway(player.Cell, door.Cells))
                     continue;
 
+                float travel = NearestDistanceMetres(ctx.Cell, door.Cells);
+                if (travel > MaxTravelMetres)
+                    continue;
+
+                if (_pathfinder != null)
+                {
+                    if (searches >= MaxSearchesPerDecision)
+                        continue;
+                    searches++;
+                    if (!SaboteurPaths.TryWalkMetres(_detours.Grid, _pathfinder, ctx.Cell, NearestCell(ctx.Cell, door.Cells), out travel)
+                        || travel > MaxTravelMetres)
+                        continue;   // no way to the door, or too far round
+                }
+
                 _inputs[0] = gain;
-                _inputs[1] = NearestDistanceMetres(ctx.Cell, door.Cells) / MaxTravelMetres;
+                _inputs[1] = travel / MaxTravelMetres;
                 ActionScore score = _action.Evaluate(_inputs);
                 if (!score.Vetoed)
                     candidates.Add(new ActionCandidate(new ActionKey(SaboteurActionKind.CloseDoor, door.DoorId), score.BaseScore));
@@ -93,6 +125,30 @@ namespace ToyFactory.AI.Agents.Saboteur
             return false;
         }
 
+        /// <inheritdoc />
+        public void Bind(SaboteurAwareness awareness, IPathfinder pathfinder)
+        {
+            _awareness = awareness ?? throw new ArgumentNullException(nameof(awareness));
+            _pathfinder = pathfinder;
+        }
+
+        static Vector2Int NearestCell(Vector2Int cell, IReadOnlyList<Vector2Int> doorCells)
+        {
+            Vector2Int best = doorCells[0];
+            float bestDistance = float.MaxValue;
+            for (int i = 0; i < doorCells.Count; i++)
+            {
+                float d = BaseCostModel.OctileDistance(cell, doorCells[i]);
+                if (d < bestDistance)
+                {
+                    bestDistance = d;
+                    best = doorCells[i];
+                }
+            }
+
+            return best;
+        }
+
         /// <summary>The octile distance from <paramref name="cell"/> to the nearest cell of the door, in metres.</summary>
         public static float NearestDistanceMetres(Vector2Int cell, IReadOnlyList<Vector2Int> doorCells)
         {
@@ -107,7 +163,7 @@ namespace ToyFactory.AI.Agents.Saboteur
     /// Combines several candidate sources into one, in order, so a brain can offer AttackPlayer
     /// and CloseDoor together.
     /// </summary>
-    public sealed class CompositeCandidateSource : ICandidateSource, IHealthAware
+    public sealed class CompositeCandidateSource : ICandidateSource, IHealthAware, ISaboteurAwarenessUser
     {
         readonly ICandidateSource[] _sources;
 
@@ -140,6 +196,32 @@ namespace ToyFactory.AI.Agents.Saboteur
                 if (_sources[i] is IHealthAware aware)
                     aware.OnHealthChanged(hitPointsLeft, maxHitPoints);
             }
+        }
+
+        /// <summary>Passes the brain's awareness and pathfinder to every source that uses them.</summary>
+        public void Bind(SaboteurAwareness awareness, IPathfinder pathfinder)
+        {
+            for (int i = 0; i < _sources.Length; i++)
+            {
+                if (_sources[i] is ISaboteurAwarenessUser user)
+                    user.Bind(awareness, pathfinder);
+            }
+        }
+
+        /// <summary>The first line-of-sight query among the sources (the attack or flee source's), or null.</summary>
+        public IPlayerSight FindSight()
+        {
+            for (int i = 0; i < _sources.Length; i++)
+            {
+                if (_sources[i] is AttackPlayerSource attack)
+                    return attack.Sight;
+                if (_sources[i] is FleeSource flee)
+                    return flee.Sight;
+                if (_sources[i] is CompositeCandidateSource inner && inner.FindSight() is IPlayerSight found)
+                    return found;
+            }
+
+            return null;
         }
     }
 }

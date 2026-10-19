@@ -69,8 +69,9 @@ namespace ToyFactory.Tests.EditMode
                 alive, 1f, 1f, false, 0f, 0f);
         }
 
+        // The Saboteur faces east, towards the player, so the player stands in its vision cone.
         AgentContext Ctx(WorldBlackboard world, float time) =>
-            new AgentContext(_home, _grid.CellToWorld(_home), Vector3.forward, time, world, default);
+            new AgentContext(_home, _grid.CellToWorld(_home), Vector3.right, time, world, default);
 
         static WorldBlackboard WorldWith(PlayerSnapshot player)
         {
@@ -440,9 +441,15 @@ namespace ToyFactory.Tests.EditMode
             brain.OnStunned(2f);
             AgentIntent intent = brain.Tick(Ctx(far, 5f));
 
-            Assert.AreEqual("Patrol", intent.DebugState);
+            // The player was seen 5 s ago and is now out of sight: the Saboteur goes to look where it last saw them,
+            // on a fresh route.
+            Assert.AreEqual("Search", intent.DebugState);
             Assert.IsNotNull(intent.Path);
             Assert.Greater(intent.Path.Count, 0);
+
+            // Once that memory has gone (6 s), it is back to its patrol.
+            AgentIntent later = brain.Tick(Ctx(far, 5f + SaboteurAwareness.MemorySeconds + 1f));
+            Assert.AreEqual("Patrol", later.DebugState);
         }
 
         [Test]

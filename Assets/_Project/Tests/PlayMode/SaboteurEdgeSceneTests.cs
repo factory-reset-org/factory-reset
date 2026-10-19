@@ -144,15 +144,24 @@ namespace ToyFactory.Tests
             Vector3 at = grid.CellToWorld(start);
             Teleport(saboteur, new Vector3(at.x, saboteur.transform.position.y, at.z));
 
+            // The player in the open a few metres off, shooting: the Saboteur turns to the noise and sees them.
+            Assert.IsTrue(SaboteurScenePlacement.TryPlayerCell(grid, start, batteryCell, out Vector2Int playerCell), "Open floor for the player.");
+            Vector3 stand = grid.CellToWorld(playerCell);
+            stand.y = player.transform.position.y;
+
             var spawned = new List<ITask>();
             Action<ITask> onSpawned = spawned.Add;
             TaskEvents.OnTaskSpawned += onSpawned;
             try
             {
                 // It sets off for the battery and holds the claim on it.
-                float claimUntil = Time.time + 10f;
+                float claimUntil = Time.time + 15f;
                 while (board.Claims.ClaimedBy(target.Id) != saboteur.Identity.Id && Time.time < claimUntil)
+                {
+                    Teleport(player, stand);
+                    PlayerShotNoise.Every(1f);
                     yield return null;
+                }
                 PlayerSnapshot seen = board.Player;
                 string factsNow = string.Join(",", board.SabotageFacts.Select(f => $"{f.Kind}{f.Id}{(f.Available ? "" : "x")}"));
                 Assert.AreEqual(saboteur.Identity.Id, board.Claims.ClaimedBy(target.Id),
@@ -224,11 +233,11 @@ namespace ToyFactory.Tests
             AgentController saboteur = Saboteur('A');
             var player = (Component)PlayerState.Current;
 
-            Vector3 near = saboteur.transform.position + new Vector3(4f, 0f, 0f);
+            // 4 m in front of it, inside its vision cone.
             float until = Time.time + 10f;
             while (saboteur.DebugState != "AttackPlayer" && Time.time < until)
             {
-                Teleport(player, near);
+                Teleport(player, SaboteurScenePlacement.InFront(saboteur, 4f));
                 yield return null;
             }
             Assert.AreEqual("AttackPlayer", saboteur.DebugState, "A player in sight within 8 m is attacked.");
@@ -248,7 +257,7 @@ namespace ToyFactory.Tests
             float resumeUntil = Time.time + 3f;
             while (saboteur.DebugState != "AttackPlayer" && Time.time < resumeUntil)
             {
-                Teleport(player, near);
+                Teleport(player, SaboteurScenePlacement.InFront(saboteur, 4f));
                 yield return null;
             }
 

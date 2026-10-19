@@ -270,10 +270,11 @@ namespace ToyFactory.Tests.EditMode
                       $"four Saboteurs {cacheFour}. Routes the Saboteurs planned to their door: one {walkOne}, four {walkFour}");
             Assert.AreEqual(cacheOne, cacheFour, "The shared cache answers all four with the searches of one.");
             Assert.LessOrEqual(cacheFour, 40 * 3, "At most one refresh every half second: one search for the route plus one per door on it.");
-            // The routes are each Saboteur's own work and are not shared: more Saboteurs, more routes. They walk their
-            // routes here, so one that finds a nearer door as it moves plans another; the figure is logged, not fixed.
+            // The routes are each Saboteur's own work and are not shared. A door one member could not close is now
+            // left alone by the whole squad for a while, so four do not each make the same failed trip: they need not
+            // plan more routes than one. The figures are logged, not fixed.
             Assert.GreaterOrEqual(walkOne, 1, "One Saboteur plans a route to the door it chose.");
-            Assert.Greater(walkFour, walkOne, "Four Saboteurs plan more routes than one, while the cache's searches stay the same.");
+            Assert.GreaterOrEqual(walkFour, 1, "The squad plans routes to the doors it chose, while the cache's searches stay the same.");
         }
 
         (int cache, int walk) SearchesInTwentySeconds(int count)

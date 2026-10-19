@@ -91,8 +91,9 @@ namespace ToyFactory.Tests.EditMode
             new SaboteurBrain(new SaboteurIdentity((int)letter + 1, letter), _grid, _pathfinder, _claims,
                 new List<Vector3> { _grid.CellToWorld(new Vector2Int(2, 2)) }, null, 0, source, cache);
 
+        // The Saboteurs face west, towards the player, so a squad with eyes sees them and may act on it.
         AgentContext At(Vector2Int cell, float time, bool noWorld = false) =>
-            new AgentContext(cell, _grid.CellToWorld(cell), Vector3.forward, time, noWorld ? null : _world, default);
+            new AgentContext(cell, _grid.CellToWorld(cell), Vector3.left, time, noWorld ? null : _world, default);
 
         // ---- A door closed or occupied under the plan
 

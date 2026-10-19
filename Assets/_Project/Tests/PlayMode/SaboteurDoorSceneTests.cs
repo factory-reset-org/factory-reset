@@ -120,6 +120,8 @@ namespace ToyFactory.Tests
             float until = Time.realtimeSinceStartup + 40f;
             while (!grid.GetNode(DoorCell).IsDoorClosed && Time.realtimeSinceStartup < until)
             {
+                // The player keeps shooting, so the squad knows they are about (a Saboteur acts only on a player it saw or heard).
+                PlayerShotNoise.Every(1f);
                 sawCloseDoor |= saboteurs.Any(a => a.DebugState == "CloseDoor");
                 yield return null;
             }
