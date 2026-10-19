@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using ToyFactory.Interfaces;
 using Object = UnityEngine.Object;
 
 namespace ToyFactory.Runtime.Effects
@@ -71,13 +72,13 @@ namespace ToyFactory.Runtime.Effects
         static readonly Dictionary<Sfx, AudioClip> Clips = new Dictionary<Sfx, AudioClip>();
         static AudioSource s_source;
 
-        /// <summary>Plays a sound at the prototype's volume, scaled by <paramref name="volume"/>.</summary>
+        /// <summary>Plays a sound at the prototype's volume, scaled by <paramref name="volume"/> and the player's sound setting.</summary>
         public static void Play(Sfx sfx, float volume = 1f)
         {
             AudioClip clip = ClipFor(sfx);
             AudioSource source = Source();
             if (clip != null && source != null)
-                source.PlayOneShot(clip, Master * volume);
+                source.PlayOneShot(clip, Master * volume * GameAudio.SoundVolume);
         }
 
         /// <summary>The clip for <paramref name="sfx"/>, made on first use. For tests.</summary>

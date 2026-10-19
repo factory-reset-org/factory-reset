@@ -119,7 +119,7 @@ namespace ToyFactory.Journey.Cutscenes
             {
                 AlarmsPlayed++;
                 if (alarmSource != null && _alarm != null)
-                    alarmSource.PlayOneShot(_alarm, alarmVolume);
+                    alarmSource.PlayOneShot(_alarm, alarmVolume * GameAudio.SoundVolume);
                 return;
             }
 
