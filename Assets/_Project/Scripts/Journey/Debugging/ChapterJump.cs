@@ -113,7 +113,12 @@ namespace ToyFactory.Journey.Debugging
             _jump = null;
         }
 
-        void PlacePlayer(int chapter)
+        /// <summary>
+        /// Puts the player at the entrance of <paramref name="chapter"/>'s room, facing into it.
+        /// Also used by the restart from a checkpoint, in every build: only the keys are
+        /// limited to the Editor and development builds.
+        /// </summary>
+        public void PlacePlayer(int chapter)
         {
             if (!(PlayerState.Current is Component player) || player == null)
                 return;
