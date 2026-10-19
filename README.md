@@ -40,6 +40,8 @@ Four chapters in a fixed order: Assembly Floor, Painting Room, Storage Area, Con
 | R | Reload from a spare cell |
 | E | Use: levers, switches, doors, the crate dispenser, the charger, and shove a crate. Hold E on the terminal and the console |
 | Q or right mouse button | Throw a wind-up toy (a lure for the Tracker) |
+| Tab | Fold the task list down to the task in hand, or open it again (kept for the next run) |
+| H | Hide the key hints at the bottom, or bring them back (kept for the next run) |
 | M | Mute and unmute |
 | Esc | Pause; in a cutscene, skip it |
 | Space, E or left click | In a cutscene, finish the line and go to the next |

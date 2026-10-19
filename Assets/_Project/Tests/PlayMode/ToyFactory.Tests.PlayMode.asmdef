@@ -12,7 +12,8 @@
         "Unity.AI.Navigation",
         "Unity.Timeline",
         "Unity.Cinemachine",
-        "UnityEngine.UI"
+        "UnityEngine.UI",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

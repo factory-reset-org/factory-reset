@@ -68,6 +68,10 @@ namespace ToyFactory.Tests
             screensObject.transform.SetParent(_host.transform, false);
             _screens = screensObject.AddComponent<ScreensPresenter>();
             _screens.UseLeaderboard(new Leaderboard(Path.Combine(_directory, "board.json")));
+
+            // The tests below read the Results screen as soon as a run ends; the credits that roll before it
+            // have their own tests.
+            _screens.CreditsAfterWin = false;
         }
 
         [TearDown]
@@ -131,16 +135,201 @@ namespace ToyFactory.Tests
             Assert.IsFalse(_screens.Title.IsShowing);
         }
 
+        // ---- The credits
+
+        static Button TitleCreditsButton(ScreensPresenter screens) =>
+            screens.Title.GetComponentsInChildren<Button>(true).First(b => b.name == "Credits");
+
+        // Steps the credits by unscaled seconds, as the frames would.
+        static void Roll(CreditsView credits, float seconds, float step = 0.1f)
+        {
+            for (float t = 0f; t < seconds && credits.IsShowing; t += step)
+                credits.Advance(step);
+        }
+
         [UnityTest]
-        public IEnumerator TitleShowsTheCreditsForTheCcByModels()
+        public IEnumerator TitleHasACreditsButtonInsteadOfTheThirdPartyLines()
         {
             _clock.Set(GameState.Title);
             yield return Frame();
             Assert.IsTrue(_screens.Title.IsShowing);
 
             string shown = string.Join("\n", _screens.Title.GetComponentsInChildren<Text>(true).Select(t => t.text));
+            StringAssert.Contains("CREDITS", shown);
+            foreach (ModelCredit credit in ThirdPartyCredits.Attribution)
+                StringAssert.DoesNotContain(credit.Line, shown, "The model credits moved to the credits screen.");
+            StringAssert.DoesNotContain(ThirdPartyCredits.MusicLine, shown);
+            Assert.IsFalse(_screens.Credits.IsShowing);
+
+            // At the bottom left of the screen.
+            RectTransform rect = (RectTransform)TitleCreditsButton(_screens).transform;
+            Assert.AreEqual(Vector2.zero, rect.anchorMin);
+            Assert.AreEqual(Vector2.zero, rect.anchorMax);
+        }
+
+        [UnityTest]
+        public IEnumerator TheCreditsButtonOpensTheCreditsAndBackReturnsToTheTitle()
+        {
+            _clock.Set(GameState.Title);
+            yield return Frame();
+
+            TitleCreditsButton(_screens).onClick.Invoke();
+            yield return null;
+
+            Assert.IsTrue(_screens.Credits.IsShowing);
+            Assert.AreEqual(CreditsMode.Menu, _screens.Credits.Mode);
+            Assert.IsFalse(_screens.Title.IsShowing, "The title is covered, so Enter and Space cannot start the game from behind.");
+            Assert.AreEqual("BACK", _screens.Credits.ButtonText);
+
+            string shown = string.Join("\n", _screens.Credits.Lines);
             foreach (ModelCredit credit in ThirdPartyCredits.Attribution)
                 StringAssert.Contains(credit.Line, shown);
+            StringAssert.Contains(CreditsContent.IsModule, shown, "The module line is in the intro.");
+
+            _screens.Credits.Close();
+            yield return null;
+
+            Assert.IsFalse(_screens.Credits.IsShowing);
+            Assert.IsTrue(_screens.Title.IsShowing);
+            Assert.IsEmpty(_clock.Requested, "Opening and closing the credits asks the clock for nothing.");
+            Assert.AreEqual(GameState.Title, _clock.State);
+        }
+
+        [UnityTest]
+        public IEnumerator TheCreditsRollSmoothlyFromTheStartToTheLastLineAndStayThere()
+        {
+            _clock.Set(GameState.Title);
+            yield return Frame();
+            TitleCreditsButton(_screens).onClick.Invoke();
+            yield return null;
+            CreditsView credits = _screens.Credits;
+
+            Assert.AreEqual(0f, credits.ScrollOffset);
+            Assert.Greater(credits.MaxScroll, 1080f, "More to read than fits on a screen.");
+
+            // 1/60 s steps: rests for the first moment, then never moves backwards or faster than the pace.
+            float previous = 0f;
+            float fastest = 0f;
+            for (int i = 0; i < 60 * 12; i++)
+            {
+                credits.Advance(1f / 60f);
+                float step = credits.ScrollOffset - previous;
+                Assert.GreaterOrEqual(step, 0f, "Never backwards.");
+                fastest = Mathf.Max(fastest, step * 60f);
+                previous = credits.ScrollOffset;
+                if (i == (int)(CreditsView.StartDelay * 60f) - 2)
+                    Assert.AreEqual(0f, credits.ScrollOffset, 0.01f, "It rests while the screen fades in.");
+            }
+
+            Assert.Greater(credits.ScrollOffset, 500f, "It is moving.");
+            Assert.LessOrEqual(fastest, CreditsView.BaseSpeed * 1.05f, "Easing never overshoots the pace.");
+
+            // The roll up to the end, in larger steps.
+            Roll(credits, 120f);
+            Assert.IsTrue(credits.AtEnd);
+            Assert.AreEqual(credits.MaxScroll, credits.ScrollOffset, 0.01f);
+            Roll(credits, 10f);
+            Assert.IsTrue(credits.IsShowing, "The menu credits wait for the player at the end.");
+            Assert.AreEqual(credits.MaxScroll, credits.ScrollOffset, 0.01f);
+
+            // Up scrolls back, and the screen is not closed by that.
+            credits.Advance(0.5f, -1f);
+            Assert.Less(credits.ScrollOffset, credits.MaxScroll);
+            Assert.IsTrue(credits.IsShowing);
+        }
+
+        [UnityTest]
+        public IEnumerator DownSpeedsTheRollUpAndTheWheelPushesIt()
+        {
+            _clock.Set(GameState.Title);
+            yield return Frame();
+            TitleCreditsButton(_screens).onClick.Invoke();
+            yield return null;
+            CreditsView credits = _screens.Credits;
+            Roll(credits, 3f);
+
+            float before = credits.ScrollOffset;
+            for (int i = 0; i < 60; i++)
+                credits.Advance(1f / 60f);
+            float normal = credits.ScrollOffset - before;
+
+            before = credits.ScrollOffset;
+            for (int i = 0; i < 60; i++)
+                credits.Advance(1f / 60f, 1f);
+            float fast = credits.ScrollOffset - before;
+            Assert.Greater(fast, normal * 2f, "Down is faster.");
+
+            before = credits.ScrollOffset;
+            credits.Nudge(1f);
+            credits.Advance(1f / 60f);
+            Assert.Greater(credits.ScrollOffset - before, CreditsView.BaseSpeed / 60f * 1.5f, "A turn of the wheel pushes it on.");
+        }
+
+        [UnityTest]
+        public IEnumerator AWonRunRollsTheCreditsBeforeTheResultsAndHandsOverWhenTheyEnd()
+        {
+            _screens.CreditsAfterWin = true;
+            FinishRun(shutDown: true);
+            yield return Frame();
+
+            Assert.IsTrue(_screens.Credits.IsShowing);
+            Assert.AreEqual(CreditsMode.Ending, _screens.Credits.Mode);
+            Assert.AreEqual("SKIP", _screens.Credits.ButtonText);
+            Assert.IsFalse(_screens.Results.IsShowing, "The results wait for the credits, so no name field takes the keys.");
+            Assert.IsFalse(_screens.Title.IsShowing);
+
+            Roll(_screens.Credits, 300f);
+            yield return null;
+
+            Assert.IsFalse(_screens.Credits.IsShowing, "It closes itself after holding on the last line.");
+            Assert.IsTrue(_screens.Results.IsShowing);
+            Assert.AreEqual("FACTORY SHUT DOWN", _screens.Results.HeadlineText);
+            Assert.IsTrue(_screens.Results.CanEnterName, "The name field is offered as before.");
+            Assert.IsEmpty(_clock.Requested);
+        }
+
+        [UnityTest]
+        public IEnumerator SkippingTheEndingCreditsShowsTheResultsAtOnce()
+        {
+            _screens.CreditsAfterWin = true;
+            FinishRun(shutDown: true);
+            yield return Frame();
+            Assert.IsTrue(_screens.Credits.IsShowing);
+
+            _screens.Credits.Close();
+            yield return null;
+
+            Assert.IsFalse(_screens.Credits.IsShowing);
+            Assert.IsTrue(_screens.Results.IsShowing);
+            Assert.AreEqual(GameState.Results, _clock.State);
+        }
+
+        [UnityTest]
+        public IEnumerator ARecalledRunGoesStraightToTheResultsWithNoCredits()
+        {
+            _screens.CreditsAfterWin = true;
+            FinishRun(shutDown: false);
+            yield return Frame();
+
+            Assert.IsFalse(_screens.Credits.IsShowing);
+            Assert.IsTrue(_screens.Results.IsShowing);
+            Assert.AreEqual("RECALLED", _screens.Results.HeadlineText);
+        }
+
+        [UnityTest]
+        public IEnumerator LeavingTheResultsStateTakesTheEndingCreditsAway()
+        {
+            _screens.CreditsAfterWin = true;
+            FinishRun(shutDown: true);
+            yield return Frame();
+            Assert.IsTrue(_screens.Credits.IsShowing);
+
+            _clock.Set(GameState.Title);
+            yield return Frame();
+
+            Assert.IsFalse(_screens.Credits.IsShowing);
+            Assert.IsFalse(_screens.Results.IsShowing);
+            Assert.IsTrue(_screens.Title.IsShowing);
         }
 
         [UnityTest]
@@ -173,7 +362,7 @@ namespace ToyFactory.Tests
             _clock.Set(GameState.Title);
             yield return Frame();
 
-            Button start = _screens.Title.GetComponentInChildren<Button>(true);
+            Button start = _screens.Title.GetComponentsInChildren<Button>(true).FirstOrDefault(b => b.name == "Start");
             Assert.IsNotNull(start);
             start.onClick.Invoke();
 

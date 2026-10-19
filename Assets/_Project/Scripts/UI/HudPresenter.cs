@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using ToyFactory.Interfaces;
 using ToyFactory.Journey.Chapters;
@@ -14,7 +15,8 @@ namespace ToyFactory.UI
     /// the current task, task counts, relay order chips and the switch lamps, the score panel, the room
     /// name, the integrity, charge and overcharge readouts, the crosshair with its prompt and hold bar,
     /// the key hints, the damage vignette, the arrow to the current objective, the chapter card and the
-    /// subtitle bar. It is hidden in cutscenes and outside play. It also hosts the title and results
+    /// subtitle bar. Tab folds the objectives panel down to the task in hand and H puts the key hints away
+    /// (<see cref="HudSections"/>). It is hidden in cutscenes and outside play. It also hosts the title and results
     /// screens (<see cref="ScreensPresenter"/>), which own the other two game states.
     /// </summary>
     /// <remarks>
@@ -42,6 +44,12 @@ namespace ToyFactory.UI
         const float RowHeight = 32f;
         const float PanelHeader = 92f;
         const float ChipsHeight = 44f;
+        const float PanelWidth = 560f;
+        const float TextX = 54f;
+        const float TextWidth = 366f;
+        const float CountX = 426f;
+        const float BarPanelWidth = 430f;
+        const float BarRowStep = 46f;
 
         [Tooltip("Sorting order of the HUD canvas. The cutscene letterbox is 40; the HUD sits below it.")]
         [SerializeField] int sortingOrder = 20;
@@ -68,7 +76,8 @@ namespace ToyFactory.UI
 
         // Objectives panel.
         RectTransform _panel;
-        Text _tagText, _titleText, _lampCount;
+        Text _tagText, _titleText, _lampCount, _chipLabel;
+        float[] _rowY;
         Image[] _rowBoxes;
         Text[] _rowTexts;
         Text[] _rowCounts;
@@ -89,11 +98,16 @@ namespace ToyFactory.UI
         RectTransform _toysRow;
         Image[] _toyDots;
         RectTransform _chargePanel;
+        RectTransform _statusRow;
+        RectTransform _hintsPlate;
+        HudSections _sections;
         RectTransform _arrow;
         Text _arrowDistance;
         Image _vignette;
         Image[] _crosshair;
 
+        RectTransform _integrityPanel;
+        RectTransform _crosshairRoot;
         IGameClock _clock;
         GameState _state = GameState.Playing;
         bool _cutsceneActive;
@@ -173,6 +187,49 @@ namespace ToyFactory.UI
         /// <summary>How many wind-up toys are carried; -1 while nothing has reported a count, for tests.</summary>
         public int ToysShown => _toysCarried;
 
+        /// <summary>True while the objectives panel is folded down to the task in hand.</summary>
+        public bool ObjectivesCollapsed => _sections != null && _sections.ObjectivesCollapsed;
+
+        /// <summary>True while the key hints are put away.</summary>
+        public bool HintsHidden => _sections != null && _sections.HintsHidden;
+
+        /// <summary>The objectives panel's height in layout pixels, for tests.</summary>
+        public float ObjectivesHeight => _panel != null ? _panel.sizeDelta.y : 0f;
+
+        /// <summary>The label on the objectives panel's key chip ("TAB  LESS" or "TAB  MORE"), for tests.</summary>
+        public string ObjectivesChipText => _chipLabel != null ? _chipLabel.text : string.Empty;
+
+        /// <summary>The height of the charge panel in layout pixels, for tests.</summary>
+        public float ChargePanelHeight => _chargePanel != null ? _chargePanel.sizeDelta.y : 0f;
+
+        /// <summary>The rectangles of the panels and lines that are on screen, by name, for the layout tests.</summary>
+        public IEnumerable<KeyValuePair<string, RectTransform>> LayoutRects()
+        {
+            if (_panel != null && _panel.gameObject.activeInHierarchy)
+                yield return new KeyValuePair<string, RectTransform>("Objectives", _panel);
+            if (_chargePanel != null && _chargePanel.gameObject.activeInHierarchy)
+                yield return new KeyValuePair<string, RectTransform>("Charge", _chargePanel);
+            if (_hintsPlate != null && _hintsPlate.gameObject.activeInHierarchy)
+                yield return new KeyValuePair<string, RectTransform>("Key hints", _hintsPlate);
+            foreach (KeyValuePair<string, RectTransform> pair in _scorePanel.Rects())
+                yield return pair;
+            foreach (KeyValuePair<string, RectTransform> pair in _room.Rects())
+                yield return pair;
+            foreach (KeyValuePair<string, RectTransform> pair in _prompt.Rects())
+                yield return pair;
+            foreach (KeyValuePair<string, RectTransform> pair in _card.Rects())
+                yield return pair;
+            if (_integrityPanel != null && _integrityPanel.gameObject.activeInHierarchy)
+                yield return new KeyValuePair<string, RectTransform>("Integrity", _integrityPanel);
+            if (_crosshairRoot != null && _crosshairRoot.gameObject.activeInHierarchy)
+                yield return new KeyValuePair<string, RectTransform>("Crosshair", _crosshairRoot);
+            if (_screens != null && _screens.CheckpointToast != null)
+            {
+                foreach (KeyValuePair<string, RectTransform> pair in _screens.CheckpointToast.Rects())
+                    yield return pair;
+            }
+        }
+
         /// <summary>True while the panel's current-task marker is drawn, for tests.</summary>
         public bool CurrentMarkerShown => _currentMarker != null && _currentMarker.gameObject.activeSelf;
 
@@ -206,6 +263,7 @@ namespace ToyFactory.UI
 
             Current = this;
             _sprites = new HudSprites();
+            _sections = new HudSections();
             Build();
         }
 
@@ -265,13 +323,39 @@ namespace ToyFactory.UI
             _toysCarried = carried;
             _toysMax = max;
             bool known = max > 0;
-            _toysRow.gameObject.SetActive(known);
-            _chargePanel.sizeDelta = new Vector2(_chargePanel.sizeDelta.x, known ? 158f : 112f);
+            LayoutCharge();
             for (int i = 0; i < _toyDots.Length; i++)
             {
                 _toyDots[i].gameObject.SetActive(i < max);
                 _toyDots[i].color = i < carried ? HudWidgets.Sun : HudWidgets.PlumLight;
             }
+        }
+
+        /// <summary>Folds the objectives panel down to the task in hand, or opens it again. Tab does this in play.</summary>
+        public void ToggleObjectives()
+        {
+            _sections.ToggleObjectives();
+            _drawnVersion = -1;
+        }
+
+        /// <summary>Puts the key hints away, or brings them back. H does this in play.</summary>
+        public void ToggleHints()
+        {
+            _sections.ToggleHints();
+            _hintsPlate.gameObject.SetActive(!_sections.HintsHidden);
+        }
+
+        // Tab and H, only while the game is being played: not on a menu, not in a cutscene.
+        void HandleSectionKeys()
+        {
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard == null || _state != GameState.Playing)
+                return;
+
+            if (keyboard.tabKey.wasPressedThisFrame)
+                ToggleObjectives();
+            if (keyboard.hKey.wasPressedThisFrame)
+                ToggleHints();
         }
 
         // ---- Events
@@ -466,6 +550,8 @@ namespace ToyFactory.UI
             if (!_visible)
                 return;
 
+            HandleSectionKeys();
+
             ChapterManager manager = ChapterManager.Current;
             _model.SetCurrentTask(manager != null && manager.CurrentBeaconTarget.HasValue ? manager.CurrentBeaconTarget.Value.TaskId : null);
 
@@ -534,14 +620,24 @@ namespace ToyFactory.UI
         void RefreshObjectives()
         {
             _drawnVersion = _model.Version;
-            _tagText.text = _model.Chapter > 0 ? HudMath.ChapterTag(_model.Chapter, ChapterEvents.ChapterCount) : string.Empty;
-            _titleText.text = _model.Title;
-
+            bool compact = _sections.ObjectivesCollapsed;
             IReadOnlyList<HudTaskRow> rows = _model.Rows;
+
+            string tag = _model.Chapter > 0 ? HudMath.ChapterTag(_model.Chapter, ChapterEvents.ChapterCount) : string.Empty;
+            if (compact && rows.Count > 0)
+                tag += "   " + HudSections.Summary(_model.RowsDone, rows.Count);
+            _tagText.text = tag;
+            _titleText.text = _model.Title;
+            _chipLabel.text = HudSections.ObjectivesChip(compact);
+
+            // The folded panel keeps one row: the task in hand. Each row is as tall as its text needs, so a long
+            // task wraps onto a second line at the normal size instead of shrinking.
+            int focus = compact ? HudSections.CompactRow(rows, _model.CurrentTaskId) : -1;
+            float y = PanelHeader;
             int currentRow = -1;
             for (int i = 0; i < MaxRows; i++)
             {
-                bool shown = i < rows.Count;
+                bool shown = i < rows.Count && (!compact || i == focus);
                 _rowBoxes[i].gameObject.SetActive(shown);
                 _rowTexts[i].gameObject.SetActive(shown);
                 _rowCounts[i].gameObject.SetActive(shown && rows[i].HasCount && !rows[i].Done);
@@ -563,12 +659,19 @@ namespace ToyFactory.UI
                 _rowTexts[i].color = WithAlpha(row.Done ? HudWidgets.InkDim : HudWidgets.Ink, alpha);
                 if (_rowCounts[i].gameObject.activeSelf)
                     _rowCounts[i].text = HudMath.CountText(row.Count, row.Total);
+
+                float height = Mathf.Max(RowHeight, Mathf.Ceil(_rowTexts[i].preferredHeight) + 6f);
+                _rowY[i] = y;
+                HudWidgets.Place(_rowBoxes[i].rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(HudWidgets.Pad, -(y + 4f)), new Vector2(18f, 18f));
+                HudWidgets.Place(_rowTexts[i].rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(TextX, -y), new Vector2(TextWidth, height));
+                HudWidgets.Place(_rowCounts[i].rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(CountX, -y), new Vector2(44f, RowHeight));
+                y += height;
             }
 
             // The current task gets a glowing box and its distance; the marker is moved onto its row.
             _currentMarker.gameObject.SetActive(currentRow >= 0);
             if (currentRow >= 0)
-                _currentMarker.anchoredPosition = new Vector2(0f, -(PanelHeader + currentRow * RowHeight));
+                _currentMarker.anchoredPosition = new Vector2(0f, -_rowY[currentRow]);
 
             for (int i = 0; i < _lamps.Length; i++)
             {
@@ -596,11 +699,11 @@ namespace ToyFactory.UI
                 _chipTexts[i].color = i <= step ? HudWidgets.Plum : HudWidgets.Ink;
             }
 
-            float rowsHeight = rows.Count * RowHeight;
+            float rowsHeight = y - PanelHeader;
             float chipsHeight = chipsShown ? ChipsHeight : 0f;
             _chipRow.anchoredPosition = new Vector2(0f, -(PanelHeader + rowsHeight + 4f));
             _lampRow.anchoredPosition = new Vector2(0f, -(PanelHeader + rowsHeight + chipsHeight + 10f));
-            _panel.sizeDelta = new Vector2(_panel.sizeDelta.x, PanelHeader + rowsHeight + chipsHeight + 10f + 50f);
+            _panel.sizeDelta = new Vector2(PanelWidth, PanelHeader + rowsHeight + chipsHeight + 10f + 50f);
         }
 
         static Color WithAlpha(Color colour, float alpha)
@@ -632,7 +735,13 @@ namespace ToyFactory.UI
             // The text changes once a second while overcharged, so it is compared before it is set.
             string status = HudMath.ChargeStatus(overcharge, reloading);
             if (_chargeStatus.text != status)
+            {
+                bool rowChanges = (status.Length > 0) != (_chargeStatus.text.Length > 0);
                 _chargeStatus.text = status;
+                if (rowChanges)
+                    LayoutCharge();
+            }
+
             _chargeStatus.color = overcharged ? HudWidgets.Sun : HudWidgets.Cobalt;
         }
 
@@ -765,30 +874,36 @@ namespace ToyFactory.UI
         {
             Image background = HudWidgets.Plate("Objectives", parent);
             _panel = background.rectTransform;
-            HudWidgets.Place(_panel, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(32f, -32f), new Vector2(520f, 200f));
+            HudWidgets.Place(_panel, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(32f, -32f), new Vector2(PanelWidth, 200f));
 
-            _tagText = HudWidgets.Label("Chapter", _panel, string.Empty, 22, HudWidgets.Mint, TextAnchor.MiddleLeft);
-            HudWidgets.Place(_tagText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(22f, -14f), new Vector2(470f, 28f));
+            _tagText = HudWidgets.Label("Chapter", _panel, string.Empty, HudWidgets.Caption, HudWidgets.Mint, TextAnchor.MiddleLeft);
+            HudWidgets.Place(_tagText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(HudWidgets.Pad, -14f), new Vector2(PanelWidth - HudWidgets.Pad - 170f, 28f));
             _titleText = HudWidgets.Label("Title", _panel, string.Empty, 34, HudWidgets.Ink, TextAnchor.MiddleLeft);
-            HudWidgets.Place(_titleText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(22f, -42f), new Vector2(480f, 44f));
+            _titleText.resizeTextForBestFit = true;
+            _titleText.resizeTextMinSize = 24;
+            _titleText.resizeTextMaxSize = 34;
+            HudWidgets.Place(_titleText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(HudWidgets.Pad, -42f), new Vector2(PanelWidth - 2f * HudWidgets.Pad, 44f));
+
+            // The key chip that says what Tab does: fold the list down to the task in hand, or open it again.
+            Image chip = HudWidgets.Panel("Fold key", _panel, HudWidgets.PlumLight);
+            HudWidgets.Place(chip.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-HudWidgets.Pad, -13f), new Vector2(140f, 30f));
+            _chipLabel = HudWidgets.Label("Text", chip.transform, HudSections.ObjectivesChip(false), HudWidgets.Caption, HudWidgets.InkDim, TextAnchor.MiddleCenter);
 
             _rowBoxes = new Image[MaxRows];
             _rowTexts = new Text[MaxRows];
             _rowCounts = new Text[MaxRows];
+            _rowY = new float[MaxRows];
             for (int i = 0; i < MaxRows; i++)
             {
                 float y = -(PanelHeader + i * RowHeight);
                 _rowBoxes[i] = HudWidgets.Panel("Box " + (i + 1), _panel, HudWidgets.PlumLight);
-                HudWidgets.Place(_rowBoxes[i].rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(24f, y - 4f), new Vector2(18f, 18f));
-                _rowTexts[i] = HudWidgets.Label("Task " + (i + 1), _panel, string.Empty, 24, HudWidgets.Ink, TextAnchor.MiddleLeft, FontStyle.Normal);
-                _rowTexts[i].resizeTextForBestFit = true;
-                _rowTexts[i].resizeTextMinSize = 14;
-                _rowTexts[i].resizeTextMaxSize = 24;
+                HudWidgets.Place(_rowBoxes[i].rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(HudWidgets.Pad, y - 4f), new Vector2(18f, 18f));
+                _rowTexts[i] = HudWidgets.Label("Task " + (i + 1), _panel, string.Empty, HudWidgets.Body, HudWidgets.Ink, TextAnchor.UpperLeft, FontStyle.Normal);
                 _rowTexts[i].horizontalOverflow = HorizontalWrapMode.Wrap;
-                _rowTexts[i].verticalOverflow = VerticalWrapMode.Truncate;
-                HudWidgets.Place(_rowTexts[i].rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(54f, y), new Vector2(280f, 30f));
-                _rowCounts[i] = HudWidgets.Label("Count " + (i + 1), _panel, string.Empty, 24, HudWidgets.Sun, TextAnchor.MiddleRight);
-                HudWidgets.Place(_rowCounts[i].rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(334f, y), new Vector2(56f, 30f));
+                _rowTexts[i].verticalOverflow = VerticalWrapMode.Overflow;
+                HudWidgets.Place(_rowTexts[i].rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(TextX, y), new Vector2(TextWidth, RowHeight));
+                _rowCounts[i] = HudWidgets.Label("Count " + (i + 1), _panel, string.Empty, HudWidgets.Body, HudWidgets.Sun, TextAnchor.UpperRight);
+                HudWidgets.Place(_rowCounts[i].rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(CountX, y), new Vector2(44f, RowHeight));
                 _rowBoxes[i].gameObject.SetActive(false);
                 _rowTexts[i].gameObject.SetActive(false);
                 _rowCounts[i].gameObject.SetActive(false);
@@ -796,16 +911,16 @@ namespace ToyFactory.UI
 
             // The relay order chips sit under the last row; the row moves with the list.
             _chipRow = HudWidgets.Rect("Order", _panel);
-            HudWidgets.Place(_chipRow, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, -140f), new Vector2(520f, ChipsHeight));
-            Text orderLabel = HudWidgets.Label("Label", _chipRow, "ORDER", 18, HudWidgets.InkDim, TextAnchor.MiddleLeft);
-            HudWidgets.Place(orderLabel.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(22f, 0f), new Vector2(80f, 30f));
+            HudWidgets.Place(_chipRow, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, -140f), new Vector2(PanelWidth, ChipsHeight));
+            Text orderLabel = HudWidgets.Label("Label", _chipRow, "ORDER", HudWidgets.Caption, HudWidgets.InkDim, TextAnchor.MiddleLeft);
+            HudWidgets.Place(orderLabel.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(HudWidgets.Pad, 0f), new Vector2(80f, 30f));
             _chips = new Image[MaxChips];
             _chipTexts = new Text[MaxChips];
             for (int i = 0; i < MaxChips; i++)
             {
                 _chips[i] = HudWidgets.Panel("Chip " + (i + 1), _chipRow, HudWidgets.PlumLight);
                 HudWidgets.Place(_chips[i].rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(110f + i * 44f, 0f), new Vector2(36f, 36f));
-                _chipTexts[i] = HudWidgets.Label("Number", _chips[i].transform, string.Empty, 22, HudWidgets.Ink, TextAnchor.MiddleCenter);
+                _chipTexts[i] = HudWidgets.Label("Number", _chips[i].transform, string.Empty, HudWidgets.Body, HudWidgets.Ink, TextAnchor.MiddleCenter);
                 _chips[i].gameObject.SetActive(false);
             }
 
@@ -813,9 +928,9 @@ namespace ToyFactory.UI
 
             // The switch lamps sit under the last row; the row moves with the list.
             _lampRow = HudWidgets.Rect("Switches", _panel);
-            HudWidgets.Place(_lampRow, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, -140f), new Vector2(520f, 40f));
-            Text label = HudWidgets.Label("Label", _lampRow, "SWITCHES", 20, HudWidgets.InkDim, TextAnchor.MiddleLeft);
-            HudWidgets.Place(label.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(22f, 0f), new Vector2(130f, 30f));
+            HudWidgets.Place(_lampRow, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, -140f), new Vector2(PanelWidth, 40f));
+            Text label = HudWidgets.Label("Label", _lampRow, "SWITCHES", HudWidgets.Caption, HudWidgets.InkDim, TextAnchor.MiddleLeft);
+            HudWidgets.Place(label.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(HudWidgets.Pad, 0f), new Vector2(130f, 30f));
 
             _lamps = new Image[ChapterEvents.SwitchCount];
             for (int i = 0; i < _lamps.Length; i++)
@@ -824,18 +939,18 @@ namespace ToyFactory.UI
                 HudWidgets.Place(_lamps[i].rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(170f + i * 36f, 0f), new Vector2(26f, 26f));
             }
 
-            _lampCount = HudWidgets.Label("Count", _lampRow, "0 of 3", 22, HudWidgets.Ink, TextAnchor.MiddleLeft);
+            _lampCount = HudWidgets.Label("Count", _lampRow, "0 of 3", HudWidgets.Body, HudWidgets.Ink, TextAnchor.MiddleLeft);
             HudWidgets.Place(_lampCount.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(290f, 0f), new Vector2(120f, 30f));
 
             // The current task's glow and distance, on a nested canvas because the distance changes every
             // frame. It is moved onto the current task's row whenever the rows are redrawn.
             _currentMarker = HudWidgets.Rect("Current task", _panel);
-            HudWidgets.Place(_currentMarker, new Vector2(0f, 1f), new Vector2(0f, 1f), Vector2.zero, new Vector2(520f, 30f));
+            HudWidgets.Place(_currentMarker, new Vector2(0f, 1f), new Vector2(0f, 1f), Vector2.zero, new Vector2(PanelWidth, RowHeight));
             _currentMarker.gameObject.AddComponent<Canvas>();
             _currentGlow = HudWidgets.Panel("Glow", _currentMarker, HudWidgets.Sun, _sprites.Circle);
             HudWidgets.Place(_currentGlow.rectTransform, new Vector2(0f, 1f), new Vector2(0.5f, 0.5f), new Vector2(33f, -13f), new Vector2(34f, 34f));
-            _currentDistance = HudWidgets.Label("Distance", _currentMarker, string.Empty, 22, HudWidgets.Sun, TextAnchor.MiddleRight);
-            HudWidgets.Place(_currentDistance.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-14f, 0f), new Vector2(116f, 30f));
+            _currentDistance = HudWidgets.Label("Distance", _currentMarker, string.Empty, HudWidgets.Body, HudWidgets.Sun, TextAnchor.UpperRight);
+            HudWidgets.Place(_currentDistance.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-HudWidgets.Pad, 0f), new Vector2(80f, RowHeight));
             _currentMarker.gameObject.SetActive(false);
         }
 
@@ -843,48 +958,66 @@ namespace ToyFactory.UI
         void BuildIntegrityPanel(Transform parent)
         {
             Image background = HudWidgets.Plate("Integrity", parent);
-            HudWidgets.Place(background.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(32f, 32f), new Vector2(430f, 66f));
+            _integrityPanel = background.rectTransform;
+            HudWidgets.Place(_integrityPanel, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(32f, 32f), new Vector2(BarPanelWidth, 66f));
             BuildBarRow(background.transform, "INTEGRITY", 0, out _, out _, out _healthFill);
         }
 
-        // Charge, the overcharge or charging line and the wind-up toy dots, bottom right.
+        // Charge, the overcharge or charging line and the wind-up toy dots, bottom right. The line and the dots
+        // take a row only while they have something to say (LayoutCharge).
         void BuildChargePanel(Transform parent)
         {
             Image background = HudWidgets.Plate("Charge", parent);
             _chargePanel = background.rectTransform;
-            HudWidgets.Place(_chargePanel, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-32f, 32f), new Vector2(430f, 112f));
+            HudWidgets.Place(_chargePanel, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-32f, 32f), new Vector2(BarPanelWidth, 112f));
 
             BuildBarRow(background.transform, "CHARGE", 0, out _, out _, out _chargeFill);
             BuildBarRow(background.transform, string.Empty, 1, out _chargeStatus, out _overchargeTrack, out _overchargeFill);
+            _statusRow = (RectTransform)_chargeStatus.transform.parent;
             _overchargeFill.color = HudWidgets.Sun;
             _overchargeTrack.gameObject.SetActive(false);
 
             _toysRow = HudWidgets.Rect("Wind-up toys", background.transform);
-            HudWidgets.Place(_toysRow, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, -(18f + 2 * 46f)), new Vector2(430f, 34f));
-            Text label = HudWidgets.Label("Label", _toysRow, "WIND-UP TOYS", 20, HudWidgets.InkDim, TextAnchor.MiddleLeft);
-            HudWidgets.Place(label.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(22f, 0f), new Vector2(176f, 30f));
+            HudWidgets.Place(_toysRow, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, -(18f + 2 * BarRowStep)), new Vector2(BarPanelWidth, 34f));
+            Text label = HudWidgets.Label("Label", _toysRow, "WIND-UP TOYS", HudWidgets.Caption, HudWidgets.InkDim, TextAnchor.MiddleLeft);
+            HudWidgets.Place(label.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(HudWidgets.Pad, 0f), new Vector2(176f, 30f));
             _toyDots = new Image[MaxToyDots];
             for (int i = 0; i < MaxToyDots; i++)
             {
                 _toyDots[i] = HudWidgets.Panel("Toy " + (i + 1), _toysRow, HudWidgets.PlumLight, _sprites.Circle);
-                HudWidgets.Place(_toyDots[i].rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(210f + i * 34f, 0f), new Vector2(24f, 24f));
+                HudWidgets.Place(_toyDots[i].rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(210f, 0f) + new Vector2(i * 34f, 0f), new Vector2(24f, 24f));
                 _toyDots[i].gameObject.SetActive(false);
             }
 
-            _toysRow.gameObject.SetActive(false);
+            LayoutCharge();
+        }
+
+        // The bar is always there; the overcharge or charging line and the toy dots take a row each only when they
+        // are showing, so the panel is as short as it can be and the world is not covered for nothing.
+        void LayoutCharge()
+        {
+            bool status = _chargeStatus != null && _chargeStatus.text.Length > 0;
+            bool toys = _toysMax > 0;
+            int rows = 1 + (status ? 1 : 0) + (toys ? 1 : 0);
+
+            _statusRow.gameObject.SetActive(status);
+            _statusRow.anchoredPosition = new Vector2(0f, -(18f + BarRowStep));
+            _toysRow.gameObject.SetActive(toys);
+            _toysRow.anchoredPosition = new Vector2(0f, -(18f + (status ? 2 : 1) * BarRowStep));
+            _chargePanel.sizeDelta = new Vector2(BarPanelWidth, 20f + rows * BarRowStep);
         }
 
         // One labelled bar; row 0 is the top. The fill is a child that is stretched from the left.
         static void BuildBarRow(Transform parent, string label, int row, out Text labelText, out Image track, out Image fill)
         {
             RectTransform rowRect = HudWidgets.Rect(label.Length > 0 ? label : "Status", parent);
-            HudWidgets.Place(rowRect, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, -(18f + row * 46f)), new Vector2(430f, 34f));
+            HudWidgets.Place(rowRect, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, -(18f + row * BarRowStep)), new Vector2(BarPanelWidth, 34f));
 
-            labelText = HudWidgets.Label("Label", rowRect, label, 20, HudWidgets.InkDim, TextAnchor.MiddleLeft);
-            HudWidgets.Place(labelText.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(22f, 0f), new Vector2(176f, 30f));
+            labelText = HudWidgets.Label("Label", rowRect, label, HudWidgets.Caption, HudWidgets.InkDim, TextAnchor.MiddleLeft);
+            HudWidgets.Place(labelText.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(HudWidgets.Pad, 0f), new Vector2(176f, 30f));
 
             track = HudWidgets.Panel("Track", rowRect, HudWidgets.PlumLight);
-            HudWidgets.Place(track.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(200f, 0f), new Vector2(208f, 18f));
+            HudWidgets.Place(track.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(200f, 0f), new Vector2(BarPanelWidth - 200f - HudWidgets.Pad, 18f));
             track.gameObject.AddComponent<Canvas>();
             fill = HudWidgets.Panel("Fill", track.transform, HudWidgets.Mint);
             HudWidgets.SetFill(fill, 1f);
@@ -893,6 +1026,7 @@ namespace ToyFactory.UI
         void BuildCrosshair(Transform parent)
         {
             RectTransform root = HudWidgets.Rect("Crosshair", parent);
+            _crosshairRoot = root;
             HudWidgets.Place(root, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(60f, 60f));
             Color colour = HudWidgets.Ink;
             colour.a = 0.85f;
@@ -914,14 +1048,16 @@ namespace ToyFactory.UI
             return tick;
         }
 
-        // The keys the player uses, at the bottom centre. They match the title screen's controls.
-        static void BuildHints(Transform parent)
+        // The keys the player uses, at the bottom centre. They match the title screen's controls. H puts them away.
+        void BuildHints(Transform parent)
         {
             Image plate = HudWidgets.Plate("Key hints", parent);
-            HudWidgets.Place(plate.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 32f), new Vector2(900f, 48f));
-            Text hints = HudWidgets.Label("Text", plate.transform, HudMath.KeyHints, 22, HudWidgets.InkDim, TextAnchor.MiddleCenter, FontStyle.Normal);
+            _hintsPlate = plate.rectTransform;
+            HudWidgets.Place(_hintsPlate, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 32f), new Vector2(860f, 46f));
+            Text hints = HudWidgets.Label("Text", plate.transform, HudMath.KeyHints, HudWidgets.Caption, HudWidgets.InkDim, TextAnchor.MiddleCenter, FontStyle.Normal);
             hints.rectTransform.offsetMin = new Vector2(10f, 2f);
             hints.rectTransform.offsetMax = new Vector2(-10f, -2f);
+            _hintsPlate.gameObject.SetActive(!_sections.HintsHidden);
         }
 
         void BuildDynamic(Transform root)
@@ -934,7 +1070,7 @@ namespace ToyFactory.UI
             Image head = HudWidgets.Panel("Head", _arrow, HudWidgets.Sun, _sprites.Triangle);
             head.rectTransform.sizeDelta = Vector2.zero;
 
-            _arrowDistance = HudWidgets.Label("Distance", root, string.Empty, 24, HudWidgets.Ink, TextAnchor.MiddleCenter);
+            _arrowDistance = HudWidgets.Label("Distance", root, string.Empty, HudWidgets.Body + 2, HudWidgets.Ink, TextAnchor.MiddleCenter);
             HudWidgets.Place(_arrowDistance.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(110f, 30f));
             _arrow.gameObject.SetActive(false);
             _arrowDistance.gameObject.SetActive(false);

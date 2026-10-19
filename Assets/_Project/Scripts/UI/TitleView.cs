@@ -22,6 +22,8 @@ namespace ToyFactory.UI
             new[] { "Q / Right click", "Throw a wind-up toy" },
             new[] { "E", "Interact" },
             new[] { "Shift", "Sprint" },
+            new[] { "Tab", "Fold the task list" },
+            new[] { "H", "Hide the key hints" },
             new[] { "Esc", "Pause" },
             new[] { "M", "Mute" }
         };
@@ -33,6 +35,9 @@ namespace ToyFactory.UI
 
         /// <summary>Raised when the player asks to start: the Start button, Enter or Space.</summary>
         public event Action StartRequested;
+
+        /// <summary>Raised when the player presses the Credits button.</summary>
+        public event Action CreditsRequested;
 
         /// <summary>Builds the screen, hidden, under this view's object.</summary>
         internal void Build(int sortingOrder)
@@ -52,7 +57,7 @@ namespace ToyFactory.UI
             HudWidgets.Place(route.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -285f), new Vector2(1500f, 44f));
 
             BuildControls(root);
-            BuildCredits(root);
+            BuildCreditsButton(root);
 
             Button start = HudWidgets.MakeButton("Start", root, "START", HudWidgets.Mint, HudWidgets.Plum, 56);
             HudWidgets.Place((RectTransform)start.transform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 120f), new Vector2(440f, 100f));
@@ -81,6 +86,9 @@ namespace ToyFactory.UI
         /// <summary>Asks to start, as the button does.</summary>
         public void RequestStart() => StartRequested?.Invoke();
 
+        /// <summary>Asks for the credits, as the button does.</summary>
+        public void RequestCredits() => CreditsRequested?.Invoke();
+
         void Update()
         {
             if (!IsShowing)
@@ -92,27 +100,25 @@ namespace ToyFactory.UI
                 RequestStart();
         }
 
-        // The CC BY credits, small, in the bottom-left corner: the game must show them, not only the READMEs.
-        static void BuildCredits(Transform root)
+        // The Credits button, in the bottom-left corner where the third-party credits used to be listed.
+        // The credits themselves, including the ones the licences ask the game to show, are on their own screen.
+        void BuildCreditsButton(Transform root)
         {
-            Text heading = HudWidgets.Label("Credits Heading", root, ThirdPartyCredits.Heading, 20, HudWidgets.Mint, TextAnchor.LowerLeft);
-            HudWidgets.Place(heading.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(40f, 222f), new Vector2(760f, 28f));
-
-            Text credits = HudWidgets.Label("Credits", root, string.Join("\n", ThirdPartyCredits.Lines()), 20, HudWidgets.InkDim,
-                TextAnchor.LowerLeft, FontStyle.Normal);
-            HudWidgets.Place(credits.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(40f, 30f), new Vector2(760f, 190f));
+            Button credits = HudWidgets.MakeButton("Credits", root, "CREDITS", HudWidgets.PlumLight, HudWidgets.Ink, 34);
+            HudWidgets.Place((RectTransform)credits.transform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(40f, 40f), new Vector2(280f, 76f));
+            credits.onClick.AddListener(RequestCredits);
         }
 
         // Two columns of keys and what they do, on one panel.
         static void BuildControls(Transform root)
         {
             Image panel = HudWidgets.Panel("Controls", root, HudWidgets.PlumPanel);
-            HudWidgets.Place(panel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -30f), new Vector2(1000f, 470f));
+            HudWidgets.Place(panel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -40f), new Vector2(1000f, 490f));
 
             Text header = HudWidgets.Label("Header", panel.transform, "CONTROLS", 28, HudWidgets.Mint, TextAnchor.MiddleLeft);
             HudWidgets.Place(header.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(40f, -22f), new Vector2(400f, 36f));
 
-            const int perColumn = 5;
+            const int perColumn = 6;
             for (int i = 0; i < Controls.Length; i++)
             {
                 int column = i / perColumn;

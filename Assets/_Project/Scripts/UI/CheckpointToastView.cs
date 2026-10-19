@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using ToyFactory.Interfaces;
@@ -18,6 +19,7 @@ namespace ToyFactory.UI
         Canvas _canvas;
         CanvasGroup _group;
         Text _text;
+        RectTransform _plate;
         float _shownAt = float.NegativeInfinity;
         bool _pending;
 
@@ -26,6 +28,13 @@ namespace ToyFactory.UI
 
         /// <summary>The note's text, for tests.</summary>
         public string Text => _text != null ? _text.text : string.Empty;
+
+        /// <summary>The note's plate while it is up, for the layout tests.</summary>
+        internal IEnumerable<KeyValuePair<string, RectTransform>> Rects()
+        {
+            if (_plate != null && IsShowing)
+                yield return new KeyValuePair<string, RectTransform>("Checkpoint toast", _plate);
+        }
 
         /// <summary>Builds the note, hidden, under this view's object.</summary>
         internal void Build(int sortingOrder)
@@ -36,7 +45,8 @@ namespace ToyFactory.UI
             _group.interactable = false;
 
             Image plate = HudWidgets.Plate("Checkpoint", _canvas.transform);
-            HudWidgets.Place(plate.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -396f), new Vector2(620f, 54f));
+            _plate = plate.rectTransform;
+            HudWidgets.Place(plate.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -396f), new Vector2(640f, 54f));
             _text = HudWidgets.Label("Text", plate.transform, string.Empty, 26, HudWidgets.Mint, TextAnchor.MiddleCenter);
 
             _canvas.gameObject.SetActive(false);

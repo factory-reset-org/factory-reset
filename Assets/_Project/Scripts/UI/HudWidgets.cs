@@ -22,6 +22,15 @@ namespace ToyFactory.UI
         public static readonly Color PlumEdge = new Color32(0x0E, 0x0A, 0x1C, 0xFF);
         public static readonly Color Cobalt = new Color32(0x3A, 0x6C, 0xF4, 0xFF);
 
+        /// <summary>The size of small caps labels (INTEGRITY, SCORE, ORDER), on the 1920 x 1080 layout.</summary>
+        public const int Caption = 20;
+
+        /// <summary>The size of body text: task rows, counts, distances, key hints.</summary>
+        public const int Body = 22;
+
+        /// <summary>The space between a panel's edge and its content.</summary>
+        public const float Pad = 24f;
+
         static Font _font;
 
         /// <summary>Unity's built-in UI font.</summary>
@@ -103,7 +112,11 @@ namespace ToyFactory.UI
             return label;
         }
 
-        /// <summary>A full-screen overlay canvas scaled to a 1920 x 1080 layout.</summary>
+        /// <summary>
+        /// A full-screen overlay canvas scaled to a 1920 x 1080 layout. The canvas is never smaller than that
+        /// layout in either direction (the scaler's Expand mode), so a screen that is narrower than 16:9 gets
+        /// more height, not less width, and everything laid out for 1920 x 1080 still fits side by side.
+        /// </summary>
         public static Canvas ScreenCanvas(string name, Transform parent, int sortingOrder)
         {
             var go = new GameObject(name, typeof(RectTransform));
@@ -114,8 +127,7 @@ namespace ToyFactory.UI
             CanvasScaler scaler = go.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
-            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 0.5f;
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
             return canvas;
         }
 

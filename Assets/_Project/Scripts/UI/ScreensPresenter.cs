@@ -11,8 +11,9 @@ namespace ToyFactory.UI
     /// screen once it reaches <see cref="GameState.Results"/>, and the pause screen (or the recall
     /// screen, after a recall with a restart left) while <see cref="GameState.Paused"/>. Start asks
     /// the game clock for Playing; Play again reloads the Bootstrap scene; Quit leaves the game; the
-    /// pause screen's choices go to <see cref="IRunControl"/>. It also owns the "checkpoint saved"
-    /// note. Built by <see cref="HudPresenter"/> in code, like the HUD, so <c>UI.unity</c> needs no
+    /// pause screen's choices go to <see cref="IRunControl"/>. It also owns the credits, which open from
+    /// the title screen's Credits button and roll by themselves before the Results screen of a won run, and
+    /// the "checkpoint saved" note. Built by <see cref="HudPresenter"/> in code, like the HUD, so <c>UI.unity</c> needs no
     /// new objects.
     /// </summary>
     /// <remarks>
@@ -36,6 +37,9 @@ namespace ToyFactory.UI
         [Tooltip("Sorting order of the title and results canvases. They sit above the subtitle bar (50).")]
         [SerializeField] int sortingOrder = 60;
 
+        [Tooltip("Roll the credits before the Results screen of a won run.")]
+        [SerializeField] bool creditsAfterWin = true;
+
         enum Screen
         {
             None,
@@ -47,6 +51,8 @@ namespace ToyFactory.UI
         TitleView _title;
         ResultsView _results;
         PauseView _pause;
+        CreditsView _credits;
+        RunSummary _summaryAfterCredits;
         CheckpointToastView _checkpointToast;
         bool _pauseShowsRecall;
         Leaderboard _board;
@@ -62,6 +68,16 @@ namespace ToyFactory.UI
 
         /// <summary>The pause and recall screen, for tests.</summary>
         public PauseView Pause => _pause;
+
+        /// <summary>The credits screen, for tests.</summary>
+        public CreditsView Credits => _credits;
+
+        /// <summary>Whether a won run rolls the credits before its Results screen. Tests that read the Results screen straight away turn it off.</summary>
+        public bool CreditsAfterWin
+        {
+            get => creditsAfterWin;
+            set => creditsAfterWin = value;
+        }
 
         /// <summary>The "checkpoint saved" note, for tests.</summary>
         public CheckpointToastView CheckpointToast => _checkpointToast;
@@ -84,6 +100,7 @@ namespace ToyFactory.UI
             _title = titleObject.AddComponent<TitleView>();
             _title.Build(sortingOrder);
             _title.StartRequested += HandleStart;
+            _title.CreditsRequested += HandleCreditsRequested;
 
             var resultsObject = new GameObject("Results");
             resultsObject.transform.SetParent(transform, false);
@@ -101,6 +118,12 @@ namespace ToyFactory.UI
             _pause.RestartRequested += HandleRestartGame;
             _pause.GiveUpRequested += HandleGiveUp;
 
+            var creditsObject = new GameObject("Credits");
+            creditsObject.transform.SetParent(transform, false);
+            _credits = creditsObject.AddComponent<CreditsView>();
+            _credits.Build(sortingOrder + 5);   // over every other screen
+            _credits.Closed += HandleCreditsClosed;
+
             var toastObject = new GameObject("Checkpoint Toast");
             toastObject.transform.SetParent(transform, false);
             _checkpointToast = toastObject.AddComponent<CheckpointToastView>();
@@ -110,7 +133,12 @@ namespace ToyFactory.UI
         void OnDestroy()
         {
             if (_title != null)
+            {
                 _title.StartRequested -= HandleStart;
+                _title.CreditsRequested -= HandleCreditsRequested;
+            }
+            if (_credits != null)
+                _credits.Closed -= HandleCreditsClosed;
             if (_results != null)
             {
                 _results.PlayAgainRequested -= HandlePlayAgain;
@@ -139,6 +167,11 @@ namespace ToyFactory.UI
                 : state == GameState.Paused ? Screen.Pause
                 : Screen.None;
             _titleFrames = wanted == Screen.Title ? _titleFrames + 1 : 0;
+
+            // The credits opened from the title go away if the game leaves the title state under them.
+            if (_credits.IsShowing && _credits.Mode == CreditsMode.Menu && wanted != Screen.Title)
+                _credits.Hide();
+
             if (wanted == Screen.Title && _screen != Screen.Title && _titleFrames < TitleSettleFrames)
                 return;
 
@@ -158,10 +191,28 @@ namespace ToyFactory.UI
             else
                 _title.Hide();
 
+            _summaryAfterCredits = null;
             if (next == Screen.Results)
-                _results.Show(CurrentSummary(), _board);
+            {
+                RunSummary summary = CurrentSummary();
+                if (creditsAfterWin && summary.Won)
+                {
+                    // The credits roll first and hand over to the Results screen when they end or are skipped.
+                    _results.Hide();
+                    _summaryAfterCredits = summary;
+                    _credits.Show(CreditsMode.Ending);
+                }
+                else
+                {
+                    _credits.Hide();
+                    _results.Show(summary, _board);
+                }
+            }
             else
+            {
                 _results.Hide();
+                _credits.Hide();
+            }
 
             if (next == Screen.Pause)
             {
@@ -196,6 +247,29 @@ namespace ToyFactory.UI
             _screen = Screen.None;
             _titleFrames = 0;
             SetCursorLocked(true);
+        }
+
+        // From the title's Credits button: the credits cover the title, which stays hidden so that Enter or
+        // Space cannot start the game from behind them.
+        void HandleCreditsRequested()
+        {
+            _title.Hide();
+            _credits.Show(CreditsMode.Menu);
+        }
+
+        void HandleCreditsClosed(CreditsMode mode)
+        {
+            if (mode == CreditsMode.Menu)
+            {
+                if (_screen == Screen.Title)
+                    _title.Show();
+            }
+            else if (_screen == Screen.Results && _summaryAfterCredits != null)
+            {
+                _results.Show(_summaryAfterCredits, _board);
+            }
+
+            _summaryAfterCredits = null;
         }
 
         void HandlePlayAgain()

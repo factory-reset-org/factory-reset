@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -28,10 +29,14 @@ namespace ToyFactory.UI
         public void Build(Transform parent)
         {
             _prompt = HudWidgets.Label("Prompt", parent, string.Empty, 28, HudWidgets.Ink, TextAnchor.MiddleCenter);
-            HudWidgets.Place(_prompt.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -86f), new Vector2(900f, 40f));
+            HudWidgets.Place(_prompt.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -86f), new Vector2(700f, 40f));
+            // A dark edge all round the letters keeps the line readable over a bright floor or a bright wall.
+            var outline = _prompt.gameObject.AddComponent<Outline>();
+            outline.effectColor = new Color(HudWidgets.PlumEdge.r, HudWidgets.PlumEdge.g, HudWidgets.PlumEdge.b, 0.95f);
+            outline.effectDistance = new Vector2(2f, -2f);
             var shadow = _prompt.gameObject.AddComponent<Shadow>();
             shadow.effectColor = new Color(0f, 0f, 0f, 0.8f);
-            shadow.effectDistance = new Vector2(2f, -2f);
+            shadow.effectDistance = new Vector2(3f, -3f);
             _prompt.gameObject.SetActive(false);
 
             Image track = HudWidgets.Plate("Hold bar", parent);
@@ -43,6 +48,14 @@ namespace ToyFactory.UI
         }
 
         /// <summary>Sets the prompt line; null or empty hides it.</summary>
+        public IEnumerable<KeyValuePair<string, RectTransform>> Rects()
+        {
+            if (_prompt != null && _prompt.gameObject.activeInHierarchy)
+                yield return new KeyValuePair<string, RectTransform>("Prompt", _prompt.rectTransform);
+            if (_bar != null && _bar.gameObject.activeInHierarchy)
+                yield return new KeyValuePair<string, RectTransform>("Hold bar", _bar);
+        }
+
         public void SetPrompt(string text)
         {
             text = text ?? string.Empty;
