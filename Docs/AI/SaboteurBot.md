@@ -110,9 +110,9 @@ Two candidate sources read S2's trap and battery facts (`world.SabotageFacts`: i
 
 **ArmTrap(t)** (`ArmTrapSource`). Eligible when the player is alive and the squad's `DetourCache` has their route to the objective (the cache now keeps that route, `DetourCache.PlayerRoute`), the route passes within 2 cells of the trap, and the player gets there within 10 s at their top speed (the earliest they can arrive). The Saboteur must also be able to arrive first: a trap the player will already have passed is not worth arming. Two considerations, both through `ResponseCurve.Inverse`: the seconds until the player passes over the 10 s horizon (the sooner, the higher) and the straight octile distance to the trap over 30 m.
 
-**StealBattery(b)** (`StealBatterySource`). Eligible when the player is alive and the Saboteur's walk (octile distance over 4.3 m/s, at most 30 m) is shorter than the player's straight walk to the battery at their top speed. Two considerations: the player's loaded ammunition fraction through `Inverse` (the emptier, the higher; a full battery scores 0 and vetoes the theft, because it would not hurt) and the distance over 30 m.
+**StealBattery(b)** (`StealBatterySource`). Eligible when the Saboteur sees the player (its awareness, below), the player is alive and not on a full battery, and the battery's walkable cell is within 12 m of the Saboteur by the walk it would really take (the squad's A*), that walk is shorter than the player's straight line to the battery, and quicker than the player at their top speed: the battery is closer to the Saboteur than to the player. Two considerations: the player's loaded ammunition fraction through `Inverse` (the emptier, the higher; a full battery scores 0 and vetoes the theft, because it would not hurt them) and the walk over 12 m through `Inverse`. At most two walks are measured per decision, after straight distances have ruled most batteries out.
 
-**Reachability.** Like doors, the walk is a straight octile distance, not a search: it only ranks targets, so it stays cheap for four Saboteurs deciding at 4 Hz. The brain finds the real route when it commits, and a target it cannot reach ends the plan as a failure.
+**Reachability.** Straight distances rank the targets cheaply first; then the real walk is measured with the squad's A* for at most two doors, two traps and two batteries per decision, and a target with no route or a walk past its range is not offered (doors 30 m, traps 20 m, batteries 12 m). A trap must also be reached a full second before the player, and is not armed within 4 m of them. The brain still finds its own route when it commits, and a target it cannot reach ends the plan as a failure, shared with the squad.
 
 **In the brain** (`TryFactAction`, the same shape as CloseDoor):
 
@@ -146,7 +146,7 @@ The squad stops counting a destroyed instance for saturation, and `DetourCache` 
 
 Flee is built (`FleeSource`, `FleePlanner`). The runtime does not report whether the player is aiming, so aiming is worked out from `PlayerSnapshot.Forward`: the player's flat facing direction must be within 40 degrees of the direction to the Saboteur. The consideration is 0 at the edge of the cone and 1 dead on, so a player who looks away stops being a reason to run.
 
-**Eligibility** (decided before scoring): the player is known and alive, less than 14 m away, can see the Saboteur (the same physics sight check as AttackPlayer) and faces it. Otherwise Flee is not a candidate.
+**Eligibility** (decided before scoring): the player is known and alive, less than 14 m away, seen by the Saboteur (its awareness: the vision cone, the all-round 3.5 m, or a player it is already tracking, all with a line of sight) and facing it. Otherwise Flee is not a candidate, except that a flight already offered stays on offer at the same score for 1.5 s after the player stops qualifying, so a wobbling aim does not flip it between running and coming back.
 
 **Score.** Three considerations, compensated as for every action (three considerations, so `modFactor = 2/3`):
 
@@ -173,6 +173,47 @@ Worked example: health 0.25, player dead on at 5 m: `0.9241 x 1 x 0.6429 = 0.594
 Plan Appendix A values: Saboteur health 4, speed 4.3 m/s, melee damage 10. Any change and its reason is recorded in this document.
 
 **Review of 15 October 2026: no change.** The squad scenario (two doors, four Saboteurs) chose as designed: each of A and B took the door beside it, C and D, with both doors claimed, fell back to Idle, a destroyed holder's door passed to another Saboteur, and a closed door was not offered again. In the live scene the Saboteur 4 m from the player attacked instead of taking a door, which is the intended order (AttackPlayer scores above CloseDoor at that range), and the other two shared the doors. Two close doors scored 0.60 and 0.58 and moving by 0.1 either way switched 232 times in two minutes without stability and 8 with momentum 0.15 and 1.5 s commitment, so those two values stay. The attack saturation factor 0.45, the door distance cap (30 m) and the 4 Hz decision interval were not exercised hard enough here to justify a change.
+
+### Perception, memory, search and patrol (19 October 2026)
+
+Before this change the squad reacted to the player with full knowledge: AttackPlayer and Flee needed only a line of sight, and doors, traps and batteries used the player's position anywhere on the map. Each Saboteur now has its own `SaboteurAwareness`, built in the brain on the line-of-sight query of its attack or flee source and bound to all its sources (`ISaboteurAwarenessUser`), so every action reacts only to a player that Saboteur could have seen or heard. All of it is in `AI/Agents/Saboteur/`; the spawner, the controller, animation, models and interactions are unchanged.
+
+| Sense | Rule |
+| --- | --- |
+| Vision cone | 60 degrees each side of the body's facing (120 in all), out to 12 m, with a line of sight |
+| All-round sense | Any direction within 3.5 m, with a line of sight |
+| Tracking | A player seen in the last second stays seen out to 14 m whatever the facing, with a line of sight |
+| Memory | The last sighting (position, cell, velocity, time) is kept 6 s |
+| Hearing | The last player noise (source id -1, not a lure) is kept 8 s; agents' noises and thrown toys are ignored |
+
+The line of sight is the same physics ray as before (from the player's eye to the Saboteur's cell); it is only cast when one of the rules could make the player seen, at most every 0.1 s.
+
+**What needs what.** AttackPlayer and Flee need the player seen. StealBattery needs the player seen. ArmTrap and CloseDoor need the Saboteur to be alerted: it sees the player, saw them within 6 s or heard them within 8 s. A source used on its own (no brain bound it) keeps its earlier rules, which is how the older unit tests of door feedback still run.
+
+**Search** (a new action, `Search`, after Idle in the tie order). One candidate at most:
+
+| Situation | Goal | Score |
+| --- | --- | --- |
+| Player seen beyond the 2 m melee reach | the player (shown as `Approach`) | 0.12, times attack saturation |
+| Sighting remembered, player not seen | last position plus 1 s of their velocity (at most 4 m) | 0.5 fresh, falling to 0.15 at 6 s |
+| Player noise remembered | where the noise came from | 0.12 to 0.3 by loudness and age |
+
+Two or more squad mates already searching halve it. The Saboteur walks there, stops and turns its head round over 2.4 s, checks one spot 3 m further on (the way the player went, or on from the noise), and gives the search up at 14 s at the latest. A finished search marks the sighting and noise as searched, so they are not offered again; a new one is. Then it returns to its patrol.
+
+**Room patrol** (`RoomPatrolPlanner`, `SaboteurOptions.RoomPatrol`, on in the game). The Saboteur's room is the walkable floor reached from its first patrol point without passing a door, up to 18 m. Where two Saboteurs start in one room (A and D in the Storage Area) each keeps the floor nearer its own first point. Three to seven points are spread over that area (at least 3 m apart, away from walls where possible), seeded with the level's own patrol points, and walked as a nearest-neighbour loop. In the level the planned loops are A 5 points, B 7, C 7, D 5. A Saboteur given no patrol points still holds in place.
+
+**Stuck detection.** Progress on a walk is now what is left of the route (`SaboteurPaths.RemainingMetres`), not the straight distance to the target, so a route that first bends away round a wall is not taken for no progress. The rule is unchanged otherwise (0.5 m in 4 s, one re-send, then give up) and now also covers patrol walks: a patrol point it cannot make progress to is skipped.
+
+**Squad failure memory.** A door, trap or battery that one Saboteur failed at (no route, stuck, out of reach, refused, timed out) is left alone by the whole squad for 10 s (`SquadCoordinator.NoteFailure`), not only by the one that failed. In the squad scenario test this cut the routes four Saboteurs planned in 20 s from 10 to 3, because the others no longer repeat the same failed trip.
+
+**Steadier hand-overs.**
+
+- An attack under way carries on out to 10 m and through up to 1 s out of sight; a new one still starts within 8 m.
+- A flight stays on offer for 1.5 s after the player stops qualifying.
+- For 2 s after a flight, an attack scores half, so a Saboteur that ran does not turn straight back.
+- Idle no longer gets the 0.15 momentum: it is the fallback, not a plan. With momentum, any reason to act scoring under 0.25 (a distant sighting, a quiet noise) could never take over from Idle; the probe in the level showed a Saboteur seeing the player at 11 m and staying Idle.
+
+**Traps** go off when the player walks into an armed one; that is S2's `Trap` and was already the case.
 
 ## Alternatives considered
 
