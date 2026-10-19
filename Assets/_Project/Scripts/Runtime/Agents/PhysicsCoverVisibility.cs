@@ -47,16 +47,20 @@ namespace ToyFactory.Runtime.Agents
 
         public bool IsBlocked(Vector2Int cell, float height)
         {
+            if (!_grid.Contains(cell))
+                return false;
+            return IsBlockedAt(_grid.CellToWorld(cell) + Vector3.up * height);
+        }
+
+        public bool IsBlockedAt(Vector3 target)
+        {
             IPlayerState player = PlayerState.Current;
 
             // A destroyed MonoBehaviour is not C# null, so ask Unity as well.
             if (player == null || (player is UnityEngine.Object unityObject && unityObject == null))
                 return false;
-            if (!_grid.Contains(cell))
-                return false;
 
             Vector3 eye = player.Position + Vector3.up * PlayerEyeHeight;
-            Vector3 target = _grid.CellToWorld(cell) + Vector3.up * height;
             Vector3 toTarget = target - eye;
             float distance = toTarget.magnitude;
             if (distance <= Mathf.Epsilon)

@@ -69,6 +69,9 @@ namespace ToyFactory.AI.Agents.Guard
             return Ask(cell, height);
         }
 
+        /// <summary>A world point is never remembered: it goes straight to the inner check.</summary>
+        public bool IsBlockedAt(Vector3 point) => _inner.IsBlockedAt(point);
+
         bool Remembered(Vector2Int cell, float height, bool[] answers, int[] stamps)
         {
             int index = _grid.ToIndex(cell);
