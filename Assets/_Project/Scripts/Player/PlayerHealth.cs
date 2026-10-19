@@ -64,6 +64,15 @@ namespace ToyFactory.Player
             Current = Mathf.Min(maxHealth, Current + regenPerSecond * Time.deltaTime);
         }
 
+        /// <summary>A repair, e.g. from a battery pickup. False if integrity is already full or the player is down.</summary>
+        public bool Heal(float amount)
+        {
+            if (!IsAlive || amount <= 0f || Current >= maxHealth)
+                return false;
+            Current = Mathf.Min(maxHealth, Current + amount);
+            return true;
+        }
+
         public void TakeDamage(float amount, int sourceAgentId)
         {
             if (!IsAlive || amount <= 0f)

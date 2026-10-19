@@ -85,11 +85,19 @@ namespace ToyFactory.Interaction
             SetArmed(true);
         }
 
-        /// <summary>The prompt line while the player looks at this.</summary>
-        public string PromptText => "disarm the trap";
+        /// <summary>The prompt line while the player looks at this: only an armed trap offers anything.</summary>
+        public string PromptText => IsArmed ? "disarm the trap" : null;
 
-        /// <summary>Player use: clear the trap.</summary>
-        public void Interact() => SetArmed(false);
+        /// <summary>Player use: clear an armed trap safely.</summary>
+        public void Interact()
+        {
+            if (!IsArmed)
+                return;
+            SetArmed(false);
+            PropEffects.Word("click", transform.position + Vector3.up * 1.2f);
+            PropEffects.Spark(transform.position + Vector3.up * 0.3f, SparkColour);
+            GameSfx.Play(Sfx.Switch);
+        }
 
         void OnTriggerEnter(Collider other)
         {

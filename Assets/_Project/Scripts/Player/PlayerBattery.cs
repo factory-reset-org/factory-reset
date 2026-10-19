@@ -95,6 +95,16 @@ namespace ToyFactory.Player
             return true;
         }
 
+        /// <summary>A battery pickup: the cell in the blaster filled to full. False if it was full, or a reload is under way.</summary>
+        public bool FillCurrentCell()
+        {
+            if (IsReloading || _shots >= shotsPerCell)
+                return false;
+            _shots = shotsPerCell;
+            OnChanged?.Invoke();
+            return true;
+        }
+
         /// <summary>The charger: a full battery and every spare cell.</summary>
         public void RefillAll()
         {

@@ -33,6 +33,11 @@ namespace ToyFactory.Interaction
         [SerializeField, Range(0f, 0.01f)] float rampLift = 0.0015f;
 
         Rigidbody _rb;
+
+        // The belt's drawn top, before the collider is widened, and what was found on it last step.
+        Bounds _footprint;
+        bool _hasFootprint;
+        static readonly Collider[] s_onBelt = new Collider[8];
         GameObject _ramps;
 
         public bool IsRunning { get; private set; }
@@ -59,6 +64,11 @@ namespace ToyFactory.Interaction
         // Its chevrons, when the effects asset is there, and the ramps that let a box climb on.
         void Start()
         {
+            if (TryGetComponent(out Collider top))
+            {
+                _footprint = top.bounds;
+                _hasFootprint = true;
+            }
             BeltSurface.Attach(this);
             if (edgeRamps)
                 BuildEdgeRamps();
@@ -169,6 +179,40 @@ namespace ToyFactory.Interaction
             Vector3 position = _rb.position;
             _rb.position = position - Velocity * Time.fixedDeltaTime;
             _rb.MovePosition(position);
+            CarryCrates();
+        }
+
+        // Friction alone carried a crate only while its whole base touched the belt. One that overhangs an edge
+        // rests on the edge plate (a hair higher, and slick) and stopped dead, and so did every crate as its front
+        // went over the far end, short of the plate. So every crate over the belt is brought
+        // up to the belt's speed along it while its middle is over the belt, whatever it rests on; across the belt
+        // and up and down it is left alone.
+        void CarryCrates()
+        {
+            if (!_hasFootprint)
+                return;
+
+            const float Height = 0.3f;
+            Vector3 centre = new Vector3(_footprint.center.x, _footprint.max.y + Height, _footprint.center.z);
+            Vector3 half = new Vector3(_footprint.extents.x, Height, _footprint.extents.z);
+            int count = Physics.OverlapBoxNonAlloc(centre, half, s_onBelt, Quaternion.identity,
+                LayerMask.GetMask("Pushable"), QueryTriggerInteraction.Ignore);
+            Vector3 direction = Direction;
+            for (int i = 0; i < count; i++)
+            {
+                Rigidbody crate = s_onBelt[i].attachedRigidbody;
+                if (crate == null || crate.isKinematic || crate == _rb)
+                    continue;
+                // Only while its middle is over the belt: past the end it glides on by itself (onto the plate and
+                // up to the stop) and can come to rest, instead of being pushed into whatever it has met.
+                Vector3 middle = s_onBelt[i].bounds.center;
+                if (middle.x < _footprint.min.x || middle.x > _footprint.max.x || middle.z < _footprint.min.z || middle.z > _footprint.max.z)
+                    continue;
+                Vector3 velocity = crate.linearVelocity;
+                float along = Vector3.Dot(velocity, direction);
+                if (along < speed)
+                    crate.linearVelocity = velocity + direction * (speed - along);
+            }
         }
     }
 }

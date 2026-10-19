@@ -133,7 +133,7 @@ namespace ToyFactory.Player
 
         /// <summary>
         /// Fires if the blaster is ready: the time since the last shot has passed and there is
-        /// charge (or overcharge). Pulling the trigger on an empty battery starts a reload.
+        /// charge (or overcharge). An empty battery only clicks: the player reloads with R.
         /// </summary>
         public bool TryShoot()
         {
@@ -142,15 +142,11 @@ namespace ToyFactory.Player
 
             if (!_battery.TrySpendShot())
             {
-                if (_battery.IsEmpty)
+                // A dry click, then a pause so a held trigger does not rattle. No reload by itself.
+                if (_battery.IsEmpty && !_battery.IsReloading)
                 {
-                    // A dry click, then a pause so a held trigger does not rattle.
-                    if (!_battery.IsReloading)
-                    {
-                        GameSfx.Play(Sfx.Empty);
-                        _nextShotTime = Now + EmptyClickSeconds;
-                    }
-                    _battery.StartReload();
+                    GameSfx.Play(Sfx.Empty);
+                    _nextShotTime = Now + EmptyClickSeconds;
                 }
                 return false;
             }

@@ -13,5 +13,12 @@ namespace ToyFactory.AI.Agents.Guard
         /// at <paramref name="height"/> metres is blocked by geometry.
         /// </summary>
         bool IsBlocked(Vector2Int cell, float height);
+
+        /// <summary>
+        /// True if the line from the player's eye to <paramref name="point"/> (a world position, not a cell centre)
+        /// is blocked. The Guard asks it about the spot it really stands on. With nothing more to say, a check
+        /// answers true, so only the game's physics check can make a cover give way.
+        /// </summary>
+        bool IsBlockedAt(Vector3 point) => true;
     }
 }

@@ -84,10 +84,13 @@ namespace ToyFactory.AI.Agents.Guard
             {
                 base.Enter(b);
                 b._holdUntil = b.Now + b._holdTime;
-                if (b.ArrivedAt(b._coverCell))
+                // Arriving counts from half a metre out, a whole cell: stopping there left it a cell short of
+                // the cover, on the open side, in view 39% of the time in the Painting Room. It walks on to the
+                // cover's centre, where the cover was judged, and only then stands still.
+                if (b.SettledOn(b._coverCell))
                     b.StopMoving();
                 else
-                    b.MoveTo(b._coverCell, BaseCostModel.Instance);   // stepping back from the peek cell
+                    b.MoveTo(b._coverCell, BaseCostModel.Instance);
             }
 
             public override void Tick(GuardBrain b)
@@ -106,15 +109,20 @@ namespace ToyFactory.AI.Agents.Guard
             {
                 base.Enter(b);
                 b._peekUntil = b.Now + PeekDuration;
-                if (b.TryFindPeekCell(out Vector2Int peekCell))
+                b._peekStartedAt = b.Now;
+                b._hasPeekCell = b.TryFindPeekCell(out Vector2Int peekCell);
+                b._peekCell = peekCell;
+                if (b._hasPeekCell)
                     b.MoveTo(peekCell, BaseCostModel.Instance);
             }
 
+            // It fires only once out on the peek cell: stepping out, its cannon is still behind the cover.
             public override void Tick(GuardBrain b)
             {
                 b._outSpeed = WalkSpeed;
                 b._outLook = b.Player.Position;
-                b.TryShoot();
+                if (b.AtPeekCell())
+                    b.TryShoot();
             }
         }
 

@@ -87,9 +87,11 @@ Higher priority wins when several conditions are true on the same tick. This is 
 | 90 | Stunned | Relocate | Reboot: plan a fresh route |
 | 85 | Patrol | Relocate | Engaged: a living player in its room, or just outside it and seen or heard in range |
 | 80 | TakeCover, Advance | InCover | Reaches the reserved cover cell (within 0.5 m) |
+| 72 | InCover | PeekAndShoot | The player looks more than 60 degrees away, after at least 0.35 s in cover (and peeking is allowed) |
 | 70 | InCover | PeekAndShoot | Hold timer elapses (1.3 s, or 0.7 s when aggressive) and peeking is allowed; above 50% battery that also needs the player to have stopped firing for 1.5 s |
 | 65 | PeekAndShoot | InCover | Overcharge becomes active; no peeking until it ends |
 | 60 | TakeCover, InCover, PeekAndShoot, Advance, Retreat | Relocate | The cover choice changed: exposed, blocked, lost, found, or beaten by a better one |
+| 55 | PeekAndShoot | InCover | The player fires with the aim on it: duck back (caught twice at one cover: give it up) |
 | 50 | PeekAndShoot | InCover | Peek timer elapses (2 s) |
 | 40 | Relocate | TakeCover | A cover cell is reserved and the player is not low on battery |
 | 30 | Relocate | Advance | Player battery below 25% or reloading, or no cover it can peek from (see below) |
@@ -108,6 +110,18 @@ Higher priority wins when several conditions are true on the same tick. This is 
 
    Any --stunned--> Stunned --reboot--> Relocate        Any --player gone--> Patrol
 ```
+
+**Sharper play from the same actions (19 October, after a play-test).** The Guard still only moves, peeks and shoots, but it uses them better:
+
+- **Clear shots only.** Its cannon fires from 0.89 m, below the chest height (1.2 m) that sight was judged at, so low cover the player could see over took its shots. It now needs a clear line at the muzzle height (`CoverEvaluator.MuzzleHeight`, 0.85 m) too, both to shoot and for a cell to count as a peek cell, and from a peek it fires only once it stands on the peek cell, not while its cannon is still behind the cover.
+- **Alternating peeks.** `TryFindPeekCell` starts one place after the last peek, so a cover with two open sides is peeked from each in turn and the player cannot hold an aim on one corner.
+- **Ducks under fire.** While peeking, if the player fires with their aim within 12 degrees of it, it ducks back at once; caught twice at one cover, it gives that cover up until the player moves (rule 55, Peek to InCover).
+- **Takes its chances.** If the player looks more than 60 degrees away, it peeks after 0.35 s instead of waiting out the hold (rule 72, InCover to Peek).
+- **Never wastes a shot, and moves on when it cannot land one.** The weapon checks the real line from the muzzle just before it fires and holds fire if anything but the player is in the way (`AgentWeapon.LineClear`). The brain cannot see that, but it can see the player's health: three shots in a row that leave it where it was and the Guard gives up that cover (`WastedShotsBeforeMoving`). Measured in the Painting Room with the player standing at four spots for 48 s (`GuardAccuracyEvidenceTests`, `Docs/Evidence/Agents/guard_accuracy.txt`): with the brain changes alone, 26 shots and 11 hits, 9 lost on the terminal and 6 on a crate against its cannon; with the weapon check and the move-on rule too, 17 shots and 17 hits. The Guard on `develop` before any of this was not measured.
+- **No cover on task props.** `IGuardHome.AllowsCover` is false within 1.2 m of a task prop in its room (the terminal in the middle of the Painting Room, the switch and its cage), so it never hides on the thing the player must use.
+- **Really hidden in cover.** Measured the same way (`GuardCoverEvidenceTests`, `Docs/Evidence/Agents/guard_cover.txt`), counting the frames it stands still in InCover with the player's eye able to see its knee, chest or head. At first its body was in view 39% of the time: it counted as arrived half a metre out and stopped on the open side. It now walks on to within 0.12 m of the cover's centre (`SettleRadius`), which only brought that to 24-31%: a cover cell hugs its obstacle and the Guard's capsule is wide, so the body comes to rest 0.2-0.3 m off the centre, where cover was judged, and from there it shows. So once it has stood still for 0.25 s in cover it checks the spot it really stands on (`ICoverVisibility.IsBlockedAt`), and gives up a cover that leaves its knee in view, or its chest behind a cover judged to hide the chest. Those covers stay given up until the player moves. Now its body is in view 7% of the time, the quarter second before it judges the spot. Its head (2.0 m on a 2.4 m model) still shows over crate-height cover 79% of the time; a cover that hides the head as well is preferred when there is one (`TallCoverBonus`). The cost is time: moving off bad spots, it fired 10 to 12 times in the 48 s instead of 17 to 20, still with every shot landing.
+
+Tests: `Guard_ChestVisibleButMuzzleBlocked_DoesNotShoot`, `Guard_ThreeShotsThatDoNoHarm_GivesUpTheCoverForAnother`, `Guard_PeeksFromAlternatingSidesWhenItHasTwo`, `Guard_PlayerFiringWithItsAimOnTheGuard_DucksBackEarly`, `Guard_PlayerLooksAway_PeeksBeforeTheHoldRunsOut`, `Guard_NeverTakesCoverWhereItsRoomForbidsIt`, `Guard_StandingInViewOffItsCoverCentre_GivesUpTheCover`, `Guard_StillWalkingIntoCover_DoesNotJudgeTheSpotYet`.
 
 **A cover with nowhere to peek from (fixed 18 October).** S4 saw a Guard sit in cover for about a minute against a player standing 7.5 m away who never fired. The cover protected it, but no neighbouring cell could see the player, so `PeekAllowed` was never true, the hold ran out again and again, and no rule moved it. Now, when the hold runs out on such a cover (not in overcharge), the Guard asks for a cover it can peek from (`_wantPeekCover`, which also drops the held cover from the choice). If one is free it relocates to it; if none is, it advances (`_pushForShot`) and keeps walking past its ideal range until it can see the player, then fires. Moving the player clears the wish, so any cover may do again. Test: `Guard_CoverWithNoPeek_PushesInAndShootsAPlayerWhoNeverFires`.
 

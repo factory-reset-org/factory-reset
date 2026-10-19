@@ -921,7 +921,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.Door
   movingPart: {fileID: 0}
   mode: 1
-  speed: 3.5
+  speed: 5
   openAngle: 90
   openOffset: {x: 0, y: 5, z: 0}
   blockCheckHalfExtents: {x: 0.5, y: 1, z: 0.1}
@@ -1079,6 +1079,7 @@ MonoBehaviour:
   bobSpeed: 3
   respawnSeconds: -1
   sabotageId: 23
+  repair: 25
 --- !u!23 &88981530
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -1519,6 +1520,7 @@ MonoBehaviour:
   bobSpeed: 3
   respawnSeconds: -1
   sabotageId: 22
+  repair: 25
 --- !u!23 &160482675
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -2272,7 +2274,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1fe73779c652e8641bf8951a8d99b7c8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.Trap
-  startArmed: 0
+  startArmed: 1
   sabotageId: 11
   damage: 15
   loudness: 50
@@ -2719,7 +2721,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1fe73779c652e8641bf8951a8d99b7c8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.Trap
-  startArmed: 0
+  startArmed: 1
   sabotageId: 12
   damage: 15
   loudness: 50
@@ -3149,6 +3151,7 @@ MonoBehaviour:
   bobSpeed: 3
   respawnSeconds: -1
   sabotageId: 26
+  repair: 25
 --- !u!23 &544572573
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -6076,7 +6079,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 15.5, y: 0.02, z: 17.5}
-  m_LocalScale: {x: 1.2, y: 0.04, z: 1.2}
+  m_LocalScale: {x: 1.2, y: 0.04, z: 2.2}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1320619492}
@@ -6096,7 +6099,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.PressurePlate
   taskId: ch1.plate
   zoneCenter: {x: 0, y: 0.5, z: 0}
-  zoneHalfExtents: {x: 0.3, y: 0.4, z: 0.3}
+  zoneHalfExtents: {x: 0.5, y: 0.4, z: 1}
   crateMask:
     serializedVersion: 2
     m_Bits: 0
@@ -7354,6 +7357,7 @@ MonoBehaviour:
   bobSpeed: 3
   respawnSeconds: -1
   sabotageId: 21
+  repair: 25
 --- !u!23 &1111604645
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -8555,7 +8559,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: 0.7071068, z: -0, w: 0.7071068}
   m_LocalPosition: {x: 16.2, y: 0.25, z: 17.5}
-  m_LocalScale: {x: 1.5, y: 0.5, z: 0.2}
+  m_LocalScale: {x: 2.4, y: 0.5, z: 0.2}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 2070401836}
@@ -9689,7 +9693,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.Door
   movingPart: {fileID: 0}
   mode: 1
-  speed: 3.5
+  speed: 5
   openAngle: 90
   openOffset: {x: 0, y: 5, z: 0}
   blockCheckHalfExtents: {x: 0.5, y: 1, z: 0.1}
@@ -9847,6 +9851,7 @@ MonoBehaviour:
   bobSpeed: 3
   respawnSeconds: -1
   sabotageId: 25
+  repair: 25
 --- !u!23 &1489136406
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -12588,7 +12593,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.Door
   movingPart: {fileID: 0}
   mode: 1
-  speed: 3.5
+  speed: 5
   openAngle: 90
   openOffset: {x: 0, y: 5, z: 0}
   blockCheckHalfExtents: {x: 0.5, y: 1, z: 0.1}
@@ -12973,7 +12978,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.Door
   movingPart: {fileID: 0}
   mode: 1
-  speed: 3.5
+  speed: 5
   openAngle: 90
   openOffset: {x: 0, y: 5, z: 0}
   blockCheckHalfExtents: {x: 0.5, y: 1, z: 0.1}
@@ -13364,7 +13369,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1fe73779c652e8641bf8951a8d99b7c8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.Trap
-  startArmed: 0
+  startArmed: 1
   sabotageId: 13
   damage: 15
   loudness: 50
@@ -13589,7 +13594,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1fe73779c652e8641bf8951a8d99b7c8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.Trap
-  startArmed: 0
+  startArmed: 1
   sabotageId: 14
   damage: 15
   loudness: 50
@@ -13669,6 +13674,7 @@ MonoBehaviour:
   bobSpeed: 3
   respawnSeconds: -1
   sabotageId: 24
+  repair: 25
 --- !u!23 &1999783604
 MeshRenderer:
   m_ObjectHideFlags: 0

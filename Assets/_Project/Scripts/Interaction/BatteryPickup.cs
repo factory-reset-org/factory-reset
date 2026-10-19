@@ -46,10 +46,19 @@ namespace ToyFactory.Interaction
         protected override void OnRestored() =>
             SabotageTargets.Register(SabotageKind.Battery, sabotageId, this, transform);
 
-        // A cell the player takes scores 50 (the Saboteur stealing one does not come through here).
+        [Tooltip("Integrity the battery repairs when the player takes it.")]
+        [SerializeField, Min(0f)] float repair = 25f;
+
+        // A battery fills the blaster's cell, adds a spare cell and repairs some integrity: the player sees the charge
+        // bar and the integrity bar go up. It is taken if any of that helped. A cell the player takes scores 50 (the
+        // Saboteur stealing one does not come through here).
         protected override bool Collect(PlayerBattery battery)
         {
-            if (!battery.AddSpareCell())
+            bool filled = battery.FillCurrentCell();
+            bool spare = battery.AddSpareCell();
+            var health = battery.GetComponent<PlayerHealth>();
+            bool healed = health != null && health.Heal(repair);
+            if (!filled && !spare && !healed)
                 return false;
 
             ScoreManager score = ScoreManager.Current;
