@@ -831,6 +831,33 @@ This is what makes the props read as a toy factory when the player uses them, an
 
 **Why these choices** are in the decision log: procedural sounds, one pooled effects object, and the model swap verified by footprint.
 
+### 6.8 Checkpoints, restarts and the pause menu (S4, implemented)
+
+**Checkpoints.** The start of each chapter is a checkpoint: after Room 1, Room 2 and Room 3 are done, and the start of the game before that. When Chapters 2, 3 and 4 start, a note under the chapter card reads "CHECKPOINT SAVED" with the restarts left (`CheckpointToastView`). Like the card, it waits for a cutscene to end.
+
+**Restarts.** A game has three. Going back to the checkpoint uses one, whether the player was recalled or chose it from the pause menu. Restarting the game reloads Bootstrap, so a new game starts with all three again.
+
+| Event | Restarts left | What happens |
+| --- | --- | --- |
+| Integrity reaches 0 | 1 or more | The game pauses on the recall screen: Restart from checkpoint, Restart game, Give up |
+| Integrity reaches 0 | 0 | The run ends at Results, as before |
+| Restart from checkpoint (recall or pause screen) | 1 or more, then one fewer | Back to the checkpoint |
+| Give up (recall screen) | unchanged | The run ends at Results |
+| Restart game (recall or pause screen) | back to 3 | Bootstrap reloads, back to the title |
+
+**Going back to the checkpoint** does not reload the world, because S2's props keep their own state (a pulled lever, a crate on its plate). Instead:
+- the player goes to the entrance of the room being played (`ChapterJump.PlacePlayer`, the same entrances as the debug chapter keys), with full integrity, a full battery (`PlayerBattery.RefillAll`), and 2 s of game time in which hits do nothing (`PlayerHealth.Revive`);
+- every robot that has moved more than 1 m from its post, or is alert, goes back to where it was spawned and stays powered down for 3 s (`AgentController.SendHome`). Its brain drops its plans as for a knock-out and decides afresh at the reboot. This is not a takedown: `AgentEvents.OnDisabled` is not raised, so no points are scored. The dormant Captain is at its post and calm, so it is left alone;
+- the room's finished tasks stay finished, scrapped Saboteurs stay scrapped, and the score and run time carry on.
+
+**Pause menu.** Escape pauses while the game is being played and resumes again (`PauseMenu`). The screen (`PauseView`, built by `ScreensPresenter` like the title and results screens) has Resume, Restart from checkpoint (with the restarts left, greyed out at 0), Restart game, and Sound and Music sliders. The recall screen is the same view with Restart from checkpoint, Restart game and Give up; Escape does not close it. Both stop time and free the cursor.
+
+**Volumes** (`GameAudio`, in `Interfaces`). Sound and Music each run from 0 to 1, where 1 is the mixed level, and are kept in PlayerPrefs for the next run. Sound scales `GameSfx` (every gameplay effect), the voice blips and the cutscene alarm; Music scales the music sources. The M key's mute is separate and silences both.
+
+**How the UI reaches it.** The UI cannot see the default assembly, so the pause menu publishes itself as `IRunControl` (`RunControl.Current`, in `Interfaces`, like `GameClock`), and the views call it. `PlayerHealth` asks `IRunControl.OfferRestart` before ending the run.
+
+**Tests.** `CheckpointRestartTests` (PlayMode, from Bootstrap): each restart goes back to the checkpoint with full integrity at the room's entrance, the robots go home with no takedown scored, the safe moment, the pause menu's restart using one, no restart left (the button greyed out and a recall ending the run), Give up, and the sliders setting the volumes. `GameAudioTests` (EditMode): the range, the saving and the change event.
+
 ## 7. Decision log
 
 | Date | Decision | Alternatives considered | Because | Owner |
@@ -984,6 +1011,9 @@ This is what makes the props read as a toy factory when the player uses them, an
 | 2026-10-19 | The belt brings every crate whose middle is over it up to belt speed along it; the pressure plate and its stop are as wide as the belt (2.2 m) and the plate's top is slick | Friction only; a narrow plate | A crate overhanging the belt's edge rested on the slick edge plate, a hair higher than the belt, and stopped, and so did every crate as its front went over the far end, short of the plate. Off-centre crates also missed the 1.2 m plate | S1 |
 | 2026-10-19 | The Guard shoots only with a clear line at its muzzle (0.85 m) as well as its chest, fires from a peek only once out on the peek cell, peeks from alternating sides, ducks back when the player fires with the aim on it (and gives up a cover where it is caught twice), peeks early when the player looks away, takes no cover within 1.2 m of a task prop, and gives up a cover after three shots that did the player no harm; the weapon holds fire when the real line from the muzzle is blocked | Keep judging sight at the chest; keep the fixed peek rhythm; let blocked shots fly | Play-tested: its shots hit low cover in front of it (the cannon is lower than the chest) and it hid at the Painting Room terminal. The same actions (move, peek, shoot) used with better judgement make it a harder opponent without more health or damage. Measured: 11 of 26 shots landed with the brain changes alone, 17 of 17 with the weapon check too (`GuardAccuracyEvidenceTests`) | S4 (`AgentWeapon`) |
 | 2026-10-19 | In cover the Guard walks on to within 0.12 m of the cover cell's centre, and once it has stood still for 0.25 s it checks the spot it really stands on and gives up a cover that leaves it in view (until the player moves); a cover that also hides its head scores 0.1 more | Count as arrived at 0.5 m; judge cover at the cell's centre only | Asked: is it hiding fully? Measured (`GuardCoverEvidenceTests`): its body was in view 39% of its time in cover, then 24-31% at the centre, because its wide capsule rests 0.2-0.3 m off a cell that hugs the obstacle. Now 7%. It fires less often (10-12 shots in 48 s instead of 17-20), all landing. Its head still shows over crate-height cover | (none) |
+| 2026-10-19 | A checkpoint at the start of each chapter, and three restarts a game. Going back uses one (after a recall or from the pause menu) and puts the player at the room's entrance, healed and safe for 2 s, with the robots sent back to their posts; restarting the game gives all three back | Reload the scenes and replay the journey up to the chapter; unlimited restarts; restarts only after a recall | The props keep their own state, so a reload would show pulled levers up again and bring scrapped Saboteurs back, and it takes seconds. Sending the robots home (not a takedown, so no points) gives the player a fair start without touching the props or the score. A fixed number keeps a recall meaningful, and counting the pause menu's restart too stops it being a free reset | S4 |
+| 2026-10-19 | The sound and music volumes are two settings in `Interfaces` (`GameAudio`), saved in PlayerPrefs, that each sound multiplies in; the pause and recall screens are a UI view that calls the pause menu through `IRunControl` | An AudioMixer; one master volume (`AudioListener.volume`); the pause screen drawn by the pause menu | Only four places play sound, so a multiplier is a one-line change in each and needs no mixer asset. `AudioListener.volume` is already the M key's mute and scales the music too, so it cannot set the two apart. The UI cannot see the default assembly, so the bridge sits in `Interfaces`, as `GameClock` does | S4 |
+| 2026-10-19 | The intro's close-up on the Tracker films it from the south-east (from (7.4, 1.2, 12.9) to (6.6, 1.05, 13.15), both looking at (4.2, 0.75, 13.8)) | Move the Tracker's spawn or the crate | S2's pushable crate `Crate_1` at (4.5, 0.5, 15), 1.75 m wide, overlaps the Tracker's spawn at (4, 0, 14), and the old camera east of it showed the crate covering half the Tracker, with an ear inside it. From the south-east the crate is beside and behind it. Only the camera was asked to change; the spawn and the crate are other owners' layout | S4 |
 
 ## 8. Greybox character model contract (S3)
 

@@ -44,6 +44,8 @@ Four chapters in a fixed order: Assembly Floor, Painting Room, Storage Area, Con
 | Esc | Pause; in a cutscene, skip it |
 | Space, E or left click | In a cutscene, finish the line and go to the next |
 
+The pause menu has Resume, Restart from checkpoint, Restart game, and Sound and Music volume sliders (kept for the next run). Each room's start is a checkpoint (after Room 1, Room 2 and Room 3). A game has three restarts: going back to the checkpoint uses one, after being recalled or from the pause menu, and Restart game gives all three back. Recalled with none left, the run ends.
+
 Debug keys:
 
 | Input | Action | Where |
