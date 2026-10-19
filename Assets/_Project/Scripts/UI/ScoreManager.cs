@@ -4,6 +4,23 @@ using ToyFactory.Interfaces;
 
 namespace ToyFactory.UI
 {
+    /// <summary>The run's numbers at a checkpoint, carried over a restart that reloads the scenes.</summary>
+    public sealed class ScoreCheckpoint
+    {
+        public ScoreRules Rules { get; }
+        public int ChaptersReached { get; }
+        public int ShotsFired { get; }
+        public int ShotsHit { get; }
+
+        public ScoreCheckpoint(ScoreRules rules, int chaptersReached, int shotsFired, int shotsHit)
+        {
+            Rules = rules;
+            ChaptersReached = chaptersReached;
+            ShotsFired = shotsFired;
+            ShotsHit = shotsHit;
+        }
+    }
+
     /// <summary>How a run ended.</summary>
     public enum RunOutcome
     {
@@ -52,6 +69,8 @@ namespace ToyFactory.UI
         float _runEnd;
         int _shotsFired;
         int _shotsHit;
+        int _shotsFiredBefore;   // shots kept at the checkpoint after a restart; the player counts from 0 again
+        int _shotsHitBefore;
 
         /// <summary>The score manager in the loaded scenes, or null before it wakes.</summary>
         public static ScoreManager Current { get; private set; }
@@ -154,11 +173,40 @@ namespace ToyFactory.UI
                 _rules.BatteryPickedUp(Now);
         }
 
-        /// <summary>Sets the run's blaster shots fired and hit, for the accuracy bonus.</summary>
+        /// <summary>
+        /// Sets the run's blaster shots fired and hit, for the accuracy bonus. The player counts
+        /// from 0 again after a restart from a checkpoint, so the shots kept at the checkpoint are added.
+        /// </summary>
         public void ReportShots(int fired, int hit)
         {
-            _shotsFired = Mathf.Max(0, fired);
-            _shotsHit = Mathf.Clamp(hit, 0, _shotsFired);
+            _shotsFired = _shotsFiredBefore + Mathf.Max(0, fired);
+            _shotsHit = Mathf.Clamp(_shotsHitBefore + Mathf.Max(0, hit), 0, _shotsFired);
+        }
+
+        /// <summary>The run's numbers now, kept at a checkpoint (the start of a chapter).</summary>
+        public ScoreCheckpoint SaveCheckpoint() => new ScoreCheckpoint(_rules.Copy(), ChaptersReached, _shotsFired, _shotsHit);
+
+        /// <summary>
+        /// Carries a run on after a restart from a checkpoint reloaded the scenes: the score and
+        /// shots go back to <paramref name="saved"/>, and the run time carries on from
+        /// <paramref name="runSeconds"/>, so the attempt that was lost still counts as time.
+        /// </summary>
+        public void RestoreCheckpoint(ScoreCheckpoint saved, float runSeconds)
+        {
+            if (saved == null)
+                return;
+            TrackClock();
+            _rules.CopyFrom(saved.Rules);
+            _running = true;
+            _shutdown = false;
+            Outcome = RunOutcome.None;
+            ChaptersReached = Mathf.Max(ChaptersReached, saved.ChaptersReached);
+            _shotsFiredBefore = saved.ShotsFired;
+            _shotsHitBefore = saved.ShotsHit;
+            _shotsFired = saved.ShotsFired;
+            _shotsHit = saved.ShotsHit;
+            _runStart = Now - Mathf.Max(0f, runSeconds);
+            _runEnd = _runStart;
         }
 
         /// <summary>The run's numbers for the Results screen. A run that has not ended reads as a recall.</summary>
@@ -174,6 +222,8 @@ namespace ToyFactory.UI
             _shutdown = false;
             _shotsFired = 0;
             _shotsHit = 0;
+            _shotsFiredBefore = 0;
+            _shotsHitBefore = 0;
             Outcome = RunOutcome.None;
             ChaptersReached = 0;
             _runStart = Now;

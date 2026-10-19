@@ -305,6 +305,40 @@ namespace ToyFactory.UI
         }
 
         /// <summary>Starts a new run: score, combo, repeat counts and the one-off bonuses are cleared.</summary>
+        /// <summary>A copy of the run so far, kept at a checkpoint.</summary>
+        public ScoreRules Copy()
+        {
+            var copy = new ScoreRules();
+            copy.CopyFrom(this);
+            return copy;
+        }
+
+        /// <summary>
+        /// Takes on every number of <paramref name="other"/>: the score, the history, the
+        /// takedowns and the bonuses already given, for a restart from a checkpoint. The combo
+        /// chain starts again, because it is kept in game time, which restarts with the scenes.
+        /// </summary>
+        public void CopyFrom(ScoreRules other)
+        {
+            if (other == null || other == this)
+                return;
+            _history.Clear();
+            _history.AddRange(other._history);
+            _takedownsPerAgent.Clear();
+            foreach (KeyValuePair<int, int> agent in other._takedownsPerAgent)
+                _takedownsPerAgent[agent.Key] = agent.Value;
+            _destroyedSaboteurs.Clear();
+            _destroyedSaboteurs.UnionWith(other._destroyedSaboteurs);
+            Array.Copy(other._byReason, _byReason, _byReason.Length);
+            Score = other.Score;
+            Takedowns = other.Takedowns;
+            _allSaboteursAwarded = other._allSaboteursAwarded;
+            _won = other._won;
+            Combo = 1;
+            _hasTakedown = false;
+            _lastTakedownTime = 0f;
+        }
+
         public void Reset()
         {
             _history.Clear();
