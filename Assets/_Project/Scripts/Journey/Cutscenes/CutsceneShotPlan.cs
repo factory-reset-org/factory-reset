@@ -114,8 +114,10 @@ namespace ToyFactory.Journey.Cutscenes
             // Unit 047 fails its quality check, Pip calls in. Agents are at their spawns.
             new CutsceneShot("intro", 0, "Wide high shot across the Assembly Floor", ShotRoom.Assembly, ShotFraming.World,
                 new Vector3(18.5f, 4.6f, 2f), new Vector3(17f, 4.3f, 3.5f), new Vector3(5f, 0.5f, 16f), new Vector3(5f, 0.5f, 14.5f), 60f),
+            // From the south-east, so the pushable crate beside the spawn (Crate_1, which the
+            // Tracker starts against) sits behind it instead of covering half of it.
             new CutsceneShot("intro", 1, "Close-up on the Tracker at its spawn", ShotRoom.Assembly, ShotFraming.World,
-                new Vector3(7.6f, 1.2f, 14.6f), new Vector3(6.8f, 1.05f, 14.4f), new Vector3(4f, 0.7f, 14f), new Vector3(4f, 0.7f, 14f), 50f),
+                new Vector3(7.4f, 1.2f, 12.9f), new Vector3(6.6f, 1.05f, 13.15f), new Vector3(4.2f, 0.75f, 13.8f), new Vector3(4.2f, 0.75f, 13.8f), 50f),
             new CutsceneShot("intro", 2, "Low shot of the Guard from in front, at its spawn", ShotRoom.Painting, ShotFraming.World,
                 new Vector3(31.8f, 1.7f, 11.9f), new Vector3(31.4f, 1.6f, 12.6f), new Vector3(31f, 1.5f, 15f), new Vector3(31f, 1.6f, 15f), 50f),
             new CutsceneShot("intro", 3, "Saboteur B at its spawn by the pressure plate", ShotRoom.Assembly, ShotFraming.World,
