@@ -7,10 +7,13 @@ using ToyFactory.Interfaces;
 namespace ToyFactory.UI
 {
     /// <summary>
-    /// Shows the title screen while the game is in <see cref="GameState.Title"/> and the Results
-    /// screen once it reaches <see cref="GameState.Results"/>. Start asks the game clock for Playing;
-    /// Play again reloads the Bootstrap scene; Quit leaves the game. Built by <see cref="HudPresenter"/>
-    /// in code, like the HUD, so <c>UI.unity</c> needs no new objects.
+    /// Shows the title screen while the game is in <see cref="GameState.Title"/>, the Results
+    /// screen once it reaches <see cref="GameState.Results"/>, and the pause screen (or the recall
+    /// screen, after a recall with a restart left) while <see cref="GameState.Paused"/>. Start asks
+    /// the game clock for Playing; Play again reloads the Bootstrap scene; Quit leaves the game; the
+    /// pause screen's choices go to <see cref="IRunControl"/>. It also owns the "checkpoint saved"
+    /// note. Built by <see cref="HudPresenter"/> in code, like the HUD, so <c>UI.unity</c> needs no
+    /// new objects.
     /// </summary>
     /// <remarks>
     /// <para><b>It polls the state</b> instead of listening, so a clock that is replaced (a new
@@ -37,11 +40,15 @@ namespace ToyFactory.UI
         {
             None,
             Title,
-            Results
+            Results,
+            Pause
         }
 
         TitleView _title;
         ResultsView _results;
+        PauseView _pause;
+        CheckpointToastView _checkpointToast;
+        bool _pauseShowsRecall;
         Leaderboard _board;
         IGameClock _clock;
         Screen _screen;
@@ -52,6 +59,12 @@ namespace ToyFactory.UI
 
         /// <summary>The results screen, for tests.</summary>
         public ResultsView Results => _results;
+
+        /// <summary>The pause and recall screen, for tests.</summary>
+        public PauseView Pause => _pause;
+
+        /// <summary>The "checkpoint saved" note, for tests.</summary>
+        public CheckpointToastView CheckpointToast => _checkpointToast;
 
         /// <summary>The leaderboard the Results screen reads and writes.</summary>
         public Leaderboard Board => _board;
@@ -78,6 +91,20 @@ namespace ToyFactory.UI
             _results.Build(sortingOrder);
             _results.PlayAgainRequested += HandlePlayAgain;
             _results.QuitRequested += HandleQuit;
+
+            var pauseObject = new GameObject("Pause");
+            pauseObject.transform.SetParent(transform, false);
+            _pause = pauseObject.AddComponent<PauseView>();
+            _pause.Build(sortingOrder);
+            _pause.ResumeRequested += HandleResume;
+            _pause.CheckpointRequested += HandleCheckpoint;
+            _pause.RestartRequested += HandleRestartGame;
+            _pause.GiveUpRequested += HandleGiveUp;
+
+            var toastObject = new GameObject("Checkpoint Toast");
+            toastObject.transform.SetParent(transform, false);
+            _checkpointToast = toastObject.AddComponent<CheckpointToastView>();
+            _checkpointToast.Build(sortingOrder - 15);   // under the screens, over the HUD
         }
 
         void OnDestroy()
@@ -88,6 +115,13 @@ namespace ToyFactory.UI
             {
                 _results.PlayAgainRequested -= HandlePlayAgain;
                 _results.QuitRequested -= HandleQuit;
+            }
+            if (_pause != null)
+            {
+                _pause.ResumeRequested -= HandleResume;
+                _pause.CheckpointRequested -= HandleCheckpoint;
+                _pause.RestartRequested -= HandleRestartGame;
+                _pause.GiveUpRequested -= HandleGiveUp;
             }
         }
 
@@ -100,13 +134,20 @@ namespace ToyFactory.UI
 
             // No clock means no game around the UI (a test scene): show nothing, like the HUD's default.
             GameState state = clock != null ? clock.State : GameState.Playing;
-            Screen wanted = state == GameState.Title ? Screen.Title : state == GameState.Results ? Screen.Results : Screen.None;
+            Screen wanted = state == GameState.Title ? Screen.Title
+                : state == GameState.Results ? Screen.Results
+                : state == GameState.Paused ? Screen.Pause
+                : Screen.None;
             _titleFrames = wanted == Screen.Title ? _titleFrames + 1 : 0;
             if (wanted == Screen.Title && _screen != Screen.Title && _titleFrames < TitleSettleFrames)
                 return;
 
-            if (wanted != _screen)
+            IRunControl run = RunControl.Current;
+            bool recalled = run != null && run.IsRecalled;
+            if (wanted != _screen || (wanted == Screen.Pause && recalled != _pauseShowsRecall))
                 Switch(wanted);
+            else if (_screen == Screen.Pause)
+                _pause.Refresh(run);
         }
 
         void Switch(Screen next)
@@ -121,6 +162,15 @@ namespace ToyFactory.UI
                 _results.Show(CurrentSummary(), _board);
             else
                 _results.Hide();
+
+            if (next == Screen.Pause)
+            {
+                IRunControl run = RunControl.Current;
+                _pauseShowsRecall = run != null && run.IsRecalled;
+                _pause.Show(_pauseShowsRecall, run);
+            }
+            else
+                _pause.Hide();
 
             if (next != Screen.None)
             {
@@ -155,6 +205,15 @@ namespace ToyFactory.UI
             if (Application.CanStreamedLevelBeLoaded(BootstrapScene))
                 SceneManager.LoadScene(BootstrapScene);
         }
+
+        // The pause screen's choices go to the run control; with none (a test scene) they do nothing.
+        static void HandleResume() => RunControl.Current?.Resume();
+
+        static void HandleCheckpoint() => RunControl.Current?.RestartFromCheckpoint();
+
+        static void HandleRestartGame() => RunControl.Current?.RestartGame();
+
+        static void HandleGiveUp() => RunControl.Current?.GiveUp();
 
         static void HandleQuit()
         {
