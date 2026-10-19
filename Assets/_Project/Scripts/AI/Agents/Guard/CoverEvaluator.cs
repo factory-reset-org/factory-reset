@@ -20,6 +20,9 @@ namespace ToyFactory.AI.Agents.Guard
         /// one to shoot from if the line at this height is clear too: chest height alone let low cover take the shot.
         /// </summary>
         public const float MuzzleHeight = 0.85f;
+
+        /// <summary>Height of the Guard's head (the model is 2.4 m tall): a cover that hides it here hides it whole.</summary>
+        public const float HeadHeight = 2.0f;
         public const float MaxSearchRange = 15f;
 
         public const float ProtectionWeight = 0.40f;

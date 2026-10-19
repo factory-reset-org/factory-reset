@@ -84,10 +84,13 @@ namespace ToyFactory.AI.Agents.Guard
             {
                 base.Enter(b);
                 b._holdUntil = b.Now + b._holdTime;
-                if (b.ArrivedAt(b._coverCell))
+                // Arriving counts from half a metre out, a whole cell: stopping there left it a cell short of
+                // the cover, on the open side, in view 39% of the time in the Painting Room. It walks on to the
+                // cover's centre, where the cover was judged, and only then stands still.
+                if (b.SettledOn(b._coverCell))
                     b.StopMoving();
                 else
-                    b.MoveTo(b._coverCell, BaseCostModel.Instance);   // stepping back from the peek cell
+                    b.MoveTo(b._coverCell, BaseCostModel.Instance);
             }
 
             public override void Tick(GuardBrain b)

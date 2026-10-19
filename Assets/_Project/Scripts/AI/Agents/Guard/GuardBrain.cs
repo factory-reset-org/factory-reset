@@ -81,6 +81,10 @@ namespace ToyFactory.AI.Agents.Guard
         public const float UnderFireWindow = 0.35f;                    // a shot this recent counts as firing now
         public const int CaughtPeeksBeforeMoving = 2;                  // ducked this often at one cover: find another
         public const int WastedShotsBeforeMoving = 3;                  // shots that did no harm in a row: find another
+        public const float SettleRadius = 0.12f;                       // in cover it stands this close to the centre
+        public const float TallCoverBonus = 0.1f;                      // cover that also hides its head is preferred
+        public const float StillBeforeCheck = 0.25f;                   // stood still this long: check the real spot
+        public const float StillTolerance = 0.05f;                     // moved less than this counts as standing still
         public const float QuietTimeBeforePeek = 1.5f;   // high battery: peek only after the player stops firing
 
         // Distances.
@@ -189,8 +193,11 @@ namespace ToyFactory.AI.Agents.Guard
         Vector2Int _peekCell;
         bool _hasPeekCell;
         int _caughtPeeks;
-        Vector2Int _burnedCover;
-        bool _hasBurnedCover;
+        readonly HashSet<Vector2Int> _burnedCovers = new HashSet<Vector2Int>();
+
+        // Where it last stopped moving, to tell when it stands still in cover.
+        Vector3 _lastPosition;
+        float _movedAt;
         float _peekStartedAt;
 
         // Shots from here that did the player no harm in a row (blocked, or the weapon held fire on a blocked line).
@@ -457,7 +464,7 @@ namespace ToyFactory.AI.Agents.Guard
                 _wantPeekCover = false;
                 _pushForShot = false;
                 _caughtPeeks = 0;
-                _hasBurnedCover = false;
+                _burnedCovers.Clear();
                 return;
             }
 
@@ -480,8 +487,20 @@ namespace ToyFactory.AI.Agents.Guard
             if (playerMoved)
             {
                 _wantPeekCover = false;   // new ground: any cover may do again
-                _hasBurnedCover = false;
+                _burnedCovers.Clear();
                 _caughtPeeks = 0;
+            }
+
+            // Cover is judged at the cell's centre, but a cover cell hugs its obstacle and the Guard's capsule is
+            // wide: it can come to rest a third of a metre off the centre, where the player sees it (31% of the
+            // in-cover time in the Painting Room). Once it stands still in cover it checks the spot it is really
+            // on, and gives up a cover that leaves it showing.
+            TrackStillness();
+            if (!exposed && _hasCover && _machine.Current == _inCover && Now - _movedAt >= StillBeforeCheck
+                && ShowsWhereItStands())
+            {
+                _burnedCovers.Add(_coverCell);
+                _evaluateNow = true;
             }
 
             if (_evaluateNow || tierChanged || exposed || playerMoved || Now >= _nextCoverTime)
@@ -592,7 +611,7 @@ namespace ToyFactory.AI.Agents.Guard
         // A cover cell another agent has reserved is not on offer, nor is one outside the room.
         bool IsAvailable(Vector2Int cell)
         {
-            if (_hasBurnedCover && cell == _burnedCover)
+            if (_burnedCovers.Contains(cell))
                 return false;
             if (_home != null && !_home.AllowsCover(_grid.CellToWorld(cell)))
                 return false;
@@ -641,7 +660,7 @@ namespace ToyFactory.AI.Agents.Guard
                     continue;
                 if (!TryPathCost(candidate.Cell, out float cost))
                     continue;
-                float score = _evaluator.Score(candidate, playerCell, _idealRange, cost, MaxPathCost);
+                float score = _evaluator.Score(candidate, playerCell, _idealRange, cost, MaxPathCost) + TallBonus(candidate.Cell);
                 _scored.Add(new ScoredCover(candidate, cost, score));
                 if (!found || score > bestScore)
                 {
@@ -657,7 +676,7 @@ namespace ToyFactory.AI.Agents.Guard
                 bool costed = TryGetScored(current.Cell, out float currentScore);
                 if (!costed && TryPathCost(current.Cell, out float currentCost))
                 {
-                    currentScore = _evaluator.Score(current, playerCell, _idealRange, currentCost, MaxPathCost);
+                    currentScore = _evaluator.Score(current, playerCell, _idealRange, currentCost, MaxPathCost) + TallBonus(current.Cell);
                     _scored.Add(new ScoredCover(current, currentCost, currentScore));
                     costed = true;
                 }
@@ -786,13 +805,17 @@ namespace ToyFactory.AI.Agents.Guard
             _caughtPeeks++;
             if (_caughtPeeks >= CaughtPeeksBeforeMoving && _hasCover)
             {
-                _burnedCover = _coverCell;
-                _hasBurnedCover = true;
+                _burnedCovers.Add(_coverCell);
                 _caughtPeeks = 0;
                 _evaluateNow = true;
             }
             return true;
         }
+
+        // The Guard is 2.4 m tall and most cover is lower, so its head shows over a crate. A cover that hides its
+        // head too (a wall end, a tall shelf or tank) is worth a little more when choosing between good ones.
+        float TallBonus(Vector2Int cell) =>
+            _visibility.IsBlocked(cell, CoverEvaluator.HeadHeight) ? TallCoverBonus : 0f;
 
         /// <summary>True once it stands on its peek cell (or has none and peeks from where it is).</summary>
         bool AtPeekCell() => !_hasPeekCell || ArrivedAt(_peekCell);
@@ -864,8 +887,7 @@ namespace ToyFactory.AI.Agents.Guard
 
             if (_wastedShots >= WastedShotsBeforeMoving && _hasCover)
             {
-                _burnedCover = _coverCell;
-                _hasBurnedCover = true;
+                _burnedCovers.Add(_coverCell);
                 _wastedShots = 0;
                 _healthAtLastShot = -1f;
                 _evaluateNow = true;
@@ -920,6 +942,29 @@ namespace ToyFactory.AI.Agents.Guard
         /// <summary>Arrival by distance, never by cell: the body stops short of the last waypoint.</summary>
         bool ArrivedAt(Vector2Int cell) =>
             FlatDistance(_ctx.Position, _grid.CellToWorld(cell)) <= ArrivalRadius;
+
+        /// <summary>True when it stands on the cell's centre, not just near it: where a cover was judged.</summary>
+        void TrackStillness()
+        {
+            if ((_ctx.Position - _lastPosition).sqrMagnitude > StillTolerance * StillTolerance)
+            {
+                _lastPosition = _ctx.Position;
+                _movedAt = Now;
+            }
+        }
+
+        // The player can see its knee where it really stands, or its chest behind a cover judged to hide the chest.
+        bool ShowsWhereItStands()
+        {
+            Vector3 feet = _ctx.Position;
+            if (!_visibility.IsBlockedAt(feet + Vector3.up * CoverEvaluator.LowCoverHeight))
+                return true;
+            return _visibility.IsBlocked(_coverCell, CoverEvaluator.ChestHeight)
+                && !_visibility.IsBlockedAt(feet + Vector3.up * CoverEvaluator.ChestHeight);
+        }
+
+        bool SettledOn(Vector2Int cell) =>
+            FlatDistance(_ctx.Position, _grid.CellToWorld(cell)) <= SettleRadius;
 
         static float FlatDistance(Vector3 a, Vector3 b)
         {
