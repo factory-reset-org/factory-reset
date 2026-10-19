@@ -12,14 +12,18 @@ namespace ToyFactory.Editor
     /// <summary>
     /// One-click Windows build of the scenes in the Build Settings, from
     /// <b>Factory Reset / Build / Windows Player</b>. It writes to
-    /// <c>Builds/Windows/ToyFactoryRevolt.exe</c> (git-ignored) and appends a row to
+    /// <c>Builds/Windows/FactoryReset.exe</c> (git-ignored) and appends a row to
     /// <c>Docs/BuildLog.md</c> with the date, version, result, size, time and the number of
     /// warnings and errors, so every weekly build leaves its evidence without anyone typing it.
     /// </summary>
     public static class WindowsBuild
     {
         const string OutputFolder = "Builds/Windows";
-        const string ExecutableName = "ToyFactoryRevolt.exe";
+        const string ExecutableName = "FactoryReset.exe";
+
+        // Builds before 19 October were named after the plan's working title. Their exe and
+        // folders (_Data, _BackUpThisFolder...) are removed so they are not shipped beside the new ones.
+        const string OldBuildPrefix = "ToyFactoryRevolt";
         const string LogPath = "Docs/BuildLog.md";
 
         const string LogHeader =
@@ -42,6 +46,7 @@ namespace ToyFactory.Editor
             string projectRoot = Path.GetDirectoryName(Application.dataPath);
             string folder = Path.Combine(projectRoot, OutputFolder);
             Directory.CreateDirectory(folder);
+            RemoveOldBuild(folder);
             string exe = Path.Combine(folder, ExecutableName);
 
             var options = new BuildPlayerOptions
@@ -60,6 +65,15 @@ namespace ToyFactory.Editor
                 Debug.Log($"Windows build succeeded: {exe} ({summary.totalSize / 1048576.0:0.0} MB, {summary.totalTime.TotalSeconds:0} s). Row added to {LogPath}.");
             else
                 Debug.LogError($"Windows build {summary.result}: {summary.totalErrors} errors. Row added to {LogPath}.");
+        }
+
+        // Only entries named after the old title go; anything else in the folder is left alone.
+        static void RemoveOldBuild(string folder)
+        {
+            foreach (string directory in Directory.GetDirectories(folder, OldBuildPrefix + "*"))
+                Directory.Delete(directory, true);
+            foreach (string file in Directory.GetFiles(folder, OldBuildPrefix + "*"))
+                File.Delete(file);
         }
 
         static void AppendLog(BuildSummary summary, int scenes, string projectRoot)
