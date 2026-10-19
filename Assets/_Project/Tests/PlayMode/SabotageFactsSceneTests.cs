@@ -123,10 +123,15 @@ namespace ToyFactory.Tests
 
             SabotageFact trap = FirstOf(board, SabotageFactKind.Trap);
             SabotageFact battery = FirstOf(board, SabotageFactKind.Battery);
-            Assert.IsTrue(trap.Available, "traps start disarmed");
+            // Traps start armed (19 October); the player disarms one, and the fact shows it can be armed again.
+            Assert.IsFalse(trap.Available, "traps start armed");
+            Assert.IsTrue(SabotageTargets.TryGet(SabotageKind.Trap, trap.Id, out ISabotageable trapTarget, out Transform trapAt));
+            Component trapProp = trapAt.GetComponent("Trap");
+            trapProp.GetType().GetMethod("Interact").Invoke(trapProp, null);
+            yield return Until(() => Has(board, SabotageFactKind.Trap, trap.Id, out SabotageFact safe) && safe.Available,
+                5f, "the disarmed trap to read available");
             int before = board.SabotageFacts.Count;
 
-            Assert.IsTrue(SabotageTargets.TryGet(SabotageKind.Trap, trap.Id, out ISabotageable trapTarget, out _));
             trapTarget.Execute();
             Assert.IsTrue(SabotageTargets.TryGet(SabotageKind.Battery, battery.Id, out ISabotageable batteryTarget, out _));
             batteryTarget.Execute();
