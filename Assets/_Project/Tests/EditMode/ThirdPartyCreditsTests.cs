@@ -52,11 +52,35 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void TheLinesAreOnePerCreditThenTheThankYou()
+        public void TheLinesAreOnePerCreditThenTheThankYouThenTheMusic()
         {
             string[] lines = ThirdPartyCredits.Lines().ToArray();
-            Assert.AreEqual(ThirdPartyCredits.Attribution.Count + 1, lines.Length);
-            Assert.AreEqual(ThirdPartyCredits.CourtesyLine, lines[lines.Length - 1]);
+            int models = ThirdPartyCredits.Attribution.Count;
+            Assert.AreEqual(models + 4, lines.Length);
+            Assert.AreEqual(ThirdPartyCredits.CourtesyLine, lines[models]);
+            Assert.AreEqual(ThirdPartyCredits.MusicLine, lines[models + 1]);
+            Assert.AreEqual(ThirdPartyCredits.MusicTracksLine, lines[models + 2]);
+            Assert.AreEqual(ThirdPartyCredits.MusicCourtesyLine, lines[models + 3]);
+        }
+
+        [Test]
+        public void TheMusicCreditNamesEricMatyasHisSiteAndEveryOneOfHisTracksInTheReadme()
+        {
+            // His terms: "Music by Eric Matyas" and "www.soundimage.org" in the game's credits, with
+            // the titles of his tracks when other composers' music is used too.
+            StringAssert.Contains("Music by Eric Matyas", ThirdPartyCredits.MusicLine);
+            StringAssert.Contains("www.soundimage.org", ThirdPartyCredits.MusicLine);
+            string[] rows = Readme("Music").Split('\n').Where(l => l.StartsWith("| ") && l.Contains("| Eric Matyas |")).ToArray();
+            Assert.IsNotEmpty(rows, "The music README lists his tracks.");
+            foreach (string row in rows)
+            {
+                string title = row.Split('|')[3].Trim().Replace(" (looping)", "").Replace(" (v2)", "");
+                StringAssert.Contains(title, ThirdPartyCredits.MusicTracksLine, "His track " + title + " is named in the game.");
+            }
+
+            // Every other composer in the README is CC0 and thanked.
+            foreach (string row in Readme("Music").Split('\n').Where(l => l.StartsWith("| ") && l.Contains("| CC0 1.0 |")))
+                StringAssert.Contains(row.Split('|')[4].Trim(), ThirdPartyCredits.MusicCourtesyLine);
         }
     }
 }

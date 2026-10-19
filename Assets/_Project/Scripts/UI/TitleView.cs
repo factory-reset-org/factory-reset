@@ -96,11 +96,11 @@ namespace ToyFactory.UI
         static void BuildCredits(Transform root)
         {
             Text heading = HudWidgets.Label("Credits Heading", root, ThirdPartyCredits.Heading, 20, HudWidgets.Mint, TextAnchor.LowerLeft);
-            HudWidgets.Place(heading.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(40f, 168f), new Vector2(760f, 28f));
+            HudWidgets.Place(heading.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(40f, 222f), new Vector2(760f, 28f));
 
             Text credits = HudWidgets.Label("Credits", root, string.Join("\n", ThirdPartyCredits.Lines()), 20, HudWidgets.InkDim,
                 TextAnchor.LowerLeft, FontStyle.Normal);
-            HudWidgets.Place(credits.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(40f, 30f), new Vector2(760f, 136f));
+            HudWidgets.Place(credits.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(40f, 30f), new Vector2(760f, 190f));
         }
 
         // Two columns of keys and what they do, on one panel.
