@@ -7,8 +7,9 @@ namespace ToyFactory.Player
 {
     /// <summary>
     /// The player's health ("integrity"). Agents' shots arrive here through
-    /// <see cref="IPlayerState.TakeDamage"/>. At zero the player is recalled: the run ends
-    /// and the game goes to the Results state.
+    /// <see cref="IPlayerState.TakeDamage"/>. At zero the player is recalled: with a restart
+    /// left the run waits for the player to go back to the checkpoint (<see cref="IRunControl"/>);
+    /// otherwise the run ends and the game goes to the Results state.
     /// </summary>
     public sealed class PlayerHealth : MonoBehaviour
     {
@@ -27,6 +28,7 @@ namespace ToyFactory.Player
         const float HurtSoundThreshold = 4f;
 
         float _lastDamageAt = float.NegativeInfinity;
+        float _safeUntil = float.NegativeInfinity;
 
         public float Current { get; private set; }
 
@@ -73,9 +75,23 @@ namespace ToyFactory.Player
             return true;
         }
 
+        /// <summary>
+        /// Back to full integrity for a restart from the checkpoint, and safe from hits for
+        /// <paramref name="safeSeconds"/> of game time, so the player can get their bearings.
+        /// </summary>
+        public void Revive(float safeSeconds)
+        {
+            Current = maxHealth;
+            _lastDamageAt = float.NegativeInfinity;
+            _safeUntil = Now + Mathf.Max(0f, safeSeconds);
+        }
+
+        /// <summary>True while hits do nothing after a <see cref="Revive"/>.</summary>
+        public bool IsSafe => Now < _safeUntil;
+
         public void TakeDamage(float amount, int sourceAgentId)
         {
-            if (!IsAlive || amount <= 0f)
+            if (!IsAlive || amount <= 0f || IsSafe)
                 return;
 
             // A shot already in the air when a cutscene or pause begins does no harm.
@@ -93,6 +109,9 @@ namespace ToyFactory.Player
                 return;
 
             OnDied?.Invoke(sourceAgentId);
+            IRunControl run = RunControl.Current;
+            if (run != null && run.OfferRestart())
+                return;
             clock?.RequestState(GameState.Results);
         }
     }
