@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -10,6 +11,7 @@ namespace ToyFactory.UI
     internal sealed class RoomBannerView
     {
         CanvasGroup _group;
+        RectTransform _plate;
         Text _text;
         string _room = string.Empty;
         float _shownAt = float.NegativeInfinity;
@@ -29,7 +31,8 @@ namespace ToyFactory.UI
         public void Build(Transform parent)
         {
             Image plate = HudWidgets.Plate("Room", parent);
-            HudWidgets.Place(plate.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -32f), new Vector2(600f, 76f));
+            HudWidgets.Place(plate.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -32f), new Vector2(640f, 76f));
+            _plate = plate.rectTransform;
             _group = plate.gameObject.AddComponent<CanvasGroup>();
             _group.alpha = 0f;
             _group.blocksRaycasts = false;
@@ -41,6 +44,12 @@ namespace ToyFactory.UI
         }
 
         /// <summary>Announces a room. Ignored if it is the room already announced and still up.</summary>
+        public IEnumerable<KeyValuePair<string, RectTransform>> Rects()
+        {
+            if (_plate != null && _plate.gameObject.activeInHierarchy)
+                yield return new KeyValuePair<string, RectTransform>("Room", _plate);
+        }
+
         public void Show(string room)
         {
             if (string.IsNullOrEmpty(room) || _group == null)

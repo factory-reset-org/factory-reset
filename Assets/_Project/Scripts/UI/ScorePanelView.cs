@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Globalization;
 using UnityEngine;
 using UnityEngine.UI;
@@ -11,6 +12,7 @@ namespace ToyFactory.UI
     internal sealed class ScorePanelView
     {
         Text _score, _time, _combo;
+        RectTransform _plate;
         int _shownScore = -1;
         int _shownSecond = -1;
         int _shownCombo = -1;
@@ -28,17 +30,24 @@ namespace ToyFactory.UI
         {
             Image plate = HudWidgets.Plate("Score", parent);
             plate.gameObject.AddComponent<Canvas>();
+            _plate = plate.rectTransform;
             HudWidgets.Place(plate.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-32f, -32f), new Vector2(340f, 160f));
             Transform p = plate.transform;
 
-            Label(p, "SCORE", 18, HudWidgets.InkDim, TextAnchor.MiddleLeft, 22f, -12f, 160f, 24f);
-            _score = Label(p, "0", 56, HudWidgets.Sun, TextAnchor.MiddleLeft, 22f, -36f, 296f, 66f);
-            Label(p, "TIME", 18, HudWidgets.InkDim, TextAnchor.MiddleLeft, 22f, -108f, 80f, 30f);
-            _time = Label(p, "0:00", 28, HudWidgets.Ink, TextAnchor.MiddleLeft, 90f, -108f, 110f, 30f);
-            _combo = Label(p, string.Empty, 26, HudWidgets.Sun, TextAnchor.MiddleRight, 180f, -108f, 140f, 30f);
+            Label(p, "SCORE", HudWidgets.Caption, HudWidgets.InkDim, TextAnchor.MiddleLeft, HudWidgets.Pad, -12f, 160f, 24f);
+            _score = Label(p, "0", 56, HudWidgets.Sun, TextAnchor.MiddleLeft, HudWidgets.Pad, -36f, 292f, 66f);
+            Label(p, "TIME", HudWidgets.Caption, HudWidgets.InkDim, TextAnchor.MiddleLeft, HudWidgets.Pad, -108f, 70f, 30f);
+            _time = Label(p, "0:00", 28, HudWidgets.Ink, TextAnchor.MiddleLeft, 96f, -108f, 100f, 30f);
+            _combo = Label(p, string.Empty, HudWidgets.Body + 2, HudWidgets.Sun, TextAnchor.MiddleRight, 196f, -108f, 120f, 30f);
         }
 
         /// <summary>Redraws from the score manager; zeroes when there is none.</summary>
+        public IEnumerable<KeyValuePair<string, RectTransform>> Rects()
+        {
+            if (_plate != null && _plate.gameObject.activeInHierarchy)
+                yield return new KeyValuePair<string, RectTransform>("Score", _plate);
+        }
+
         public void Refresh(ScoreManager score)
         {
             int points = score != null ? score.Score : 0;

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using ToyFactory.Interfaces;
@@ -22,6 +23,7 @@ namespace ToyFactory.UI
         public const float FadeOutSeconds = 0.8f;
 
         CanvasGroup _group;
+        RectTransform _panelRect;
         Text _tag, _title, _subtitle;
         Image[] _nodes;
         Image[] _links;
@@ -60,15 +62,22 @@ namespace ToyFactory.UI
             _group.interactable = false;
 
             var panel = HudWidgets.Panel("Panel", root, HudWidgets.PlumPanel);
-            HudWidgets.Place(panel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -150f), new Vector2(800f, 230f));
+            _panelRect = panel.rectTransform;
+            HudWidgets.Place(panel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -150f), new Vector2(640f, 230f));
 
             Transform p = panel.transform;
             _tag = HudWidgets.Label("Tag", p, string.Empty, 26, HudWidgets.Mint, TextAnchor.MiddleCenter);
-            HudWidgets.Place(_tag.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -18f), new Vector2(760f, 34f));
+            HudWidgets.Place(_tag.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -18f), new Vector2(600f, 34f));
             _title = HudWidgets.Label("Title", p, string.Empty, 54, HudWidgets.Ink, TextAnchor.MiddleCenter);
-            HudWidgets.Place(_title.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -56f), new Vector2(780f, 66f));
+            _title.resizeTextForBestFit = true;
+            _title.resizeTextMinSize = 32;
+            _title.resizeTextMaxSize = 54;
+            HudWidgets.Place(_title.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -56f), new Vector2(620f, 66f));
             _subtitle = HudWidgets.Label("Subtitle", p, string.Empty, 26, HudWidgets.InkDim, TextAnchor.MiddleCenter, FontStyle.Normal);
-            HudWidgets.Place(_subtitle.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -124f), new Vector2(780f, 34f));
+            _subtitle.resizeTextForBestFit = true;
+            _subtitle.resizeTextMinSize = 20;
+            _subtitle.resizeTextMaxSize = 26;
+            HudWidgets.Place(_subtitle.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -124f), new Vector2(620f, 34f));
 
             // The route: four stops joined by three links, centred along the bottom of the card.
             int count = ChapterEvents.ChapterCount;
@@ -87,6 +96,12 @@ namespace ToyFactory.UI
                 _nodes[i] = HudWidgets.Panel("Stop " + (i + 1), p, HudWidgets.PlumLight, sprites.Circle);
                 HudWidgets.Place(_nodes[i].rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f), new Vector2(x, 28f), new Vector2(26f, 26f));
             }
+        }
+
+        internal IEnumerable<KeyValuePair<string, RectTransform>> Rects()
+        {
+            if (_panelRect != null && _panelRect.gameObject.activeInHierarchy)
+                yield return new KeyValuePair<string, RectTransform>("Chapter card", _panelRect);
         }
 
         /// <summary>Shows the card for a chapter, restarting it if it is already up.</summary>
