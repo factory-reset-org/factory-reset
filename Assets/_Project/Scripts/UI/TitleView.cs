@@ -22,6 +22,8 @@ namespace ToyFactory.UI
             new[] { "Q / Right click", "Throw a wind-up toy" },
             new[] { "E", "Interact" },
             new[] { "Shift", "Sprint" },
+            new[] { "Tab", "Fold the task list" },
+            new[] { "H", "Hide the key hints" },
             new[] { "Esc", "Pause" },
             new[] { "M", "Mute" }
         };
@@ -111,12 +113,12 @@ namespace ToyFactory.UI
         static void BuildControls(Transform root)
         {
             Image panel = HudWidgets.Panel("Controls", root, HudWidgets.PlumPanel);
-            HudWidgets.Place(panel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -30f), new Vector2(1000f, 470f));
+            HudWidgets.Place(panel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -40f), new Vector2(1000f, 490f));
 
             Text header = HudWidgets.Label("Header", panel.transform, "CONTROLS", 28, HudWidgets.Mint, TextAnchor.MiddleLeft);
             HudWidgets.Place(header.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(40f, -22f), new Vector2(400f, 36f));
 
-            const int perColumn = 5;
+            const int perColumn = 6;
             for (int i = 0; i < Controls.Length; i++)
             {
                 int column = i / perColumn;

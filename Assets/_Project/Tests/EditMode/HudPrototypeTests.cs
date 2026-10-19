@@ -228,7 +228,7 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void KeyHintsListTheKeysTheTitleScreenTeaches()
         {
-            foreach (string key in new[] { "E", "Q", "R", "Esc" })
+            foreach (string key in new[] { "E", "Q", "R", "Tab", "H", "Esc" })
                 StringAssert.Contains(key, HudMath.KeyHints);
         }
     }

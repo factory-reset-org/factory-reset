@@ -74,7 +74,7 @@ namespace ToyFactory.UI
         }
 
         /// <summary>The key hints along the bottom of the screen; they match the controls on the title screen.</summary>
-        public const string KeyHints = "E  Use      Q  Throw a toy      R  Reload      Esc  Pause";
+        public const string KeyHints = "E  Use     Q  Throw a toy     R  Reload     Tab  Tasks     H  Hints     Esc  Pause";
 
         /// <summary>The pulse of the glow behind the current task's box: opacity between 0.2 and 0.7 about once every 1.6 s.</summary>
         public static float GlowAlpha(float time) => 0.45f + 0.25f * Mathf.Sin(time * 4f);
