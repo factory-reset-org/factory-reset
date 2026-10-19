@@ -89,7 +89,7 @@ namespace ToyFactory.Tests.EditMode
         [TestCase("M_Char_Blue", "#3A6CF4")]
         [TestCase("M_Char_Steel", "#B8C4D6")]
         [TestCase("M_Char_Black", "#1D1A2A")]
-        [TestCase("M_Char_SaboteurBody", "#8F6BFF")]
+        [TestCase("M_Char_SaboteurBody", "#FFC933")]
         [TestCase("M_Char_Grape", "#8F6BFF")]
         public void PaletteColoursMatchTheReferenceSheets(string name, string hex)
         {

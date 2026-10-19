@@ -5,7 +5,7 @@ using ToyFactory.Interfaces;
 namespace ToyFactory.Runtime.Visuals
 {
     /// <summary>
-    /// Tints one Saboteur with its squad colour (A purple, B teal, C orange, D pink) so the four
+    /// Tints one Saboteur with its squad colour (A yellow, B teal, C orange, D pink) so the four
     /// instances share one mesh and one material. It reads the squad slot once, in <c>Start</c>,
     /// from the <see cref="IAgentState"/> above it, and writes the colour into a
     /// <see cref="MaterialPropertyBlock"/>; nothing runs afterwards and no material is copied.
@@ -32,7 +32,7 @@ namespace ToyFactory.Runtime.Visuals
         // Art Bible, "Saboteur squad tints": A, B, C, D.
         static readonly Color32[] SquadColours =
         {
-            new Color32(0x8F, 0x6B, 0xFF, 0xFF),
+            new Color32(0xFF, 0xC9, 0x33, 0xFF),
             new Color32(0x2F, 0xB8, 0x94, 0xFF),
             new Color32(0xFF, 0x8A, 0x1C, 0xFF),
             new Color32(0xE0, 0x40, 0x9A, 0xFF)

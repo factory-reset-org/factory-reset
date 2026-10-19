@@ -86,7 +86,7 @@ namespace ToyFactory.Editor.Materials
             { Key.Cyan, new Spec("M_Char_Cyan", "#62D8FF", 0.8f) },
             { Key.VisorCyan, new Spec("M_Char_VisorCyan", "#62D8FF", 0.9f) },
             { Key.VisorBlue, new Spec("M_Char_VisorBlue", "#4466FF", 0.9f) },
-            { Key.SaboteurBody, new Spec("M_Char_SaboteurBody", "#8F6BFF", 0.8f) },
+            { Key.SaboteurBody, new Spec("M_Char_SaboteurBody", "#FFC933", 0.8f) },
             { Key.GuardTread, new Spec("M_Char_GuardTread", "#FFFFFF", 0.7f) },
             { Key.Unit047Eyes, new Spec("M_Char_Unit047Eyes", "#BFF3FF", 0.9f) },
             { Key.Grape, new Spec("M_Char_Grape", "#8F6BFF", 0.8f) },
