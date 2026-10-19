@@ -286,16 +286,13 @@ namespace ToyFactory.Tests
             crate.transform.position = new Vector3(0.7f, 1.6f, 1.6f);
             crate.transform.localScale = Vector3.one;
             FakeShotPlayer player = Player(new Vector3(0.7f, 0f, 8f));   // in plain view past the crate
-            Vector3 end = default;
-            weapon.Fired += _ => end = weapon.LastShotTo;
-
             weapon.RequestShot();
             yield return Seconds(0.4f);
 
-            Assert.AreEqual(1, weapon.ShotsFired);
-            Assert.IsFalse(weapon.LastShotHit, "The crate round its cannon takes the shot.");
-            Assert.AreEqual(0, player.Damage.Count);
-            Assert.Less(end.z, 2.2f, $"The shot stops at the crate, not at the player: {end}.");
+            // 19 October: a shot whose line is blocked is held, not wasted on the obstacle.
+            Assert.AreEqual(0, weapon.ShotsFired, "The cannon is in the crate: it holds fire.");
+            Assert.AreEqual(1, weapon.ShotsDropped);
+            Assert.AreEqual(0, player.Damage.Count, "and the player behind the crate is not hit");
         }
 
         [UnityTest]
@@ -481,8 +478,9 @@ namespace ToyFactory.Tests
             weapon.RequestShot();
             yield return Seconds(0.4f);
 
-            Assert.AreEqual(1, weapon.ShotsFired);
-            Assert.IsFalse(weapon.LastShotHit);
+            // 19 October: a wall on the line means the shot is held, not wasted on the wall.
+            Assert.AreEqual(0, weapon.ShotsFired, "The wall is in the way: it holds fire.");
+            Assert.AreEqual(1, weapon.ShotsDropped);
             Assert.IsEmpty(player.Damage);
         }
 

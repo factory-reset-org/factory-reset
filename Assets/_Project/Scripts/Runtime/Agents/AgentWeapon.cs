@@ -422,9 +422,12 @@ namespace ToyFactory.Runtime.Agents
         /// <summary>True if a shot from <paramref name="from"/> to <paramref name="to"/> would reach the player first.</summary>
         bool LineClear(Vector3 from, Vector3 to, IPlayerState player)
         {
+            // The cannon pushed into something: the muzzle is inside it, or there is something between the body and it.
+            if (Physics.CheckSphere(from, 0.05f, _hitMask & ~LayerMask.GetMask("Player"), QueryTriggerInteraction.Ignore))
+                return false;
             Vector3 body = new Vector3(transform.position.x, from.y, transform.position.z);
             if (Physics.Linecast(body, from, out RaycastHit inBody, _hitMask, QueryTriggerInteraction.Ignore))
-                return false;   // the cannon is pushed into something
+                return false;
             Vector3 direction = to - from;
             float distance = Mathf.Min(direction.magnitude + 0.5f, range);
             if (!Physics.Raycast(from, direction.normalized, out RaycastHit hit, distance, _hitMask, QueryTriggerInteraction.Ignore))
