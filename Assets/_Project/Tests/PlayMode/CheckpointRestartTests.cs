@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -15,16 +16,18 @@ using ToyFactory.UI;
 namespace ToyFactory.Tests
 {
     /// <summary>
-    /// Checkpoints and restarts on the real game from Bootstrap: a recall with a restart left
-    /// waits on the recall screen; going back to the checkpoint puts the player at the room's
-    /// entrance with full integrity and sends the robots home without scoring a takedown; the
-    /// pause menu's restart uses one too; with none left a recall ends the run; Give up ends it
-    /// at once; and the pause screen's sliders set the volumes.
+    /// Checkpoints and restarts on the real game from Bootstrap: going back puts the room as
+    /// it was when its chapter began (its props and tasks unfinished, the score and the
+    /// Saboteurs scrapped before the checkpoint kept, the player at the entrance); each restart
+    /// is used once, after a recall or from the pause menu, and with none left a recall ends
+    /// the run; Restart game gives them back; Give up ends the run; the pause screen's sliders
+    /// set the volumes.
     /// </summary>
     public sealed class CheckpointRestartTests
     {
         const float LoadTimeout = 60f;
-        static readonly Vector3 PaintingRoomEntrance = new Vector3(22.6f, 0.1f, 10.5f);
+        const float RestoreTimeout = 90f;
+        static readonly Vector3 StorageEntrance = new Vector3(31f, 0.1f, 22.6f);
 
         float _sound;
         float _music;
@@ -42,6 +45,9 @@ namespace ToyFactory.Tests
             GameAudio.SoundVolume = _sound;
             GameAudio.MusicVolume = _music;
             Time.timeScale = 1f;
+            GameObject cover = GameObject.Find("Checkpoint Cover");
+            if (cover != null)
+                UnityEngine.Object.Destroy(cover);
             Scene empty = SceneManager.CreateScene("Empty after checkpoints " + Guid.NewGuid());
             SceneManager.SetActiveScene(empty);
             for (int i = SceneManager.sceneCount - 1; i >= 0; i--)
@@ -80,16 +86,17 @@ namespace ToyFactory.Tests
 
             // Skip the intro as Escape would, so the run is being played.
             float until = Time.realtimeSinceStartup + 20f;
-            while (GameClock.Current.State != GameState.Playing)
+            while (GameClock.Current.State != GameState.Playing || IsCutscenePlaying())
             {
-                CutsceneDirector director = CutsceneDirector.Current;
-                if (director != null && director.IsPlaying)
-                    director.Skip();
+                if (IsCutscenePlaying())
+                    CutsceneDirector.Current.Skip();
                 if (Time.realtimeSinceStartup > until)
                     Assert.Fail("Timed out waiting for the intro to end");
                 yield return null;
             }
         }
+
+        static bool IsCutscenePlaying() => CutsceneDirector.Current != null && CutsceneDirector.Current.IsPlaying;
 
         static IEnumerator JumpTo(int chapter)
         {
@@ -99,85 +106,182 @@ namespace ToyFactory.Tests
             yield return Until(() => GameClock.Current.State == GameState.Playing, 20f, "Playing");
         }
 
+        // The restore reloads the scenes, so the run control is a new one once it is done.
+        static IEnumerator WaitForRestore(IRunControl before)
+        {
+            yield return Until(() => RunControl.Current != null && !ReferenceEquals(RunControl.Current, before)
+                && !RunControl.Current.IsRestoring && GameClock.Current != null
+                && GameClock.Current.State == GameState.Playing, RestoreTimeout, "the checkpoint to be restored");
+        }
+
         static void Recall() => PlayerState.Current.TakeDamage(10000f, -1);
 
         static float DistanceFlat(Vector3 a, Vector3 b) => Vector2.Distance(new Vector2(a.x, a.z), new Vector2(b.x, b.z));
 
+        static AgentController Saboteur(char letter) =>
+            AgentSpawner.Instance.SpawnedAgents.First(a => a.Type == AgentType.Saboteur && a.Identity.SquadLetter == letter);
+
+        // The task props live in the default assembly, which tests cannot see: reach them by name.
+        static bool IsTaskProp(Type type)
+        {
+            for (Type t = type; t != null; t = t.BaseType)
+                if (t.Name == "TaskProp")
+                    return true;
+            return false;
+        }
+
+        static MonoBehaviour FindTaskProp(string id) =>
+            UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Exclude)
+                .FirstOrDefault(m => IsTaskProp(m.GetType()) && (string)m.GetType().GetProperty("Id").GetValue(m) == id);
+
+        static bool IsCompleted(MonoBehaviour prop) => (bool)prop.GetType().GetProperty("IsCompleted").GetValue(prop);
+
+        static void CompleteAsThePlayerWould(MonoBehaviour prop)
+        {
+            for (Type t = prop.GetType(); t != null; t = t.BaseType)
+            {
+                MethodInfo complete = t.GetMethod("Complete", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+                if (complete != null)
+                {
+                    complete.Invoke(prop, null);
+                    return;
+                }
+            }
+            Assert.Fail("No Complete on " + prop.name);
+        }
+
         [UnityTest]
-        public IEnumerator EachRestartGoesBackToTheCheckpointAndTheFourthRecallEndsTheRun()
+        public IEnumerator GoingBackPutsTheRoomAsItWasWhenItsChapterBegan()
         {
             yield return LoadGame();
             IRunControl run = RunControl.Current;
-            Assert.AreEqual(3, run.RestartsPerGame, "Three restarts a game.");
             Assert.AreEqual(3, run.RestartsLeft);
 
-            // Room 1 done: the checkpoint is the Painting Room.
-            yield return JumpTo(2);
-            Assert.AreEqual("Painting Room", run.CheckpointName);
+            // Saboteur B is scrapped in Room 1, before the checkpoint.
+            Saboteur('B').Scrap();
+            yield return JumpTo(3);
+            Assert.AreEqual("Storage Area", run.CheckpointName);
+            int scoreAtCheckpoint = ScoreManager.Current.Score;
 
-            AgentController tracker = AgentSpawner.Instance.SpawnedAgents.First(a => a.Type == AgentType.Tracker);
-            tracker.Follower.Stop();
-            Vector3 away = tracker.HomePosition + new Vector3(0f, 0f, 3f);
-            var body = tracker.GetComponent<CharacterController>();
-            body.enabled = false;
-            tracker.transform.position = away;
-            body.enabled = true;
-            int takedowns = ScoreManager.Current.Rules.Takedowns;
+            // In Room 3 the player finishes a prop, and scraps Saboteur A, after the checkpoint.
+            ChapterFlow flow = ChapterManager.Current.Flow;
+            string taskId = flow.GetDefinition(3).Tasks.Select(t => t.TaskId).First(id => FindTaskProp(id) != null);
+            CompleteAsThePlayerWould(FindTaskProp(taskId));
+            Assert.IsTrue(flow.IsTaskComplete(taskId), "The task counts.");
+            Saboteur('A').Scrap();
+            Assert.Greater(ScoreManager.Current.Score, scoreAtCheckpoint);
 
-            // A recall with restarts left waits on the recall screen.
+            // Recalled: back to the checkpoint.
+            yield return new WaitForSeconds(0.1f);
             Recall();
-            Assert.AreEqual(GameState.Paused, GameClock.Current.State, "The run waits instead of ending.");
             Assert.IsTrue(run.IsRecalled);
-            Assert.AreEqual(0f, Time.timeScale, "Time stands still on the recall screen.");
-            yield return null;
-            yield return null;
-            ScreensPresenter screens = UnityEngine.Object.FindAnyObjectByType<ScreensPresenter>();
-            Assert.IsTrue(screens.Pause.IsRecallScreen, "The recall screen is up.");
-
-            // Back to the checkpoint: one restart used.
             Assert.IsTrue(run.RestartFromCheckpoint());
             Assert.AreEqual(2, run.RestartsLeft);
-            Assert.IsFalse(run.IsRecalled);
-            Assert.AreEqual(GameState.Playing, GameClock.Current.State);
+            yield return WaitForRestore(run);
+
+            run = RunControl.Current;
+            flow = ChapterManager.Current.Flow;
+            Assert.AreEqual(3, flow.CurrentChapter, "Back in Chapter 3.");
+            Assert.IsFalse(flow.IsTaskComplete(taskId), "The room's task is not done.");
+            Assert.IsFalse(IsCompleted(FindTaskProp(taskId)), "Its prop is as it was when the chapter began.");
+            Assert.AreEqual(scoreAtCheckpoint, ScoreManager.Current.Score, "The score is the checkpoint's.");
+            Assert.IsTrue(Saboteur('B').IsDead, "Scrapped before the checkpoint: stays scrapped.");
+            Assert.IsFalse(Saboteur('A').IsDead, "Scrapped after it: back.");
+            Assert.AreEqual(2, run.RestartsLeft, "The restarts carry over the reload.");
+            Assert.AreEqual(1f, PlayerState.Current.HealthFraction, 1e-4f);
+            Assert.Less(DistanceFlat(PlayerState.Current.Position, StorageEntrance), 0.6f, "At the Storage Area's entrance.");
             Assert.AreEqual(1f, Time.timeScale);
-            Assert.IsTrue(PlayerState.Current.IsAlive);
-            Assert.AreEqual(1f, PlayerState.Current.HealthFraction, 1e-4f, "Full integrity.");
-            Assert.Less(DistanceFlat(PlayerState.Current.Position, PaintingRoomEntrance), 0.6f, "At the Painting Room's entrance.");
-            Assert.Less(DistanceFlat(tracker.transform.position, tracker.HomePosition), 0.3f, "The Tracker is back at its post.");
-            Assert.IsTrue(tracker.IsDisabled, "Powered down for a moment.");
-            Assert.AreEqual(takedowns, ScoreManager.Current.Rules.Takedowns, "Sending it home is not a takedown.");
-            yield return null;
-            Assert.IsFalse(screens.Pause.IsShowing, "The screen goes away.");
+            yield return null;   // a destroyed object goes at the end of the frame
+            Assert.IsNull(GameObject.Find("Checkpoint Cover"), "The cover is gone.");
 
             // A hit straight after the restart does nothing: the player gets a moment.
             PlayerState.Current.TakeDamage(30f, -1);
             Assert.AreEqual(1f, PlayerState.Current.HealthFraction, 1e-4f, "Safe for a moment after the restart.");
+        }
 
-            // The pause menu's restart uses one as well.
+        [UnityTest]
+        public IEnumerator AKeycardTakenBeforeTheCheckpointStillCountsAfterGoingBack()
+        {
+            yield return LoadGame();
+
+            // Saboteur A goes down in Room 1 and its keycard is picked up early.
+            Saboteur('A').Scrap();
+            yield return null;
+            CompleteAsThePlayerWould(FindTaskProp("ch3.keycard"));
+            yield return JumpTo(3);
+            Assert.IsTrue(ChapterManager.Current.Flow.IsTaskComplete("ch3.keycard"));
+            int scoreAtCheckpoint = ScoreManager.Current.Score;
+
+            yield return new WaitForSeconds(0.1f);
+            IRunControl run = RunControl.Current;
+            Recall();
+            Assert.IsTrue(run.RestartFromCheckpoint());
+            yield return WaitForRestore(run);
+
+            Assert.IsTrue(ChapterManager.Current.Flow.IsTaskComplete("ch3.keycard"), "The keycard still counts.");
+            Assert.IsNull(FindTaskProp("ch3.keycard"), "No second keycard lying where A fell.");
+            Assert.IsTrue(Saboteur('A').IsDead);
+            Assert.AreEqual(scoreAtCheckpoint, ScoreManager.Current.Score);
+        }
+
+        [UnityTest]
+        public IEnumerator EachWayBackUsesARestartAndWithNoneLeftARecallEndsTheRun()
+        {
+            yield return LoadGame();
+            IRunControl run = RunControl.Current;
+
+            // From the pause menu.
             GameClock.Current.RequestState(GameState.Paused);
             yield return null;
             Assert.IsTrue(run.RestartFromCheckpoint());
-            Assert.AreEqual(1, run.RestartsLeft);
+            yield return WaitForRestore(run);
+            run = RunControl.Current;
+            Assert.AreEqual(2, run.RestartsLeft);
+            Assert.AreEqual(1, ChapterManager.Current.Flow.CurrentChapter, "Before the first checkpoint: the start of the game.");
 
-            // The last one, after a recall (once the safe moment has passed).
-            yield return new WaitForSeconds(2.2f);
-            Recall();
-            Assert.IsTrue(run.IsRecalled);
-            Assert.IsTrue(run.RestartFromCheckpoint());
-            Assert.AreEqual(0, run.RestartsLeft);
+            // Twice after a recall.
+            for (int left = 1; left >= 0; left--)
+            {
+                yield return new WaitForSeconds(2.2f);   // past the safe moment
+                Recall();
+                Assert.IsTrue(run.IsRecalled);
+                Assert.IsTrue(run.RestartFromCheckpoint());
+                yield return WaitForRestore(run);
+                run = RunControl.Current;
+                Assert.AreEqual(left, run.RestartsLeft);
+            }
 
             // None left: the pause menu cannot go back, and a recall ends the run.
             GameClock.Current.RequestState(GameState.Paused);
             yield return null;
             yield return null;
+            ScreensPresenter screens = UnityEngine.Object.FindAnyObjectByType<ScreensPresenter>();
             Assert.IsFalse(screens.Pause.CheckpointButton.interactable, "No restarts left to use.");
             Assert.IsFalse(run.RestartFromCheckpoint());
             run.Resume();
-            Assert.AreEqual(GameState.Playing, GameClock.Current.State);
-            yield return new WaitForSeconds(2.2f);   // past the safe moment
+            yield return new WaitForSeconds(2.2f);
             Recall();
             Assert.IsFalse(run.IsRecalled);
             Assert.AreEqual(GameState.Results, GameClock.Current.State, "With no restart left the run ends.");
+        }
+
+        [UnityTest]
+        public IEnumerator RestartGameGivesEveryRestartBack()
+        {
+            yield return LoadGame();
+            IRunControl run = RunControl.Current;
+            GameClock.Current.RequestState(GameState.Paused);
+            yield return null;
+            Assert.IsTrue(run.RestartFromCheckpoint());
+            yield return WaitForRestore(run);
+            run = RunControl.Current;
+            Assert.AreEqual(2, run.RestartsLeft);
+
+            run.RestartGame();
+            yield return Until(() => RunControl.Current != null && !ReferenceEquals(RunControl.Current, run)
+                && GameClock.Current != null && GameClock.Current.State == GameState.Title, LoadTimeout, "a new game");
+            Assert.AreEqual(3, RunControl.Current.RestartsLeft);
+            Assert.IsFalse(RunControl.Current.IsRestoring);
         }
 
         [UnityTest]

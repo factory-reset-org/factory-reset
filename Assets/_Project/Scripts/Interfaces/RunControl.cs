@@ -9,9 +9,10 @@ namespace ToyFactory.Interfaces
     /// </summary>
     /// <remarks>
     /// A checkpoint is the start of each chapter: after Room 1, Room 2 and Room 3 are done (and
-    /// the start of the game before that). A game has a fixed number of restarts. Going back
-    /// to the checkpoint uses one, whether the player was recalled or chose it from the pause
-    /// menu. Restarting the game starts a new game with all of them again.
+    /// the start of the game before that). Going back to it puts the room exactly as it was
+    /// when its chapter began. A game has a fixed number of restarts. Going back to the
+    /// checkpoint uses one, whether the player was recalled or chose it from the pause menu.
+    /// Restarting the game starts a new game with all of them again.
     /// </remarks>
     public interface IRunControl
     {
@@ -26,6 +27,9 @@ namespace ToyFactory.Interfaces
 
         /// <summary>True while the player has been recalled and the game waits for their choice.</summary>
         bool IsRecalled { get; }
+
+        /// <summary>True while a restart from the checkpoint is rebuilding the room, behind a cover.</summary>
+        bool IsRestoring { get; }
 
         /// <summary>Leaves the pause menu.</summary>
         void Resume();
