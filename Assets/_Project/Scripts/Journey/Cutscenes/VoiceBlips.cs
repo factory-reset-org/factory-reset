@@ -1,4 +1,5 @@
 using UnityEngine;
+using ToyFactory.Interfaces;
 
 namespace ToyFactory.Journey.Cutscenes
 {
@@ -30,7 +31,7 @@ namespace ToyFactory.Journey.Cutscenes
             if (_source == null || (_count++ & 1) == 1)
                 return;
             _source.pitch = Random.Range(0.94f, 1.06f);
-            _source.PlayOneShot(_clips[(int)speaker], 0.35f);
+            _source.PlayOneShot(_clips[(int)speaker], 0.35f * GameAudio.SoundVolume);
         }
 
         /// <summary>One sample of <paramref name="wave"/> at phase <paramref name="phase"/> (0 to 1), from -1 to 1.</summary>

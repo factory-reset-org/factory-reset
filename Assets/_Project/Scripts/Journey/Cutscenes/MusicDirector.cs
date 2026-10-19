@@ -198,8 +198,9 @@ namespace ToyFactory.Journey.Cutscenes
             float dt = Time.unscaledDeltaTime;
             _level = Mathf.MoveTowards(_level, TargetVolume, dt * 0.6f);   // ducks over about half a second
             _fade = Mathf.MoveTowards(_fade, 1f, dt / _fadeSeconds);
-            _current.volume = _level * _fade;
-            _previous.volume = _level * (1f - _fade);
+            float setting = GameAudio.MusicVolume;   // the pause menu's music slider
+            _current.volume = _level * _fade * setting;
+            _previous.volume = _level * (1f - _fade) * setting;
             if (_fade >= 1f && _previous.isPlaying)
                 _previous.Stop();
         }
