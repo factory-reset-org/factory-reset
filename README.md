@@ -55,7 +55,7 @@ Debug keys:
 
 ## Building
 
-Use **Factory Reset → Build → Windows Player**: it builds the five scenes in order (`Bootstrap` at index 0, then `Env`, `Interactables`, `Agents`, `UI`) to `Builds/Windows/` (git-ignored) and appends a row to [Docs/BuildLog.md](Docs/BuildLog.md) with the commit, size, time, warnings and errors. A full build takes about an hour the first time (shader compilation). By hand: File → Build Profiles, the same five scenes in the same order, Windows, x86_64.
+Use **Factory Reset → Build → Windows Player**: it builds the five scenes in order (`Bootstrap` at index 0, then `Env`, `Interactables`, `Agents`, `UI`) to `Builds/Windows/FactoryReset.exe` (git-ignored) and appends a row to [Docs/BuildLog.md](Docs/BuildLog.md) with the commit, size, time, warnings and errors. A full build takes about an hour the first time (shader compilation). By hand: File → Build Profiles, the same five scenes in the same order, Windows, x86_64.
 
 ## Documentation
 
