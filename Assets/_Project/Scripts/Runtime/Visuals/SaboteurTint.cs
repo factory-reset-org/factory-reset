@@ -40,7 +40,7 @@ namespace ToyFactory.Runtime.Visuals
 
         static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
 
-        [Tooltip("Slots that carry the body colour. Leave empty to tint every renderer below this object, which is what a single-material placeholder body needs.")]
+        [Tooltip("Slots that carry the squad colour (the Saboteur's belt and claws). Leave empty to tint every renderer below this object, which is what a single-material placeholder body needs.")]
         [SerializeField] Target[] targets = Array.Empty<Target>();
 
         [Tooltip("Tint with Fallback Squad Index when no agent state is above this object, for example in a presentation scene. Off by default, so the component is inert on any other body.")]

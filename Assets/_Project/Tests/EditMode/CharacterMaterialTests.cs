@@ -128,27 +128,60 @@ namespace ToyFactory.Tests.EditMode
 
         [TestCase("Assets/_Project/Prefabs/Characters/SaboteurBot.prefab")]
         [TestCase("Assets/_Project/Prefabs/Agents/Agent_SaboteurBot.prefab")]
-        public void SaboteurTintLandsOnTheBodyColourSlotsAndNothingElse(string path)
+        public void SaboteurTintLandsOnTheBeltAndClawsAndNothingElse(string path)
         {
             GameObject prefab = Load(path);
             string[] targets = TintTargets(prefab, out List<Renderer> tinted).ToArray();
 
             CollectionAssert.AreEquivalent(
-                new[] { "Body:0", "ShoulderPad_L:0", "ShoulderPad_R:0", "Forearm_L:0", "Forearm_R:0" }, targets,
-                "The tint writes the first slot of the body, the shoulder pads and the forearms.");
+                new[] { "Pink_Belt:0", "Claw_L_Top:0", "Claw_L_Bottom:0", "Claw_R_Top:0", "Claw_R_Bottom:0" }, targets,
+                "The tint writes the waist belt and the four claws.");
             foreach (Renderer renderer in tinted)
                 Assert.AreEqual("M_Char_SaboteurBody", renderer.sharedMaterials[0].name, renderer.name);
 
-            // No other slot uses the body colour, so the tint cannot reach a part that should keep its own colour.
+            // No other slot uses the tinted material, so the tint cannot reach a part that should keep its own colour.
             foreach (Renderer renderer in Renderers(prefab))
             {
                 for (int i = 0; i < renderer.sharedMaterials.Length; i++)
                 {
-                    bool isBodySlot = tinted.Contains(renderer) && i == 0;
-                    if (!isBodySlot)
+                    bool isTintedSlot = tinted.Contains(renderer) && i == 0;
+                    if (!isTintedSlot)
                         Assert.AreNotEqual("M_Char_SaboteurBody", renderer.sharedMaterials[i].name, $"{renderer.name} slot {i}");
                 }
             }
+        }
+
+        [TestCase("Assets/_Project/Prefabs/Characters/SaboteurBot.prefab")]
+        [TestCase("Assets/_Project/Prefabs/Agents/Agent_SaboteurBot.prefab")]
+        public void SaboteurBodyIsOnePurpleWithBlackBrows(string path)
+        {
+            Renderer[] renderers = Renderers(Load(path)).ToArray();
+            Material[] body = renderers.First(r => r.name == "Body").sharedMaterials;
+            Assert.AreEqual(new[] { "M_Char_Grape", "M_Char_Black" }, body.Select(m => m.name).ToArray(),
+                "The body is the shared purple and its brows (slot 1) are black.");
+            foreach (string part in new[] { "ShoulderPad_L", "ShoulderPad_R", "Forearm_L", "Forearm_R" })
+                Assert.AreEqual("M_Char_Grape", renderers.First(r => r.name == part).sharedMaterials[0].name, part);
+        }
+
+        // Unity draws front faces only, so a closed part whose faces point inwards renders as see-through.
+        [TestCase("Wheel")]
+        [TestCase("Wheel_Hub_L")]
+        [TestCase("Wheel_Hub_R")]
+        [TestCase("Goggle_Rim_L")]
+        [TestCase("Goggle_Rim_R")]
+        public void SaboteurClosedPartsFaceOutwards(string part)
+        {
+            Mesh mesh = Load("Assets/_Project/Models/SaboteurBot/SaboteurBot.fbx").GetComponentsInChildren<MeshFilter>(true)
+                .First(f => f.name == part).sharedMesh;
+            Vector3[] v = mesh.vertices;
+            int[] t = mesh.triangles;
+            float volume = 0f;
+            for (int i = 0; i < t.Length; i += 3)
+                volume += Vector3.Dot(v[t[i]], Vector3.Cross(v[t[i + 1]], v[t[i + 2]])) / 6f;
+
+            // Measured on the imported model: every part that renders correctly gives a positive volume here,
+            // and the parts that rendered see-through gave a negative one.
+            Assert.Greater(volume, 0f, $"{part} faces inwards.");
         }
 
         // ---- Guard treads

@@ -19,9 +19,9 @@ namespace ToyFactory.Editor.Materials
     /// reads each part's original slots from the FBX, so it gives the same result however often it runs,
     /// and sets the materials on the character prefab variants, where a few parts differ from their
     /// zone's colour (the Tracker's gold key, the Guard's cyan visor, the Saboteur's steel arms).</para>
-    /// <para><b>Saboteur.</b> The first slot of the body, the shoulder pads and the forearms is
-    /// <see cref="Key.SaboteurBody"/>, which <c>SaboteurTint</c> overrides per squad letter with a
-    /// MaterialPropertyBlock; every other part keeps one colour for all four.</para>
+    /// <para><b>Saboteur.</b> The waist belt and the four claws are <see cref="Key.SaboteurBody"/>, which
+    /// <c>SaboteurTint</c> overrides per squad letter with a MaterialPropertyBlock; every other part,
+    /// the purple body included, keeps one colour for all four.</para>
     /// <para><b>Guard treads.</b> Their dark zone has its own material with a tileable tread texture, so
     /// S4 can scroll <c>_BaseMap</c> with the body's speed.</para>
     /// <para><b>Unit 047's decals.</b> The <c>Chest_Tag</c> and <c>Sticker</c> plates share one textured
@@ -144,24 +144,30 @@ namespace ToyFactory.Editor.Materials
             Add("TrackerToy", "Ear_R", Key.Red, Key.PinkSoft);
             Add("TrackerToy", "Muzzle", Key.Cream, Key.Black);
 
-            // Saboteur: body, shoulder pads and forearms in the tinted body colour; grey goggle frames,
-            // fork plate and crate; steel upper arms, elbows, fork struts and wrist hinges; pale lenses
-            // (S4's glow sits over them).
-            Add("SaboteurBot", "Body", Key.SaboteurBody);
+            // Saboteur: the same purple body, black brows, shoulder pads and forearms on all four; only the
+            // waist belt and the four claws carry the tinted squad colour. Grey goggle frames, fork plate
+            // and crate; steel upper arms, elbows, fork struts and wrist hinges; pale lenses (S4's glow
+            // sits over them).
+            Add("SaboteurBot", "Body", Key.Grape, Key.Black);
             Add("SaboteurBot", "Goggle_Rim_L", Key.Grey);
             Add("SaboteurBot", "Goggle_Rim_R", Key.Grey);
             Add("SaboteurBot", "Lens_L", Key.White);
             Add("SaboteurBot", "Lens_R", Key.White);
             Add("SaboteurBot", "Fork", Key.Steel, Key.Grey);
             Add("SaboteurBot", "Crate", Key.Grey);
-            Add("SaboteurBot", "ShoulderPad_L", Key.SaboteurBody);
-            Add("SaboteurBot", "ShoulderPad_R", Key.SaboteurBody);
+            Add("SaboteurBot", "ShoulderPad_L", Key.Grape);
+            Add("SaboteurBot", "ShoulderPad_R", Key.Grape);
             Add("SaboteurBot", "ElbowBall_L", Key.Steel);
             Add("SaboteurBot", "ElbowBall_R", Key.Steel);
             Add("SaboteurBot", "UpperArm_L", Key.Steel);
             Add("SaboteurBot", "UpperArm_R", Key.Steel);
-            Add("SaboteurBot", "Forearm_L", Key.SaboteurBody, Key.Steel);
-            Add("SaboteurBot", "Forearm_R", Key.SaboteurBody, Key.Steel);
+            Add("SaboteurBot", "Forearm_L", Key.Grape, Key.Steel);
+            Add("SaboteurBot", "Forearm_R", Key.Grape, Key.Steel);
+            Add("SaboteurBot", "Pink_Belt", Key.SaboteurBody);
+            Add("SaboteurBot", "Claw_L_Top", Key.SaboteurBody);
+            Add("SaboteurBot", "Claw_L_Bottom", Key.SaboteurBody);
+            Add("SaboteurBot", "Claw_R_Top", Key.SaboteurBody);
+            Add("SaboteurBot", "Claw_R_Bottom", Key.SaboteurBody);
             Add("SaboteurBot", "Battery", Key.Steel, Key.Gold);
 
             // Guard: navy hip, steel balls and cannon with a red ring, cyan visor, yellow-tipped antenna,
