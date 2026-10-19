@@ -3437,10 +3437,32 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b9091d272b6a27a4789214cf64773719, type: 3}
   m_Name: 
   m_EditorClassIdentifier: ToyFactory.Journey::ToyFactory.Journey.Cutscenes.MusicDirector
-  volume: 0.08
+  cues:
+  - track: 1
+    clip: {fileID: 8300000, guid: 9fb372af57e2a1445be4e9aaa24a4adc, type: 3}
+    gain: 1.45
+  - track: 2
+    clip: {fileID: 8300000, guid: 604b401f1231b5b4ebc337dd1f8669b2, type: 3}
+    gain: 1.02
+  - track: 3
+    clip: {fileID: 8300000, guid: ed1661a6e4ac61b4bbb35edcb4a442c0, type: 3}
+    gain: 1.08
+  - track: 4
+    clip: {fileID: 8300000, guid: 27eb85659aac00f4bb35594f068dabaf, type: 3}
+    gain: 1.19
+  - track: 5
+    clip: {fileID: 8300000, guid: 8549affd2fc03c7458f208e4825ef40b, type: 3}
+    gain: 0.55
+  - track: 6
+    clip: {fileID: 8300000, guid: 44e0e4cea4dd13847a1425fbe4a79d79, type: 3}
+    gain: 0.67
+  - track: 7
+    clip: {fileID: 8300000, guid: 7163fda248b91174e89831412a030a8a, type: 3}
+    gain: 1.45
+  volume: 0.22
   cutsceneShare: 0.5
   pausedShare: 0.5
-  menuShare: 2
+  menuShare: 1.5
   crossfadeSeconds: 1.5
 --- !u!1 &1450859850
 GameObject:
