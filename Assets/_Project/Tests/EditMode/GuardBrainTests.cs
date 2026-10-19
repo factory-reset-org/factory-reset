@@ -31,6 +31,11 @@ namespace ToyFactory.Tests.EditMode
             // Cells the player has no line of sight to at any height (the far side of a wall).
             public readonly HashSet<Vector2Int> Blocked = new HashSet<Vector2Int>();
 
+            // The spot the Guard really stands on is in view, whatever its cell's centre says.
+            public bool SeenWhereItStands;
+
+            public bool IsBlockedAt(Vector3 point) => !SeenWhereItStands;
+
             public bool IsBlocked(Vector2Int cell, float height)
             {
                 if (Blocked.Contains(cell))
@@ -355,6 +360,35 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual(3, shots, "it fired three times at a player whose health never changed");
             TickAt(brain, cover, t + 0.1f);
             Assert.AreNotEqual(cover, brain.CoverCell, "and then moved to another cover");
+        }
+
+        [Test]
+        public void Guard_StandingInViewOffItsCoverCentre_GivesUpTheCover()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+            TickAt(brain, cover, 0.6f);
+            Assert.AreEqual(cover, brain.CoverCell, "hidden where it stands: it stays");
+
+            // Its body came to rest off the centre, where the player can see it.
+            _visibility.SeenWhereItStands = true;
+            TickAt(brain, cover, 0.9f);
+
+            Assert.AreNotEqual(cover, brain.CoverCell, "it gives up the cover for another");
+        }
+
+        [Test]
+        public void Guard_StillWalkingIntoCover_DoesNotJudgeTheSpotYet()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+            _visibility.SeenWhereItStands = true;
+
+            TickAt(brain, cover, 0.6f);   // stopped only 0.1 s ago
+
+            Assert.AreEqual(cover, brain.CoverCell);
         }
 
         // The peek cell the brain would step to from its cover: the first open neighbour seen by the player.
