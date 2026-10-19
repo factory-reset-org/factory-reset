@@ -75,6 +75,8 @@ namespace ToyFactory.Runtime.Agents
         GridGraph _grid;
         bool _warnedNotInitialised;
         float _rebootAt;
+        Vector3 _homePosition;        // where it was spawned, for a restart from a checkpoint
+        Quaternion _homeRotation;
 
         // The loudest noise heard since the brain's last tick; passed in ctx.Senses, then cleared.
         SensorSnapshot _heard;
@@ -255,6 +257,8 @@ namespace ToyFactory.Runtime.Agents
         {
             Identity = identity;
             _brain = brain ?? throw new ArgumentNullException(nameof(brain));
+            _homePosition = transform.position;
+            _homeRotation = transform.rotation;
             _blackboard = blackboard ?? throw new ArgumentNullException(nameof(blackboard));
             _predictor = brain as IGoalPredictor;
             WindUp = brain as IWindUpState;
@@ -331,7 +335,36 @@ namespace ToyFactory.Runtime.Agents
         /// <see cref="AgentEvents.OnDisabled"/> is raised. It reboots by itself when the time
         /// is up. A hit while already disabled can only extend the time. Ignored once scrapped.
         /// </summary>
-        public void Disable(float duration)
+        public void Disable(float duration) => KnockOut(duration, takedown: true);
+
+        /// <summary>
+        /// Puts this agent back where it was spawned, facing the way it was spawned, and holds
+        /// it there powered down for <paramref name="duration"/> seconds: for a restart from a
+        /// checkpoint. Its brain drops its plans as for a knock-out and decides afresh when it
+        /// reboots. Unlike <see cref="Disable"/> it is not a takedown, so
+        /// <see cref="AgentEvents.OnDisabled"/> is not raised and no points are scored.
+        /// Ignored once scrapped.
+        /// </summary>
+        public void SendHome(float duration)
+        {
+            if (IsDead)
+                return;
+
+            KnockOut(duration, takedown: false);
+            // The CharacterController would undo a direct move on its next update.
+            var body = GetComponent<CharacterController>();
+            if (body != null)
+                body.enabled = false;
+            transform.SetPositionAndRotation(_homePosition, _homeRotation);
+            if (body != null)
+                body.enabled = true;
+            _lastPosition = _homePosition;
+        }
+
+        /// <summary>Where this agent was spawned.</summary>
+        public Vector3 HomePosition => _homePosition;
+
+        void KnockOut(float duration, bool takedown)
         {
             if (IsDead)
                 return;
@@ -350,7 +383,7 @@ namespace ToyFactory.Runtime.Agents
             if (_predictor != null)
                 _blackboard.SetPredictedGoal(_predictor.Prediction);   // not ticked until the reboot
 
-            if (!wasDisabled)
+            if (!wasDisabled && takedown)
                 AgentEvents.RaiseDisabled(this);
         }
 
