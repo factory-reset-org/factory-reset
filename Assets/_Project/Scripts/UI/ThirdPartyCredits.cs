@@ -26,14 +26,15 @@ namespace ToyFactory.UI
             Url = url;
         }
 
-        /// <summary>The line shown on the title screen.</summary>
+        /// <summary>The line shown on the credits screen.</summary>
         public string Line => Model + " by " + Author + " (" + Licence + ")";
     }
 
     /// <summary>
     /// The credits the game must show for third-party models under CC BY 3.0, which asks for the title,
     /// the author and the licence, and for Eric Matyas's music, whose terms ask for his name and site in
-    /// the game's credits. The CC0 models and music need none; they are thanked in one line each. The full
+    /// the game's credits. They are shown on the credits screen (<see cref="CreditsContent"/>). The CC0 models and
+    /// music need none; they are thanked in one line each. The full
     /// lists, with links and the changes made, are in <c>Assets/_ThirdParty/PolyPizza/README.md</c>,
     /// <c>Assets/_ThirdParty/Kenney/README.md</c> and <c>Assets/_ThirdParty/Music/README.md</c>.
     /// </summary>
