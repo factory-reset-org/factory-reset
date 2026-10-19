@@ -921,7 +921,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.Door
   movingPart: {fileID: 0}
   mode: 1
-  speed: 3.5
+  speed: 5
   openAngle: 90
   openOffset: {x: 0, y: 5, z: 0}
   blockCheckHalfExtents: {x: 0.5, y: 1, z: 0.1}
@@ -9693,7 +9693,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.Door
   movingPart: {fileID: 0}
   mode: 1
-  speed: 3.5
+  speed: 5
   openAngle: 90
   openOffset: {x: 0, y: 5, z: 0}
   blockCheckHalfExtents: {x: 0.5, y: 1, z: 0.1}
@@ -12593,7 +12593,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.Door
   movingPart: {fileID: 0}
   mode: 1
-  speed: 3.5
+  speed: 5
   openAngle: 90
   openOffset: {x: 0, y: 5, z: 0}
   blockCheckHalfExtents: {x: 0.5, y: 1, z: 0.1}
@@ -12978,7 +12978,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ToyFactory.Interaction.Door
   movingPart: {fileID: 0}
   mode: 1
-  speed: 3.5
+  speed: 5
   openAngle: 90
   openOffset: {x: 0, y: 5, z: 0}
   blockCheckHalfExtents: {x: 0.5, y: 1, z: 0.1}
