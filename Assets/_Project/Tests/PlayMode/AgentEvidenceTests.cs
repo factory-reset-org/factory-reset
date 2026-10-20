@@ -16,6 +16,7 @@ using ToyFactory.Journey.Debugging;
 using ToyFactory.Runtime.Agents;
 using ToyFactory.Runtime.Animation;
 using ToyFactory.Runtime.Debugging;
+using ToyFactory.UI;
 using Debug = UnityEngine.Debug;
 using Object = UnityEngine.Object;
 
@@ -498,6 +499,10 @@ namespace ToyFactory.Tests
         {
             yield return LoadGame();
             yield return JumpTo(2);
+
+            // Chapter 2's "checkpoint saved" note goes first: in a run it is long gone before the next cutscene.
+            CheckpointToastView toast = Object.FindAnyObjectByType<ScreensPresenter>().CheckpointToast;
+            yield return Until(() => { TopUp(); return !toast.IsShowing; }, CheckpointToastView.TotalSeconds + 5f, "the checkpoint note to go");
 
             // Chapter 2 finished as the jump does, but the ch3 cutscene is left to play: the dormant Captain wakes.
             ChapterFlow flow = ChapterManager.Current.Flow;
