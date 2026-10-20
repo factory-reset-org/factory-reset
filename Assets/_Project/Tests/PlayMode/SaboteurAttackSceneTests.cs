@@ -83,21 +83,22 @@ namespace ToyFactory.Tests
             Assert.IsInstanceOf<SaboteurBrain>(saboteur.Brain, "The spawner gives the Saboteur its brain.");
             var player = (Component)PlayerState.Current;
 
-            // 4 m from the Saboteur, held there while it decides.
-            Vector3 near = saboteur.transform.position + new Vector3(4f, 0f, 0f);
+            // 4 m in front of the Saboteur, inside its vision cone, held there while it decides.
             float until = Time.time + 10f;
             while (saboteur.DebugState != "AttackPlayer" && Time.time < until)
             {
-                Teleport(player, near);
+                Teleport(player, SaboteurScenePlacement.InFront(saboteur, 4f));
                 yield return null;
             }
 
             Assert.AreEqual("AttackPlayer", saboteur.DebugState, "A player in sight within 8 m is attacked.");
             Assert.AreEqual(AlertLevel.Alert, saboteur.Alert);
 
-            // Gone from sight and far away: it patrols again.
+            // Gone from sight and far away: it searches where it last saw the player, then patrols again. The
+            // sighting is remembered for 6 s and a search ends within 14 s.
             Teleport(player, saboteur.transform.position + new Vector3(40f, 0f, 0f));
-            yield return Until(() => saboteur.DebugState == "Patrol", 5f, "the Saboteur to patrol again");
+            yield return Until(() => saboteur.DebugState == "Search", 5f, "the Saboteur to search where it lost the player");
+            yield return Until(() => saboteur.DebugState == "Patrol", 25f, "the Saboteur to patrol again");
         }
 
         [UnityTest]
@@ -116,8 +117,8 @@ namespace ToyFactory.Tests
                 .First(a => a.Type == AgentType.Saboteur && a.Identity.SquadLetter == 'A');
             var player = (Component)PlayerState.Current;
 
-            // Placed once, 4 m away, then left alone: the Saboteur has to walk the distance itself.
-            Teleport(player, saboteur.transform.position + new Vector3(4f, 0f, 0f));
+            // Placed once, 4 m in front of it, then left alone: the Saboteur has to walk the distance itself.
+            Teleport(player, SaboteurScenePlacement.InFront(saboteur, 4f));
             float healthBefore = PlayerState.Current.HealthFraction;
             yield return Until(() => PlayerState.Current.HealthFraction < healthBefore, 15f,
                 "the Saboteur to reach the player and land a swipe");

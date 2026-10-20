@@ -124,18 +124,21 @@ namespace ToyFactory.Tests
             Assert.IsTrue(SabotageTargetCells.TrySnap(grid, target.Cell, out Vector2Int batteryCell), "The battery sits on or next to a walkable cell.");
             Assert.IsTrue(TryCellNear(grid, batteryCell, out Vector2Int start), "A walkable cell a few metres from the battery.");
 
-            // The player stays where it spawned; the Saboteur, a few metres from the battery, must win the race to it.
-            Vector3 batteryWorld = grid.CellToWorld(batteryCell);
-            Assert.Greater(Vector2.Distance(new Vector2(playerAt.x, playerAt.z), new Vector2(batteryWorld.x, batteryWorld.z)), 15f,
-                "The player starts far from the farthest battery.");
-
+            // The Saboteur a few metres from the battery; the player a few metres from the Saboteur, on the far side, in
+            // the open and shooting. The Saboteur turns to the noise, sees a player short of ammunition, and must win
+            // the race to the battery, which is closer to it than to the player.
+            Assert.IsTrue(SaboteurScenePlacement.TryPlayerCell(grid, start, batteryCell, out Vector2Int playerCell), "Open floor for the player near the Saboteur.");
             Vector3 at = grid.CellToWorld(start);
             Teleport(saboteur, new Vector3(at.x, saboteur.transform.position.y, at.z));
+            Vector3 stand = grid.CellToWorld(playerCell);
+            stand.y = player.transform.position.y;
 
             bool wasStealing = false;
             float until = Time.time + 25f;
             while (Time.time < until && board.SabotageFacts.Any(f => f.Kind == SabotageFactKind.Battery && f.Id == target.Id))
             {
+                Teleport(player, stand);
+                PlayerShotNoise.Every(1f);
                 wasStealing |= saboteur.DebugState == "StealBattery";
                 yield return null;
             }

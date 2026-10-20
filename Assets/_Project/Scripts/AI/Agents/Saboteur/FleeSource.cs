@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
+using ToyFactory.AI.Core.Search;
 
 namespace ToyFactory.AI.Agents.Saboteur
 {
@@ -20,14 +21,21 @@ namespace ToyFactory.AI.Agents.Saboteur
     /// the player faces the Saboteur dead on and falls to 0 at the edge of the cone, so a player who
     /// looks away stops being a reason to run.</para>
     /// <para><b>Eligibility</b> comes first and scoring second: no known or dead player, a player
-    /// <see cref="Range"/> metres or more away, a Saboteur the player cannot see, or a player not facing
-    /// it, and Flee is not a candidate at all. Own health arrives through <see cref="IHealthAware"/>.</para>
+    /// <see cref="Range"/> metres or more away, a player the Saboteur does not see (its
+    /// <see cref="SaboteurAwareness"/>: cone, all-round range or tracking, with a line of sight), or a player
+    /// not facing it, and Flee is not a candidate at all. Own health arrives through <see cref="IHealthAware"/>.</para>
+    /// <para><b>Holding on.</b> A flight already offered is offered again, at the same score, for
+    /// <see cref="HoldSeconds"/> after the player stops qualifying (looks away for a moment, steps behind a
+    /// crate), so a wobbling aim does not flip the Saboteur between running and coming back.</para>
     /// <para><b>Keycard bonus.</b> The carrier's score is multiplied by <c>1 + <see cref="KeycardCarrierBonus"/></c>
     /// and capped at 1. A multiplier rather than an addition, so a carrier at full health (score near 0) still
     /// does not run from a player who has not hurt it.</para>
     /// </remarks>
-    public sealed class FleeSource : ICandidateSource, IHealthAware
+    public sealed class FleeSource : ICandidateSource, IHealthAware, ISaboteurAwarenessUser
     {
+        /// <summary>Seconds a flight stays on offer after the player stops qualifying.</summary>
+        public const float HoldSeconds = 1.5f;
+
         /// <summary>Metres from the player beyond which a Saboteur does not flee.</summary>
         public const float Range = 14f;
 
@@ -49,13 +57,17 @@ namespace ToyFactory.AI.Agents.Saboteur
         readonly IPlayerSight _sight;
         readonly UtilityAction _action;
         readonly float[] _inputs = new float[3];
+        SaboteurAwareness _awareness;
         float _ownHealth = 1f;
+        float _lastOfferAt = float.NegativeInfinity;
+        float _lastScore;
 
         /// <summary>Creates the source.</summary>
         /// <param name="sight">The line-of-sight query; supplied by the runtime.</param>
         public FleeSource(IPlayerSight sight)
         {
             _sight = sight ?? throw new ArgumentNullException(nameof(sight));
+            _awareness = new SaboteurAwareness(sight);
             _action = new UtilityAction(SaboteurActionKind.Flee,
                 new Consideration("LowHealth", x => ResponseCurve.Logistic(x, LowHealthSteepness, LowHealthMidpoint)),
                 Consideration.Direct("PlayerAimsAtMe"),
@@ -64,6 +76,13 @@ namespace ToyFactory.AI.Agents.Saboteur
 
         /// <summary>The Saboteur's own health fraction as last reported, 0 to 1.</summary>
         public float OwnHealth => _ownHealth;
+
+        /// <summary>The line-of-sight query this source was built with.</summary>
+        public IPlayerSight Sight => _sight;
+
+        /// <inheritdoc />
+        public void Bind(SaboteurAwareness awareness, IPathfinder pathfinder) =>
+            _awareness = awareness ?? throw new ArgumentNullException(nameof(awareness));
 
         /// <inheritdoc />
         public void OnHealthChanged(int hitPointsLeft, int maxHitPoints) =>
@@ -105,9 +124,15 @@ namespace ToyFactory.AI.Agents.Saboteur
             if (distance >= Range)
                 return;
 
+            _awareness.Update(ctx);
             float aim = AimAt(player, ctx.Position);
-            if (aim <= 0f || !_sight.CanSeeCell(ctx.Cell))
+            if (aim <= 0f || !_awareness.Sees)
+            {
+                // Still running from a player who looked away a moment ago.
+                if (ctx.Time >= _lastOfferAt && ctx.Time - _lastOfferAt <= HoldSeconds && _lastScore > 0f)
+                    candidates.Add(new ActionCandidate(FleeKey, _lastScore));
                 return;
+            }
 
             _inputs[0] = 1f - _ownHealth;
             _inputs[1] = aim;
@@ -117,6 +142,8 @@ namespace ToyFactory.AI.Agents.Saboteur
                 return;
 
             float final = identity.CarriesKeycard ? Math.Min(1f, score.BaseScore * (1f + KeycardCarrierBonus)) : score.BaseScore;
+            _lastOfferAt = ctx.Time;
+            _lastScore = final;
             candidates.Add(new ActionCandidate(FleeKey, final));
         }
     }

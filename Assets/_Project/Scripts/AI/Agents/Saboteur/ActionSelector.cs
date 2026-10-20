@@ -144,6 +144,20 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// </summary>
         public void NotifyFailure(ActionKey key, float now) => NotifySuccess(key, now);
 
+        /// <summary>
+        /// Holds a pair back for <paramref name="seconds"/> from <paramref name="now"/>, whatever its kind's
+        /// usual cooldown: a squad mate's failure on the same target, or a short rest from attacking after a
+        /// flight. A longer cooldown already running is kept.
+        /// </summary>
+        public void Cooldown(ActionKey key, float now, float seconds)
+        {
+            if (seconds <= 0f || float.IsNaN(seconds))
+                return;
+            float until = now + seconds;
+            if (!_cooldownUntil.TryGetValue(key, out float current) || current < until)
+                _cooldownUntil[key] = until;
+        }
+
         /// <summary>Drops the current selection (stun, destruction). Cooldowns are kept.</summary>
         public void CancelCurrent() => _hasCurrent = false;
 
@@ -196,7 +210,10 @@ namespace ToyFactory.AI.Agents.Saboteur
                     continue;
                 }
 
-                float rank = Math.Min(1f, candidate.BaseScore + (isCurrent ? _settings.Momentum : 0f));
+                // Momentum keeps a plan going; Idle is the fallback, not a plan, so it gets none. Otherwise a
+                // weak but real reason to act (a noise, a distant sighting) could never take over from Idle.
+                bool momentum = isCurrent && candidate.Key.Kind != SaboteurActionKind.Idle;
+                float rank = Math.Min(1f, candidate.BaseScore + (momentum ? _settings.Momentum : 0f));
                 trace?.SetOutcome(i, rank, isCurrent, CandidateRejection.Outranked);
                 if (!found || IsBetter(candidate.Key, rank, isCurrent, best.Key, bestRank, bestIsCurrent))
                 {

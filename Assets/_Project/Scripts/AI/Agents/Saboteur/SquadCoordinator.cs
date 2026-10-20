@@ -32,7 +32,13 @@ namespace ToyFactory.AI.Agents.Saboteur
             public bool Destroyed;
             public bool HasAction;
             public ActionKey Action;
+            public bool HasHome;
+            public UnityEngine.Vector2Int Home;
         }
+
+        // Targets a member tried and could not use (no route, stuck, out of reach, refused), and until when
+        // the whole squad leaves them alone. One Saboteur's failure spares the others the same wasted trip.
+        readonly Dictionary<ActionKey, float> _failedUntil = new Dictionary<ActionKey, float>();
 
         // One coordinator per claims instance. The table holds its keys weakly, so a coordinator
         // lives exactly as long as the claims it wraps and nothing is kept across levels or tests.
@@ -179,6 +185,59 @@ namespace ToyFactory.AI.Agents.Saboteur
             Member member = Get(agentId);
             member.HasAction = false;
             _claims.Release(agentId);
+        }
+
+        /// <summary>
+        /// A member could not carry out <paramref name="key"/>: no member is offered it again until
+        /// <paramref name="until"/>. Only targeted actions (doors, traps, batteries) are shared.
+        /// </summary>
+        public void NoteFailure(ActionKey key, float until)
+        {
+            if (!IsClaimable(key.Kind) || float.IsNaN(until))
+                return;
+            if (!_failedUntil.TryGetValue(key, out float current) || current < until)
+                _failedUntil[key] = until;
+        }
+
+        /// <summary>True while a failure on <paramref name="key"/> keeps the whole squad away from it.</summary>
+        public bool IsFailing(ActionKey key, float now) =>
+            _failedUntil.TryGetValue(key, out float until) && now < until;
+
+        /// <summary>How many other live members currently have an action of <paramref name="kind"/> as their plan.</summary>
+        public int CountOthers(int agentId, SaboteurActionKind kind)
+        {
+            Get(agentId);
+            int count = 0;
+            foreach (KeyValuePair<int, Member> entry in _members)
+            {
+                Member member = entry.Value;
+                if (entry.Key != agentId && !member.Destroyed && member.HasAction && member.Action.Kind == kind)
+                    count++;
+            }
+
+            return count;
+        }
+
+        /// <summary>Records where a member's patrol starts, so squad mates in the same room can share it out.</summary>
+        public void SetHome(int agentId, UnityEngine.Vector2Int home)
+        {
+            Member member = Get(agentId);
+            member.HasHome = true;
+            member.Home = home;
+        }
+
+        /// <summary>The patrol homes of the other live members.</summary>
+        public List<UnityEngine.Vector2Int> OtherHomes(int agentId)
+        {
+            Get(agentId);
+            var homes = new List<UnityEngine.Vector2Int>(3);
+            foreach (KeyValuePair<int, Member> entry in _members)
+            {
+                if (entry.Key != agentId && !entry.Value.Destroyed && entry.Value.HasHome)
+                    homes.Add(entry.Value.Home);
+            }
+
+            return homes;
         }
 
         /// <summary>

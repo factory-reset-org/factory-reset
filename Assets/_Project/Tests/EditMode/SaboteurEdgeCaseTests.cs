@@ -91,8 +91,9 @@ namespace ToyFactory.Tests.EditMode
             new SaboteurBrain(new SaboteurIdentity((int)letter + 1, letter), _grid, _pathfinder, _claims,
                 new List<Vector3> { _grid.CellToWorld(new Vector2Int(2, 2)) }, null, 0, source, cache);
 
+        // The Saboteurs face west, towards the player, so a squad with eyes sees them and may act on it.
         AgentContext At(Vector2Int cell, float time, bool noWorld = false) =>
-            new AgentContext(cell, _grid.CellToWorld(cell), Vector3.forward, time, noWorld ? null : _world, default);
+            new AgentContext(cell, _grid.CellToWorld(cell), Vector3.left, time, noWorld ? null : _world, default);
 
         // ---- A door closed or occupied under the plan
 
@@ -298,7 +299,10 @@ namespace ToyFactory.Tests.EditMode
         {
             SetTrap(11, 30, 10);
             DetourCache cache = Cache();
-            SaboteurBrain brain = Brain(SaboteurLetter.A, EverySource(cache), cache);
+            // Every source but the doors: both doors lead out of the player's room, and a door comes before a trap.
+            var source = new CompositeCandidateSource(new AttackPlayerSource(new AlwaysSight()), new FleeSource(new AlwaysSight()),
+                new ArmTrapSource(_grid, cache), new StealBatterySource(_grid));
+            SaboteurBrain brain = Brain(SaboteurLetter.A, source, cache);
             Assert.AreEqual("ArmTrap", brain.Tick(At(new Vector2Int(26, 12), 0f)).DebugState);
             Assert.IsNotNull(_claims.ClaimedBy(11), "The trap is claimed.");
 
@@ -316,7 +320,7 @@ namespace ToyFactory.Tests.EditMode
             var source = new CloseDoorSource(cache);
             var offered = new List<ActionCandidate>();
             source.AddCandidates(At(new Vector2Int(12, 10), 0f), new SaboteurIdentity(1, SaboteurLetter.A), offered);
-            Assert.AreEqual(1, offered.Count, "The door is offered while the player lives.");
+            Assert.IsNotEmpty(offered, "The doors are offered while the player lives.");
 
             // 0.1 s later the cache has not refreshed, but the player is gone.
             SetPlayer(PlayerCell, alive: false);

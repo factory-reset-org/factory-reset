@@ -42,11 +42,11 @@ These are Saboteur behaviour phases, not a new shared FSM framework. Attack and 
 Apply rules in this order:
 
 1. Stun, invalid target, or blocked route cancels the current plan immediately, including during commitment. A door closed by someone else, an armed trap, or a collected battery is invalid.
-2. Reject candidates that fail eligibility. Player doorway occupancy vetoes CloseDoor regardless of score. Reject a hypothetical door closure that makes the active objective unreachable, avoiding an unintended player lockout.
+2. Reject candidates that fail eligibility. Player doorway occupancy vetoes CloseDoor regardless of score. A closure that leaves the player no route is allowed: the player can open any door a Saboteur shuts, so it is the most a door can cost them, not a soft lock (see Sabotage before combat).
 3. Score eligible candidates. Add `0.15` momentum to the **current action-target pair's** ranking score, capped at `1`. Momentum never restores eligibility.
 4. Keep a valid selected pair for at least `1.5 s`. Idle/Patrol is a fallback, not a plan, so it is never held by commitment. A different eligible pair may interrupt early only when its **base** score is greater than `0.9`. After commitment, rank with momentum.
 5. On equal ranking scores, keep the current eligible pair; otherwise use the action order in the table, then ascending target ID.
-6. Start the cooldown when an attempt ends, never when the intent is emitted: on the runtime's answer, success or failure (`ActionSelector.NotifySuccess` and `NotifyFailure` start the same cooldown), or when the brain gives the attempt up itself (no route, the last lockout check, stuck on the way, no answer 3 s after reaching the target). A failure counts so that an unreachable target is not chosen again at every decision. A target that stops being valid on its own (shut, armed or taken by someone else, or the player stepping into the doorway) ends the plan with no cooldown. A door, trap or battery has a `10 s` cooldown; AttackPlayer, Flee and Idle have none (the attack is paced at 1.2 s instead).
+6. Start the cooldown when an attempt ends, never when the intent is emitted: on the runtime's answer, success or failure (`ActionSelector.NotifySuccess` and `NotifyFailure` start the same cooldown), or when the brain gives the attempt up itself (no route, stuck on the way, no answer 3 s after reaching the target). A failure counts so that an unreachable target is not chosen again at every decision. A target that stops being valid on its own (shut, armed or taken by someone else, or the player stepping into the doorway) ends the plan with no cooldown. A door, trap or battery has a `10 s` cooldown; AttackPlayer, Flee and Idle have none (the attack is paced at 1.2 s instead).
 
 Emergency scoring does not override eligibility. Flee interrupts commitment early only if eligible and its base score exceeds `0.9`.
 
@@ -87,18 +87,18 @@ Detour gain is player-centric, so four instances would repeat the same searches.
 
 ### Hypothetical door closure
 
-The live grid is never changed to test a closure. `DoorClosureCostModel` is a Saboteur-owned `ICostModel` that returns the base step cost, except `float.PositiveInfinity` for a step into or out of the door's cells and for a diagonal step that cuts the corner of one (the grid forbids those diagonals once the door is closed). `ICostModel` only requires a step cost at least equal to the base cost, so infinity satisfies the contract. Because `PathResult` has no total, the route cost is the sum of step costs under the same model (`DoorClosureCostModel.PathCost`), and an infinite total is a lockout, so that door is rejected.
+The live grid is never changed to test a closure. `DoorClosureCostModel` is a Saboteur-owned `ICostModel` that returns the base step cost, except `float.PositiveInfinity` for a step into or out of the door's cells and for a diagonal step that cuts the corner of one (the grid forbids those diagonals once the door is closed). `ICostModel` only requires a step cost at least equal to the base cost, so infinity satisfies the contract. Because `PathResult` has no total, the route cost is the sum of step costs under the same model (`DoorClosureCostModel.PathCost`), and an infinite total is a lockout: the door is the player's only way on, which CloseDoor values at its highest.
 
 **How `AStarSearch` treats an infinite step (tested in `SaboteurDetourTests`).** Nothing in it needs to change. With another route available it expands the finite cells first and returns a finite route around the infinitely priced cell. When the only route crosses it, the search does not fail: it returns that route with `Found = true`, and the route's summed cost is infinite. So a lockout is read from the summed cost, never from `PathResult.Found`. The search terminates and never produces NaN in either case. S2 has not yet confirmed this is the intended behaviour; the result goes to S2 as a note, and nothing else depends on it.
 
 ### CloseDoor
 
-`CloseDoorSource` offers `CloseDoor(d)` for every open door on the player's route whose closing lengthens it. Two considerations through `UtilityAction`: the detour gain (`DetourCache.GainScore`, saturating at a 100% longer route) and the Saboteur's distance to the door (`1 - d / 30 m`, a straight octile distance, not a search, because four Saboteurs rank every door at 4 Hz). A door is not offered when it is already closed, when closing it is a lockout, when it adds no detour, or when the player is on or next to its cells. With two considerations the compensated score of a 0.3 gain at 5 m is about 0.34, above Idle (0.1). The squad layer vetoes a door another Saboteur has claimed.
+`CloseDoorSource` offers `CloseDoor(d)` only to a Saboteur that stands in the same room as the player (`DetourCache.IsInPlayerRoom`), and only for that room's open ways out (`DetourCache.PlayerRoomExits`), so it shuts the player in with itself and never shuts itself out in another room. The room is one flood a refresh for the squad from the player's cell, over the same floor the room patrol uses, ended by doorways; a body in a doorway or on the edge of a prop counts as in the room. Two considerations through `UtilityAction`: the door's value (`CloseDoorSource.DoorValue`: 1 for the way out the player's route takes, 0.6 for another) and the Saboteur's distance to the door (`1 - d / 30 m`; the real walk once a brain has bound its pathfinder). A door is not offered when it is already closed or when the player is on or next to its cells. The squad layer vetoes a door another Saboteur has claimed, and the brain scores what is left in the door band (Sabotage before combat). A door plan under way ends with no cooldown as soon as the two no longer share a room (the player has left, or the Saboteur was pushed through the doorway); the door is offered again when they do.
 
 The brain carries it out in two phases, only when it was given the shared `DetourCache` (it needs the door's cells):
 
 - **Travel.** One A* route to the nearest door cell is sent (`Path`), and sent again if a changed cell lies on it. A route that cannot be found, or ends out of reach, ends the plan as a failure.
-- **Execute.** Within 1.5 m of the door the body stops once and each tick the intent is `AgentAction.CloseDoor` with `ActionTargetId` = the door id (`Door.doorId` = `DoorwayMarker.DoorId` = grid `DoorId`). Just before the first request, `DetourCache.WouldLockPlayerOut` runs one fresh search with this door counted as shut, against the grid as it is at that moment. The score came from a cache up to half a second old and judged the door alone, and two doors that are each safe alone can be a lockout together (the Control Room's two entrances), so if another Saboteur has just shut the other entrance the door is given up, with the failure cooldown and the claim released. It costs one search per door plan.
+- **Execute.** Within 1.5 m of the door the body stops once and each tick the intent is `AgentAction.CloseDoor` with `ActionTargetId` = the door id (`Door.doorId` = `DoorwayMarker.DoorId` = grid `DoorId`). Until 20 October 2026 a last `DetourCache.WouldLockPlayerOut` search ran here and gave up a door that would shut the player in; it no longer does, because shutting them in is the point and they can open the door again. The doorway check still runs on every tick, so a door never comes down on the player.
 - **Stuck.** A walk is watched for progress in game time (a pause never counts). If the Saboteur gets no 0.5 m closer to the door for `TravelStuckSeconds` (4 s), its route is sent again from where the body is now; stuck again for as long, and it gives the door up as a failure (cooldown, claim released). This covers a body shoved aside, carried off, teleported or wedged against something the grid does not know about, which would otherwise keep "walking" a stale route and hold the claim for ever. The same watch runs on trap and battery walks. A body standing in a blocked cell (against a wall or a box) plans from the nearest free cell within `StartSnapRadius` (4 cells) instead of failing to plan anything.
 - **End.** The controller answers every door request exactly once through `IActionFeedback.OnActionResolved(action, targetId, success)`: success when it closed the door, failure when the door is not registered, the Saboteur stayed out of reach for 2 s, a newer request replaced it, or the Saboteur was knocked out first. Either answer starts the door cooldown (10 s) at once and ends the plan on the next tick, with the claim released. The grid still ends the plan if the door is seen closed, and a door still open 3 s after the Saboteur reached it is given up as a failure, so a brain without a controller (tests) still cannot stand at a door for ever. A door shut by someone else just stops being a candidate and earns no cooldown.
 
@@ -108,11 +108,11 @@ Wired into the level through `AgentSpawner.CreateBrain` (see Spawn hookup): the 
 
 Two candidate sources read S2's trap and battery facts (`world.SabotageFacts`: id, cell, kind, available) the way `CloseDoorSource` reads the door detours. Ids are unique across doors (1-4), traps (11-14) and batteries (21-26), which the claims need because `TargetClaims` keys on the id alone. A fact that is missing, or not available (a trap already armed, a battery already taken), is not a candidate. Both sources move the fact's cell to the nearest walkable cell within 4 cells (`SabotageTargetCells.TrySnap`; traps and batteries can stand in props or on shelves) and skip a cell outside the grid. The squad layer then vetoes a target another Saboteur has claimed.
 
-**ArmTrap(t)** (`ArmTrapSource`). Eligible when the player is alive and the squad's `DetourCache` has their route to the objective (the cache now keeps that route, `DetourCache.PlayerRoute`), the route passes within 2 cells of the trap, and the player gets there within 10 s at their top speed (the earliest they can arrive). The Saboteur must also be able to arrive first: a trap the player will already have passed is not worth arming. Two considerations, both through `ResponseCurve.Inverse`: the seconds until the player passes over the 10 s horizon (the sooner, the higher) and the straight octile distance to the trap over 30 m.
+**ArmTrap(t)** (`ArmTrapSource`). Eligible when the trap is available (not armed) and the player is alive, and either the player is within 10 m of it (near: any walk up to 20 m is worth it, since a player moving about a room with a trap in it will likely cross it) or the squad's `DetourCache` route to the objective passes within 2 cells of it within 10 s at their top speed and the Saboteur gets there a full second before them. Never within 2 m of the player, who would be standing on it. Two considerations: the urgency (`ArmTrapSource.Urgency`: 1 beside the player down to 0.5 at 10 m, or `1 - seconds / 10` on the route, whichever is higher) and the walk over 20 m through `Inverse`.
 
-**StealBattery(b)** (`StealBatterySource`). Eligible when the player is alive and the Saboteur's walk (octile distance over 4.3 m/s, at most 30 m) is shorter than the player's straight walk to the battery at their top speed. Two considerations: the player's loaded ammunition fraction through `Inverse` (the emptier, the higher; a full battery scores 0 and vetoes the theft, because it would not hurt) and the distance over 30 m.
+**StealBattery(b)** (`StealBatterySource`). Eligible when the Saboteur is alerted to the player (its awareness, below: it sees them, saw them in the last 6 s or heard them in the last 8 s), the player is alive, and the battery's walkable cell is within 12 m of the Saboteur by the walk it would really take (the squad's A*), and that walk is shorter than the player's straight line to the battery: the battery is closer to the Saboteur than to the player. There is no race at top speed any more (the player sprints at 7 m/s and the Saboteur walks at 4.3 m/s, so the race ruled out nearly every battery), and a full blaster no longer vetoes the theft, because a battery also gives the player a spare cell and 25 integrity. Two considerations: the player's need (`StealBatterySource.NeedScore`, 0.5 for a full blaster rising to 1 for an empty one) and the walk over 12 m through `Inverse`. At most two walks are measured per decision, after straight distances have ruled most batteries out.
 
-**Reachability.** Like doors, the walk is a straight octile distance, not a search: it only ranks targets, so it stays cheap for four Saboteurs deciding at 4 Hz. The brain finds the real route when it commits, and a target it cannot reach ends the plan as a failure.
+**Reachability.** Straight distances rank the targets cheaply first; then the real walk is measured with the squad's A* for at most two doors, two traps and two batteries per decision, and a target with no route or a walk past its range is not offered (doors 30 m, traps 20 m, batteries 12 m). A trap offered only for being on the route must also be reached a full second before the player; none is armed within 2 m of them. The brain still finds its own route when it commits, and a target it cannot reach ends the plan as a failure, shared with the squad.
 
 **In the brain** (`TryFactAction`, the same shape as CloseDoor):
 
@@ -146,7 +146,7 @@ The squad stops counting a destroyed instance for saturation, and `DetourCache` 
 
 Flee is built (`FleeSource`, `FleePlanner`). The runtime does not report whether the player is aiming, so aiming is worked out from `PlayerSnapshot.Forward`: the player's flat facing direction must be within 40 degrees of the direction to the Saboteur. The consideration is 0 at the edge of the cone and 1 dead on, so a player who looks away stops being a reason to run.
 
-**Eligibility** (decided before scoring): the player is known and alive, less than 14 m away, can see the Saboteur (the same physics sight check as AttackPlayer) and faces it. Otherwise Flee is not a candidate.
+**Eligibility** (decided before scoring): the player is known and alive, less than 14 m away, seen by the Saboteur (its awareness: the vision cone, the all-round 3.5 m, or a player it is already tracking, all with a line of sight) and facing it. Otherwise Flee is not a candidate, except that a flight already offered stays on offer at the same score for 1.5 s after the player stops qualifying, so a wobbling aim does not flip it between running and coming back.
 
 **Score.** Three considerations, compensated as for every action (three considerations, so `modFactor = 2/3`):
 
@@ -174,6 +174,116 @@ Plan Appendix A values: Saboteur health 4, speed 4.3 m/s, melee damage 10. Any c
 
 **Review of 15 October 2026: no change.** The squad scenario (two doors, four Saboteurs) chose as designed: each of A and B took the door beside it, C and D, with both doors claimed, fell back to Idle, a destroyed holder's door passed to another Saboteur, and a closed door was not offered again. In the live scene the Saboteur 4 m from the player attacked instead of taking a door, which is the intended order (AttackPlayer scores above CloseDoor at that range), and the other two shared the doors. Two close doors scored 0.60 and 0.58 and moving by 0.1 either way switched 232 times in two minutes without stability and 8 with momentum 0.15 and 1.5 s commitment, so those two values stay. The attack saturation factor 0.45, the door distance cap (30 m) and the 4 Hz decision interval were not exercised hard enough here to justify a change.
 
+### Perception, memory, search and patrol (19 October 2026)
+
+Before this change the squad reacted to the player with full knowledge: AttackPlayer and Flee needed only a line of sight, and doors, traps and batteries used the player's position anywhere on the map. Each Saboteur now has its own `SaboteurAwareness`, built in the brain on the line-of-sight query of its attack or flee source and bound to all its sources (`ISaboteurAwarenessUser`), so every action reacts only to a player that Saboteur could have seen or heard. All of it is in `AI/Agents/Saboteur/`; the spawner, the controller, animation, models and interactions are unchanged.
+
+| Sense | Rule |
+| --- | --- |
+| Vision cone | 60 degrees each side of the body's facing (120 in all), out to 12 m, with a line of sight |
+| All-round sense | Any direction within 3.5 m, with a line of sight |
+| Tracking | A player seen in the last second stays seen out to 14 m whatever the facing, with a line of sight |
+| Memory | The last sighting (position, cell, velocity, time) is kept 6 s |
+| Hearing | The last player noise (source id -1, not a lure) is kept 8 s; agents' noises and thrown toys are ignored |
+
+The line of sight is the same physics ray as before (from the player's eye to the Saboteur's cell); it is only cast when one of the rules could make the player seen, at most every 0.1 s.
+
+**What needs what.** AttackPlayer and Flee need the player seen. StealBattery needs the player seen. ArmTrap and CloseDoor need the Saboteur to be alerted: it sees the player, saw them within 6 s or heard them within 8 s. A source used on its own (no brain bound it) keeps its earlier rules, which is how the older unit tests of door feedback still run.
+
+**Search** (a new action, `Search`, after Idle in the tie order). One candidate at most:
+
+| Situation | Goal | Score |
+| --- | --- | --- |
+| Player seen beyond the 2 m melee reach | the player (shown as `Approach`) | 0.12, times attack saturation |
+| Sighting remembered, player not seen | last position plus 1 s of their velocity (at most 4 m) | 0.5 fresh, falling to 0.15 at 6 s |
+| Player noise remembered | where the noise came from | 0.12 to 0.3 by loudness and age |
+
+Two or more squad mates already searching halve it. The Saboteur walks there, stops and turns its head round over 2.4 s, checks one spot 3 m further on (the way the player went, or on from the noise), and gives the search up at 14 s at the latest. A finished search marks the sighting and noise as searched, so they are not offered again; a new one is. Then it returns to its patrol.
+
+**Room patrol** (`RoomPatrolPlanner`, `SaboteurOptions.RoomPatrol`, on in the game). The Saboteur's room is the walkable floor reached from its first patrol point without passing a door, up to 18 m. Where two Saboteurs start in one room (A and D in the Storage Area) each keeps the floor nearer its own first point. Three to seven points are spread over that area (at least 3 m apart, away from walls where possible), seeded with the level's own patrol points, and walked as a nearest-neighbour loop. In the level the planned loops are A 5 points, B 7, C 7, D 5. A Saboteur given no patrol points still holds in place.
+
+**Stuck detection.** Progress on a walk is now what is left of the route (`SaboteurPaths.RemainingMetres`), not the straight distance to the target, so a route that first bends away round a wall is not taken for no progress. The rule is unchanged otherwise (0.5 m in 4 s, one re-send, then give up) and now also covers patrol walks: a patrol point it cannot make progress to is skipped.
+
+**Squad failure memory.** A door, trap or battery that one Saboteur failed at (no route, stuck, out of reach, refused, timed out) is left alone by the whole squad for 10 s (`SquadCoordinator.NoteFailure`), not only by the one that failed. In the squad scenario test this cut the routes four Saboteurs planned in 20 s from 10 to 3, because the others no longer repeat the same failed trip.
+
+**Steadier hand-overs.**
+
+- An attack under way carries on out to 10 m and through up to 1 s out of sight; a new one still starts within 8 m.
+- A flight stays on offer for 1.5 s after the player stops qualifying.
+- For 2 s after a flight, an attack scores half, so a Saboteur that ran does not turn straight back.
+- Idle no longer gets the 0.15 momentum: it is the fallback, not a plan. With momentum, any reason to act scoring under 0.25 (a distant sighting, a quiet noise) could never take over from Idle; the probe in the level showed a Saboteur seeing the player at 11 m and staying Idle.
+
+**Traps** go off when the player walks into an armed one; that is S2's `Trap` and was already the case.
+
+### Sabotage before combat (20 October 2026)
+
+**What the level showed.** A probe on 20 October 2026, before this change, put the player 6 m in front of each Saboteur in turn on the real level (journey start, every door as the level opens it) and logged every decision for 6 s with a full blaster, then 6 s at 40% ammunition:
+
+- **AttackPlayer was the only action any Saboteur was offered** besides Idle and Search; it rose to 0.88 as the Saboteur closed in.
+- **Doors.** The grid has doors 1 to 4; 3 and 4 (the Control Room's) start locked and shut. Doors 1 and 2 were each either off the player's route (gain 0) or their only way on (a lockout), so CloseDoor was never offered.
+- **Batteries.** A full blaster vetoed every theft. At 40% the nearest batteries still failed the race at top speed (Saboteur A: battery 23 at 8.2 m, the player 9.4 m from it, but 1.9 s against 1.3 s).
+- **Traps.** All four start armed (S2's `Interactables.unity`, `startArmed`), so none was available.
+
+**What changed** (all in `AI/Agents/Saboteur/`):
+
+| Part | Rule |
+| --- | --- |
+| Priority bands | A sabotage whose score after the squad layer is at least 0.15 is mapped into its kind's band: doors 0.66 to 0.74, traps 0.58 to 0.66, batteries 0.50 to 0.58 (`SaboteurBrain.PriorityScore`). The source's score still orders targets within a band. |
+| Attack held back | While a sabotage worth doing is on offer, AttackPlayer is multiplied by 0.25 (`AttackDeferFactor`), so the best attack (0.88) plus momentum (0.15) stays under the battery band: a Saboteur attacks only when no sabotage is worth doing. |
+| Weak sabotage | Below 0.15 a door, trap or battery keeps its own score and holds nothing back. |
+| Flee | The top of the door band plus momentum is 0.89, under the 0.9 emergency threshold, so a badly hurt Saboteur still breaks off to flee. |
+| Doors | The ways out of the room the Saboteur shares with the player are offered (CloseDoor above); no last lockout check. Until the same-room rule below, their only way on was offered from anywhere. |
+| Traps | An available trap within 10 m of the player is offered, as well as one on their route; 2 m minimum. |
+| Batteries | Alerted is enough; no top-speed race; a full blaster scores half. |
+| Shut out | A Saboteur that cannot reach any point of its own loop (a door shut behind it, which agents cannot open) patrols the room it stands in, planned like its own, and goes back to its own loop at the next grid change (`SaboteurBrain.IsStranded`). |
+
+The squad layer is unchanged and still applies first: a door claimed by one Saboteur is vetoed for the rest, so a squad mate with nothing else to sabotage attacks at full score.
+
+**What the level shows now.** The same placement after the change, 10 s each, with the player shooting once a second and kept alive:
+
+| Saboteur | First choice on seeing the player | Doors closed | Then |
+| --- | --- | --- | --- |
+| A | CloseDoor at 0.1 s | 2 | attack |
+| B | CloseDoor at 0.2 s | 1 | search, approach, attack |
+| C | CloseDoor at 0.2 s (StealBattery 22 also offered, in its band) | 1 and 2 | approach, attack |
+| D | CloseDoor at 0.3 s (StealBattery 24 below 0.15, not banded) | 2 | search, attack |
+
+While A's run went on, squad mates took batteries 22 and 25. Then the player reopened every unlocked door, cleared all four traps and stood 5 m from the trap nearest the Saboteur for 12 s: trap 11 was claimed and armed again by the squad in A's and C's runs, and C and D each chose StealBattery once alerted: D took battery 25; C walked for battery 23 for 9 s without reaching it before the run ended. Traps 12 and 13 were not armed in D's and B's runs: they had just shut the door between themselves and the trap, or the walk was past 20 m. Before the shut-out fallback, A stood in Hold for most of its 12 s after shutting itself out; with it, A patrolled and searched the room it was in.
+
+**Dependency (S2).** Because every trap starts armed, a Saboteur can only arm one after the player has sprung or cleared it. Starting some traps unarmed would let the squad lay them from the start; that is S2's scene and has not been changed.
+
+### Bodies in the way and same-room doors (20 October 2026)
+
+**Bodies in the way.** The grid does not know about other agents, so a route could run straight through a Guard, Tracker or Captain lying knocked out (6 to 8 s), a squad mate standing still, or a scrapped Saboteur before it sinks away. A probe on the real level dropped a knocked-out Guard 1.5 m ahead on a Saboteur's patrol walk, three times for each Saboteur, with the other Saboteurs scrapped and the player out of the way, and watched 20 s:
+
+| Code | Walks that got past to their end | Longest standing still |
+| --- | --- | --- |
+| Before (sabotage before combat only) | 1 of 12 | worst per Saboteur 11.6 to 19.6 s |
+| Route cost and waiting, before legs (two runs) | 2 and 1 of 12 | up to 19.9 s |
+| After (route cost, legs, waiting) | 11 of 12 | 4.0 s at most |
+
+The first attempt showed why routing alone was not enough: the brain routed round the body within 0.7 s, but the runtime string-pulls every path of more than two waypoints over the grid (`AgentController`, S4's), and the grid has no body in it, so the detour was pulled straight back through the body. What the brain does now (all in `AI/Agents/Saboteur/`):
+
+| Part | Rule |
+| --- | --- |
+| Route cost | `SaboteurRouteCost` (an `ICostModel`, like the Captain's) prices a step within 1.1 m of a standing agent (below 0.3 m/s; a knocked-down one is at 0) at 21 base steps, so A* goes round it when there is a way. The bodies come from the runtime through `ICrowdAware`, as for the Captain. |
+| Body ahead | A standing body on the next 3 m of the route asks for a new route at once, at most once a second, instead of after the 4 s stuck wait. |
+| Legs | A route that passes within 2 m of a standing body is sent a leg at a time: two waypoints, which the runtime walks as they are, from the body to the furthest route cell it can walk to in a straight line clear of walls and bodies. Reaching the end of a leg sends the next. Routes away from bodies are sent whole, as before. |
+| No way round | A route that would go deeper into a body than the Saboteur already is counts as no route: the patrol tries its other points and, if none can be reached, holds and looks again every second until the body gets up or sinks; a door, trap or battery behind it ends as a failure; a search looks round from where it is. |
+| Unknown obstacles | A walk that makes no progress for 4 s prices the next 1.5 m of its route as blocked for 8 s, so the route sent again goes round whatever is there (a scrapped body the runtime no longer lists, a crate the grid does not know). |
+
+The one walk that did not reach its end after the change (Saboteur D, first run) did not stand still either: it kept moving (longest stop 0.1 s) but did not arrive within the 20 s.
+
+**Same-room doors.** A Saboteur closes a door only from inside the room it shares with the player, and only that room's ways out (CloseDoor above). The level probe put each Saboteur in turn (the others scrapped) 2 m from door 2 on the Storage side, with the player 4 m from it on the far side, shooting once a second, for 10 s:
+
+| Code | Door 2 | Where the Saboteur ended |
+| --- | --- | --- |
+| Before | Closed by all four from their own side, within 0.5 s | Outside the player's room, every time |
+| After | Closed by all four from inside the player's room, at 1.7 to 2.3 s, after walking through to them | In the player's room, then attacking |
+
+**On an errand.** A first run of the fix left three of the four standing beside the player for the whole 10 s: the runtime's stand-off (`PlayerStandOff`, S4's) holds a body still within 1.4 m of the player, so a Saboteur that had come into the room could not walk back past them to the door. The brain now sets `IgnorePlayer` on its door, trap and battery intents, the flag the Tracker uses while it watches a thrown toy, so the body walks on and does not swing at the player on the way.
+
+With the player in a room far from the tested Saboteur (beside another one's home), no Saboteur entered CloseDoor, before or after the change. With the player 6 m in front of it, A, C and D each closed a way out of their own room and stayed in it; B's run put the player inside a wall and says nothing either way.
 ## Alternatives considered
 
 | Option | Why not |
@@ -301,7 +411,7 @@ Reuse the shared A* and base cost model. Do not mutate the live grid while scori
 | Brain skeleton: identity, 4 Hz selection, Idle/Patrol, stun, graph changes, destruction | Implemented | `SaboteurIdentity`, `SaboteurBrain`; `SaboteurBrainTests` |
 | Decision trace for the debug panel: each candidate's raw and base score, each consideration's input and score, ranking, and why a candidate lost | Implemented; filled by the brain and `ActionSelector`, no allocation per decision | `UtilityDecisionTrace`, `SaboteurBrain.LastDecision`; `UtilityDecisionTraceTests` |
 | AttackPlayer | Implemented, tested and wired into the level through `AgentSpawner.CreateBrain` (see Spawn hookup) | `AttackPlayerSource`, `IPlayerSight`, `CoverVisibilitySight`, `SaboteurBrain`; `SaboteurAttackTests` |
-| CloseDoor | Implemented, tested and wired into the level; uses `IActionFeedback`. Offered in Chapter 4 only, when the four rooms form a ring (see Limits); before that every door is a lockout. A last fresh lockout check runs just before the request | `CloseDoorSource`, `CompositeCandidateSource`, `DetourCache.For`, `SaboteurBrain`; `SaboteurDetourTests`, `SaboteurFeedbackTests`, `SaboteurDoorSafetyTests`, `SaboteurEdgeCaseTests`, `SaboteurDoorSceneTests`, `SaboteurChapterFourSceneTests` |
+| CloseDoor | Implemented, tested and wired into the level; uses `IActionFeedback`. Offered in every chapter, only to a Saboteur in the player's room, for that room's ways out (see Bodies in the way and same-room doors) | `CloseDoorSource`, `CompositeCandidateSource`, `DetourCache.For`, `SaboteurBrain`; `SaboteurDetourTests`, `SaboteurFeedbackTests`, `SaboteurDoorSafetyTests`, `SaboteurEdgeCaseTests`, `SaboteurPriorityTests`, `SaboteurDoorSceneTests`, `SaboteurChapterFourSceneTests` |
 | Flee | Implemented, tested and wired into the level through `AgentSpawner.CreateBrain` (see Spawn hookup). The keycard carrier's bonus is a starting value | `FleeSource`, `FleePlanner`, `SaboteurBrain`; `SaboteurFleeTests`, `SaboteurFleeEvidenceTests`, `SaboteurFleeSceneTests` |
 | Saboteur layer on the F3 debug overlay: each Saboteur's squad row (letter, action, health, destroyed) and its latest decision | Implemented; registers itself, no edit to the overlay. Shows each action's raw and final score and why it lost, not the individual considerations | `UtilityDecisionText`, `SaboteurOverlayLayer`; `UtilityDecisionTextTests`, `SaboteurOverlayLayerTests` |
 | Squad scenario: four Saboteurs, two doors, a way round each, with the real sources, cache, claims and A*; searches for one and four instances; tick cost; anti-dithering | Implemented, measured | `SaboteurSquadScenarioTests`, `Test_SquadClaims.unity`, `SquadClaimsSceneTests`, `SquadScenarioObjective`; results in `Docs/AIPerformanceLog.md` |
@@ -358,7 +468,7 @@ Stun calls `EndPlan` and destruction calls `OnDestroyed`, so a stunned or destro
   - `DebugState` stays `AttackPlayer` in both phases. The attack score and its 8 m range are unchanged: the Saboteur still decides to attack from 8 m, it just walks the distance first.
   - A cornered Saboteur (Flee selected, no refuge) swipes only if the player is within 2 m; farther away it holds, since a swipe would not reach.
 
-**Limits.** In the level the candidates are Idle, AttackPlayer, Flee, CloseDoor, ArmTrap and StealBattery. Flee is offered whenever the player faces a hurt Saboteur it can see, so in play it shows once the Saboteur has taken a hit. **When CloseDoor can fire.** Probed on 15 October 2026 on the real grid, in Chapter 4 with every door open, over 436 player and objective pairs (a lattice of player cells against the four real objectives): no door was ever a lockout; doors 1, 2, 3 and 4 had a finite, positive detour for 43, 69, 157 and 167 pairs, up to a gain of 0.62, 0.68, 3.98 and 5.80. The four rooms form a ring (Assembly - door 1 - Painting - door 2 - Storage - door 3 - Control - door 4 - Assembly). Doors 3 and 4, the Control Room's entrances, are locked and closed until the Chapter 3 cutscene (`LevelLayout.md`), so **before Chapter 4 every open door is the only link between its rooms**, a closure would be a lockout and CloseDoor is not offered (this is what the 10 October probe saw). **In Chapter 4 it can fire**, and `SaboteurChapterFourSceneTests` shows it on the real map with no wall cut: a player deep in Assembly heading for the Control Room has door 4 closed by Saboteur A, the long way round stays open, and the squad does not go on to shut it; with the player in Storage, door 3 is closed and door 4, now the only way into the Control Room, is never closed by a second Saboteur. The player can always reopen a door with Interact. `SaboteurDoorSceneTests` still cuts a gap through the wall next to door 1 so it can test the chain in the earlier layout. The claim behaviour is exercised in `SaboteurSquadTests`, `SaboteurDetourTests` and `SaboteurFeedbackTests`.
+**Limits.** In the level the candidates are Idle, AttackPlayer, Flee, CloseDoor, ArmTrap and StealBattery. Flee is offered whenever the player faces a hurt Saboteur it can see, so in play it shows once the Saboteur has taken a hit. **When CloseDoor can fire.** Probed on 15 October 2026 on the real grid, in Chapter 4 with every door open, over 436 player and objective pairs (a lattice of player cells against the four real objectives): no door was ever a lockout; doors 1, 2, 3 and 4 had a finite, positive detour for 43, 69, 157 and 167 pairs, up to a gain of 0.62, 0.68, 3.98 and 5.80. The four rooms form a ring (Assembly - door 1 - Painting - door 2 - Storage - door 3 - Control - door 4 - Assembly). Doors 3 and 4, the Control Room's entrances, are locked and closed until the Chapter 3 cutscene (`LevelLayout.md`), so **before Chapter 4 every open door is the only link between its rooms**. Until 20 October 2026 such a closure counted as a lockout and CloseDoor was not offered (this is what the 10 October probe saw); it is now offered at full value, as the player's only way on (see Sabotage before combat). **In Chapter 4 it can fire**, and `SaboteurChapterFourSceneTests` shows it on the real map with no wall cut: a player deep in Assembly heading for the Control Room has door 4 closed by Saboteur A, the long way round stays open, and the squad does not go on to shut it; with the player in Storage, door 3 is closed. Since 20 October 2026 a second Saboteur may also close door 4, now the only way into the Control Room, as long as no player stands in it. The player can always reopen a door with Interact. `SaboteurDoorSceneTests` still cuts a gap through the wall next to door 1 so it can test the chain in the earlier layout. The claim behaviour is exercised in `SaboteurSquadTests`, `SaboteurDetourTests` and `SaboteurFeedbackTests`.
 
 ### Spawn hookup
 

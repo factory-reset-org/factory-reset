@@ -13,7 +13,13 @@ namespace ToyFactory.AI.Agents.Saboteur
         StealBattery = 2,
         AttackPlayer = 3,
         Flee = 4,
-        Idle = 5
+        Idle = 5,
+
+        /// <summary>
+        /// Go where the player was last seen or heard and look round, or close in on a player seen out of
+        /// attack range. Last in the order, so Idle wins a tie.
+        /// </summary>
+        Search = 6
     }
 
     /// <summary>An action paired with the target it acts on (a door, trap or battery id).</summary>

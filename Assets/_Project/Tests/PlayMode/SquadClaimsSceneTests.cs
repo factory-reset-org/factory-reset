@@ -102,6 +102,8 @@ namespace ToyFactory.Tests
             while (Time.realtimeSinceStartup < until &&
                    !(grid.GetNode(DoorOneCell).IsDoorClosed && grid.GetNode(DoorTwoCell).IsDoorClosed))
             {
+                // The player keeps shooting, so the squad knows they are about (a Saboteur acts only on a player it saw or heard).
+                PlayerShotNoise.Every(1f);
                 int? one = claims.ClaimedBy(1);
                 int? two = claims.ClaimedBy(2);
                 splitSeen |= one.HasValue && two.HasValue && one.Value != two.Value;

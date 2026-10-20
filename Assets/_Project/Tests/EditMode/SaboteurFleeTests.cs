@@ -60,8 +60,9 @@ namespace ToyFactory.Tests.EditMode
                 alive, 1f, 1f, false, 0f, 0f);
         }
 
+        // The Saboteur faces east, towards the player, so the player stands in its vision cone.
         AgentContext Ctx(WorldBlackboard world, float time, Vector2Int? cell = null, Vector3? position = null) =>
-            new AgentContext(cell ?? _home, position ?? HomeWorld, Vector3.forward, time, world, default);
+            new AgentContext(cell ?? _home, position ?? HomeWorld, Vector3.right, time, world, default);
 
         static WorldBlackboard WorldWith(PlayerSnapshot player)
         {
@@ -143,7 +144,20 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void JustInsideFourteenMetresIsACandidate()
         {
-            Assert.AreEqual(1, Candidates(PlayerAt(13.9f)).Count);
+            // Beyond the 12 m vision cone a player is only seen while being tracked: spotted at 10 m a moment ago.
+            var source = new FleeSource(_sight);
+            source.OnHealthChanged(1, 4);
+            var list = new List<ActionCandidate>();
+            source.AddCandidates(Ctx(WorldWith(PlayerAt(10f)), 0f), Identity(SaboteurLetter.B), list);
+            list.Clear();
+            source.AddCandidates(Ctx(WorldWith(PlayerAt(13.9f)), 0.5f), Identity(SaboteurLetter.B), list);
+            Assert.AreEqual(1, list.Count);
+        }
+
+        [Test]
+        public void APlayerBeyondTheConeNotYetSpottedIsNotFledFrom()
+        {
+            Assert.IsEmpty(Candidates(PlayerAt(13.9f)), "13.9 m is past the 12 m cone, and the player was never spotted.");
         }
 
         [Test]
@@ -489,7 +503,8 @@ namespace ToyFactory.Tests.EditMode
             brain.OnStunned(2f);
             AgentIntent intent = brain.Tick(Ctx(WorldWith(PlayerAt(40f)), 5f));
 
-            Assert.AreEqual("Patrol", intent.DebugState);
+            // The flight is over; the player it ran from was seen 5 s ago, so it searches on a fresh route.
+            Assert.AreEqual("Search", intent.DebugState);
             Assert.IsNotNull(intent.Path);
         }
 

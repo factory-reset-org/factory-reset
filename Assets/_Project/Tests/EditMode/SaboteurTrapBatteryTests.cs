@@ -161,20 +161,29 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void TrapThePlayerWillHavePassedBeforeTheSaboteurArrivesIsNotACandidate()
+        public void TrapOnlyOnTheRouteThatThePlayerWillHavePassedIsNotACandidate()
         {
-            // The player is about 1 m (0.2 s) from it, the Saboteur 15 m (3.5 s) away.
-            Assert.IsEmpty(Trapped(new Vector2Int(14, 15), Trap(11, 14, 30)));
+            // 11 m along the route (2.2 s at 5 m/s), too far to count as near them; the Saboteur is 15 m (3.5 s) away.
+            SetPlayer(new Vector2Int(18, 30));
+            Assert.IsEmpty(Trapped(new Vector2Int(40, 0), Trap(11, 40, 30)));
+        }
+
+        [Test]
+        public void TrapNearThePlayerIsACandidateEvenIfTheyWouldGetThereFirst()
+        {
+            // 2 m from the player, the Saboteur 7.5 m off: a trap in the player's way is worth arming late.
+            Assert.AreEqual(1, Trapped(new Vector2Int(14, 15), Trap(11, 14, 30)).Count);
         }
 
         [Test]
         public void NearerSaboteurAndSoonerPassScoreHigher()
         {
             float near = Trapped(new Vector2Int(40, 26), Trap(11, 40, 30))[0].BaseScore;
-            float far = Trapped(new Vector2Int(40, 12), Trap(11, 40, 30))[0].BaseScore;
+            float far = Trapped(new Vector2Int(40, 16), Trap(11, 40, 30))[0].BaseScore;   // 7 m: still there a second before the player
             Assert.Greater(near, far, "The nearer Saboteur wants it more.");
 
-            SetPlayer(new Vector2Int(30, 30));
+            // 10 m from the trap: soon, but with time to see it armed (the Saboteur must be there a second early).
+            SetPlayer(new Vector2Int(20, 30));
             float soon = Trapped(new Vector2Int(40, 26), Trap(11, 40, 30))[0].BaseScore;
             SetPlayer(new Vector2Int(10, 30));
             float later = Trapped(new Vector2Int(40, 26), Trap(11, 40, 30))[0].BaseScore;
@@ -234,11 +243,12 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void PlayerWithAFullBatteryVetoesTheTheft()
+        public void PlayerWithAFullBlasterStillLosesTheBattery()
         {
+            // A battery also gives a spare cell and repairs, so a full blaster lowers the score but does not veto it.
             SetPlayer(new Vector2Int(10, 30), ammo: 1f);
 
-            Assert.IsEmpty(Stolen(new Vector2Int(30, 36), Battery(21, 30, 40)));
+            Assert.AreEqual(1, Stolen(new Vector2Int(30, 36), Battery(21, 30, 40)).Count);
         }
 
         [Test]

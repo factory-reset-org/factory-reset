@@ -10,11 +10,12 @@ using ToyFactory.AI.Core.Search;
 namespace ToyFactory.Tests.EditMode
 {
     /// <summary>
-    /// Two doors that are each safe to close alone can be a lockout together, like the two entrances of
-    /// one room, and the detour cache can be half a second old. The brain therefore asks
-    /// <see cref="DetourCache.WouldLockPlayerOut"/> once, just before it sends the close request. The map: a
-    /// wall at x = 20 with two doors, door 1 at y = 5 and door 2 at y = 15, so the player at (5, 5) and the
-    /// objective at (35, 5) always have a way through, unless both doors are shut.
+    /// Two doors that are each no lockout alone can be one together, like the two entrances of one room, and
+    /// the detour cache can be half a second old; <see cref="DetourCache.WouldLockPlayerOut"/> answers that
+    /// fresh. The player can open any door a Saboteur shuts, so the squad may shut every way out: these tests
+    /// also hold the brain to that, and to the failure and stuck rules on the way to a door. The map: a wall at
+    /// x = 20 with two doors, door 1 at y = 5 and door 2 at y = 15, so the player at (5, 5) and the objective at
+    /// (35, 5) always have a way through, unless both doors are shut.
     /// </summary>
     public class SaboteurDoorSafetyTests
     {
@@ -162,42 +163,41 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void SaboteurDoesNotShutTheLastEntranceAnotherSaboteurJustClosedTheOther()
+        public void SaboteurShutsTheLastEntranceAfterAnotherSaboteurClosedTheOther()
         {
             DetourCache cache = Cache();
             SaboteurBrain brain = Brain(SaboteurLetter.A, cache);
             Assert.AreEqual("CloseDoor", brain.Tick(At(new Vector2Int(10, 5), 0f)).DebugState);
             Assert.AreEqual(1, _claims.ClaimedBy(1));
 
-            // While it walks, another Saboteur shuts door 2. The next tick is not a decision slot, so the
-            // brain's cache and its plan still say door 1 is a good door.
+            // While it walks, another Saboteur shuts door 2: door 1 is now the player's only way on.
             _grid.SetDoor(Door2Cell, 2, true);
             AgentIntent intent = brain.Tick(At(new Vector2Int(19, 5), Frame));
 
-            Assert.AreNotEqual(AgentAction.CloseDoor, intent.Action, "Shutting door 1 now would lock the player out.");
-            Assert.AreEqual("Patrol", intent.DebugState);
-            Assert.IsNull(_claims.ClaimedBy(1), "The claim is released.");
-            Assert.IsFalse(_grid.GetNode(Door1Cell).IsDoorClosed);
+            Assert.AreEqual(AgentAction.CloseDoor, intent.Action, "The player can open it again; shutting them in is the point.");
+            Assert.AreEqual(1, intent.ActionTargetId);
         }
 
         [Test]
-        public void ARefusedDoorStartsTheFailureCooldownSoItIsNotTriedAgainAtOnce()
+        public void ADoorTheRuntimeRefusesStartsTheFailureCooldownSoItIsNotTriedAgainAtOnce()
         {
             DetourCache cache = Cache();
             SaboteurBrain brain = Brain(SaboteurLetter.A, cache);
             brain.Tick(At(new Vector2Int(10, 5), 0f));
-            _grid.SetDoor(Door2Cell, 2, true);
-            brain.Tick(At(new Vector2Int(19, 5), Frame));
+            Assert.AreEqual(AgentAction.CloseDoor, brain.Tick(At(new Vector2Int(19, 5), Frame)).Action);
+
+            brain.OnActionResolved(AgentAction.CloseDoor, 1, false);
 
             for (float t = 0.25f; t < 5f; t += 0.25f)
             {
                 AgentIntent intent = brain.Tick(At(new Vector2Int(19, 5), t));
-                Assert.AreNotEqual(AgentAction.CloseDoor, intent.Action, $"At {t:F2}.");
+                Assert.IsFalse(intent.Action == AgentAction.CloseDoor && intent.ActionTargetId == 1, $"At {t:F2}.");
+                Assert.AreNotEqual(new ActionKey(SaboteurActionKind.CloseDoor, 1), brain.CurrentAction, $"At {t:F2}.");
             }
         }
 
         [Test]
-        public void TwoSaboteursOnTwoDoorsNeverSealThePlayerIn()
+        public void TwoSaboteursOnTwoDoorsSealThePlayerIn()
         {
             // The player's route flips between the doors, so each Saboteur can be sent at a different door.
             DetourCache cache = Cache();
@@ -211,15 +211,14 @@ namespace ToyFactory.Tests.EditMode
             b.Tick(At(new Vector2Int(10, 15), 0.3f));
             Assert.AreEqual("CloseDoor", b.Tick(At(new Vector2Int(10, 15), 0.3f + SquadCoordinator.StaggerStep)).DebugState);   // B: door 2
 
-            // Both reach their door in the same instant, before A decides again, so it still holds its plan:
-            // the first shuts, the second must refuse.
+            // Both reach their door in the same instant: the first shuts, and the second shuts the last way through.
             AgentIntent first = a.Tick(At(new Vector2Int(19, 5), 0.4f));
             Assert.AreEqual(AgentAction.CloseDoor, first.Action);
             _grid.SetDoor(Door1Cell, 1, true);   // the controller carried A's request out
             AgentIntent second = b.Tick(At(new Vector2Int(19, 15), 0.4f + Frame));
 
-            Assert.AreNotEqual(AgentAction.CloseDoor, second.Action, "The second door would seal the wall.");
-            Assert.IsFalse(_grid.GetNode(Door2Cell).IsDoorClosed);
+            Assert.AreEqual(AgentAction.CloseDoor, second.Action, "The player is shut in until they open a door.");
+            Assert.AreEqual(2, second.ActionTargetId);
         }
 
         // ---- A walk that gets nowhere
@@ -227,6 +226,7 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void ASaboteurThatMakesNoProgressTowardTheDoorSendsItsRouteAgainThenGivesUp()
         {
+            _grid.SetDoor(Door2Cell, 2, true);   // one way out, so giving up on it leaves nothing else to shut
             DetourCache cache = Cache();
             SaboteurBrain brain = Brain(SaboteurLetter.A, cache);
             Assert.AreEqual("CloseDoor", brain.Tick(At(new Vector2Int(10, 5), 0f)).DebugState);
@@ -260,6 +260,7 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void ASaboteurGivingUpOnTheWalkIsNotSentBackAtOnce()
         {
+            _grid.SetDoor(Door2Cell, 2, true);   // one way out, so the cooldown is all that keeps it from the door
             DetourCache cache = Cache();
             SaboteurBrain brain = Brain(SaboteurLetter.A, cache);
             brain.Tick(At(new Vector2Int(10, 5), 0f));
