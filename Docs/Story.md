@@ -87,7 +87,7 @@ The card text is set in `Data/Chapters/ChapterN.asset`; the moods come from `Art
 | Task id | HUD text | Notes |
 | --- | --- | --- |
 | `ch3.keycard` | Take the master keycard off Saboteur A | Saboteur A (purple) carries it and drops it when destroyed. A pickup that is created during play. |
-| `ch3.relays` | Read the relay board, then activate the 3 relays in that order | The order is random each run, chosen in `ChapterFlow.Begin`. The board stands by the Storage switch, visible over the shelves. A wrong order resets the relays and sets off a 90-loudness alarm. |
+| `ch3.relays` | Read the relay board, then activate the 3 relays in that order | The order is random each run, chosen in `ChapterFlow.Begin`. The board stands by the Storage switch, visible over the shelves. A wrong order resets the relays and sets off a 90-loudness alarm. The relays work from the start of the chapter, read or not: the objective ring marks the next relay in the order, and the board can be read from across the room. A restart from the checkpoint keeps the same order. |
 | `switch.3` | Restore the Storage Area switch | |
 
 **Ends:** switch 3 is restored, and cutscene `ch4` plays. The core shields drop.
@@ -114,7 +114,6 @@ The card text is set in `Data/Chapters/ChapterN.asset`; the moods come from `Art
 | The targets' timer runs out | Too slow! The targets reset. Line up your shots first. |
 | Using the terminal before Chapter 2 | Terminal offline. It wakes up in the Painting Room stage. |
 | Using a relay before Chapter 3 | Relay offline. It powers up in the Storage stage. |
-| Using a relay before reading the board | Which order? Find the relay sequence board near the Storage switch. |
 | Wrong relay order | Wrong order! The relays reset and every toy heard that. |
 | All 3 cores destroyed | Factory OS is exposed! Hold E at the console. |
 | A locked Control Room door | Locked. Factory OS sealed the Control Room. |

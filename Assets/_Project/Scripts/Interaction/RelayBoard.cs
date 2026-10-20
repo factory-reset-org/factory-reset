@@ -13,6 +13,14 @@ namespace ToyFactory.Interaction
     /// colours, and counts as read once the player has come close to it. A wrong relay
     /// switches them all off again and sets off the alarm.
     /// </summary>
+    /// <remarks>
+    /// The relays work from the moment the chapter is active, read or not. They used to stay
+    /// locked until the player had stood within reading range of the board, and ignored every
+    /// press until then without a sound. But the objective ring marks the next relay in the
+    /// order from the start, and the board, high on the wall, can be read from much further
+    /// than that range, so a player following the ring, or reading from across the room, found
+    /// the right relay dead. A wrong press still sets off the alarm, so the order still matters.
+    /// </remarks>
     public sealed class RelayBoard : TaskProp
     {
         [Tooltip("Must equal the task id in the chapter data.")]
@@ -40,7 +48,7 @@ namespace ToyFactory.Interaction
 
         public override string Id => taskId;
 
-        /// <summary>True once the player has been close enough to read the order.</summary>
+        /// <summary>True once the player has been close enough to read the order. It no longer gates the relays.</summary>
         public bool IsRead { get; private set; }
 
         /// <summary>Raised when a relay is used out of order and they all reset.</summary>
@@ -88,7 +96,7 @@ namespace ToyFactory.Interaction
 
         internal void Press(Relay relay)
         {
-            if (IsCompleted || relay.IsOn || !IsRead || !ChapterIsActive(chapter))
+            if (IsCompleted || relay.IsOn || !ChapterIsActive(chapter))
                 return;
 
             IReadOnlyList<int> order = Order();
