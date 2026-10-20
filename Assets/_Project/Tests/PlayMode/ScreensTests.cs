@@ -135,6 +135,73 @@ namespace ToyFactory.Tests
             Assert.IsFalse(_screens.Title.IsShowing);
         }
 
+        // ---- The quit buttons
+
+        static Button QuitButton(Component screen) =>
+            screen.GetComponentsInChildren<Button>(true).First(b => b.name == "Quit");
+
+        [UnityTest]
+        public IEnumerator TitleHasAQuitButtonLabelledQuitInTheBottomRightCorner()
+        {
+            _clock.Set(GameState.Title);
+            yield return Frame();
+            Assert.IsTrue(_screens.Title.IsShowing);
+
+            Button quit = QuitButton(_screens.Title);
+            Assert.AreEqual("QUIT", quit.GetComponentInChildren<Text>().text);
+            Assert.IsTrue(quit.interactable);
+
+            var rect = (RectTransform)quit.transform;
+            Assert.AreEqual(new Vector2(1f, 0f), rect.anchorMin, "Anchored to the bottom right, opposite Credits.");
+            Assert.AreEqual(new Vector2(1f, 0f), rect.anchorMax);
+
+            var credits = (RectTransform)TitleCreditsButton(_screens).transform;
+            Assert.AreEqual(credits.sizeDelta, rect.sizeDelta, "Same size as the Credits button.");
+        }
+
+        [UnityTest]
+        public IEnumerator QuitOnTheTitleLeavesTheGameOnceAndDoesNotStartIt()
+        {
+            int quits = 0;
+            _screens.UseQuit(() => quits++);
+            _clock.Set(GameState.Title);
+            yield return Frame();
+
+            QuitButton(_screens.Title).onClick.Invoke();
+
+            Assert.AreEqual(1, quits);
+            Assert.IsEmpty(_clock.Requested, "Quitting does not ask the clock for Playing.");
+            Assert.AreEqual(GameState.Title, _clock.State);
+        }
+
+        [UnityTest]
+        public IEnumerator EnterSpaceAndTheOtherTitleButtonsDoNotQuit()
+        {
+            int quits = 0;
+            _screens.UseQuit(() => quits++);
+            _clock.Set(GameState.Title);
+            yield return Frame();
+
+            _screens.Title.RequestStart();
+            TitleCreditsButton(_screens).onClick.Invoke();
+
+            Assert.AreEqual(0, quits, "Only the Quit button leaves the game.");
+        }
+
+        [UnityTest]
+        public IEnumerator QuitOnTheResultsScreenLeavesThroughTheSameExit()
+        {
+            int quits = 0;
+            _screens.UseQuit(() => quits++);
+            FinishRun(true);
+            yield return Frame();
+            Assert.IsTrue(_screens.Results.IsShowing);
+
+            QuitButton(_screens.Results).onClick.Invoke();
+
+            Assert.AreEqual(1, quits);
+        }
+
         // ---- The credits
 
         static Button TitleCreditsButton(ScreensPresenter screens) =>

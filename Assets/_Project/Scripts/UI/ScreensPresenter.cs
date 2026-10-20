@@ -10,7 +10,8 @@ namespace ToyFactory.UI
     /// Shows the title screen while the game is in <see cref="GameState.Title"/>, the Results
     /// screen once it reaches <see cref="GameState.Results"/>, and the pause screen (or the recall
     /// screen, after a recall with a restart left) while <see cref="GameState.Paused"/>. Start asks
-    /// the game clock for Playing; Play again reloads the Bootstrap scene; Quit leaves the game; the
+    /// the game clock for Playing; Play again reloads the Bootstrap scene; Quit (on the title and Results
+    /// screens) leaves the game, which stops Play mode in the Editor and closes a build; the
     /// pause screen's choices go to <see cref="IRunControl"/>. It also owns the credits, which open from
     /// the title screen's Credits button and roll by themselves before the Results screen of a won run, and
     /// the "checkpoint saved" note. Built by <see cref="HudPresenter"/> in code, like the HUD, so <c>UI.unity</c> needs no
@@ -56,6 +57,7 @@ namespace ToyFactory.UI
         CheckpointToastView _checkpointToast;
         bool _pauseShowsRecall;
         Leaderboard _board;
+        System.Action _quit = QuitGame;
         IGameClock _clock;
         Screen _screen;
         int _titleFrames;
@@ -88,6 +90,9 @@ namespace ToyFactory.UI
         /// <summary>Raised when Play again is pressed, before the scene is reloaded. Tests use it to stand in for the reload.</summary>
         public event System.Action PlayAgainPressed;
 
+        /// <summary>Replaces what Quit does, for tests: the default stops Play mode in the Editor and closes a build, which a test must not do.</summary>
+        public void UseQuit(System.Action quit) => _quit = quit ?? QuitGame;
+
         /// <summary>Replaces the leaderboard, for tests that point it at a temporary file.</summary>
         public void UseLeaderboard(Leaderboard board) => _board = board ?? new Leaderboard(Leaderboard.DefaultPath);
 
@@ -101,6 +106,7 @@ namespace ToyFactory.UI
             _title.Build(sortingOrder);
             _title.StartRequested += HandleStart;
             _title.CreditsRequested += HandleCreditsRequested;
+            _title.QuitRequested += HandleQuit;
 
             var resultsObject = new GameObject("Results");
             resultsObject.transform.SetParent(transform, false);
@@ -136,6 +142,7 @@ namespace ToyFactory.UI
             {
                 _title.StartRequested -= HandleStart;
                 _title.CreditsRequested -= HandleCreditsRequested;
+                _title.QuitRequested -= HandleQuit;
             }
             if (_credits != null)
                 _credits.Closed -= HandleCreditsClosed;
@@ -289,7 +296,10 @@ namespace ToyFactory.UI
 
         static void HandleGiveUp() => RunControl.Current?.GiveUp();
 
-        static void HandleQuit()
+        void HandleQuit() => _quit();
+
+        // Leaves the game. Application.Quit does nothing in the Editor, so Play mode is stopped there instead.
+        static void QuitGame()
         {
 #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;
