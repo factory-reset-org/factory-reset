@@ -2,7 +2,7 @@
 
 Owner: S1 · Architecture: Greedy Best-First Search + hierarchical FSM
 
-Source of truth: the externally supplied Tracker Toy specification from `ToyFactoryRevolt_FullPlan_v4.md`. The Full Plan is not checked into this repository. Behaviour, tests and schedule entries below are design requirements, not claims of completed implementation or measured results.
+Source of truth: the externally supplied `ToyFactoryRevolt_FullPlan_v5.pdf`, checked against the implementation and evidence currently on `develop`. Planned requirements are labelled as such; test and performance claims below cite repository evidence.
 
 ## Role in gameplay
 
@@ -163,12 +163,27 @@ Reading the brain never changes it: `NoiseMemory.CopyTo` lists noises without fo
 
 ## Why this architecture over the alternatives
 
-GBFS fits the Tracker's eager "sniffing toward a sound" behaviour. It is expected to expand fewer nodes than A* in open rooms, but it can take longer or slightly wandering routes around obstacles. That trade-off is acceptable for this scout and can make its pursuit less predictable. Fewer expansions are an expectation to test, not a measured result or a guarantee for every map.
+GBFS fits the Tracker's eager "sniffing toward a sound" behaviour. On the recorded 20-pair comparison it expanded fewer nodes and ran faster than A*, but produced longer paths overall. That trade-off is acceptable for this scout and can make its pursuit less predictable; it is measured evidence for this level and pair set, not a guarantee for every map.
 
 | Alternative | Why not |
 | --- | --- |
 | A* for all Tracker routes | A* seeks an optimal path under its cost model. The Tracker deliberately accepts non-optimal routes in exchange for heuristic-only greedy selection; A* remains the comparison baseline. |
 | Straight-line/radius-based hearing | It would omit the planned path-distance attenuation around corners and the separate penalty for each closed door crossed. |
+
+## Classification (in the course's terms)
+
+**PEAS**
+
+| | The Tracker |
+| --- | --- |
+| **Performance measure** | Find and pressure the player from sound or sight, investigate the correct noise, recover after losing contact, respect doors and blockers, and keep search/tick cost low enough for the shared AI budget. |
+| **Environment** | The factory represented by 0.5 m grid cells: four rooms, walls, doors, dynamic blockers, noise sources, the player and other agents. The world changes while the Tracker acts. |
+| **Actuators** | A route and movement speed, a look target, the pounce action, alert state, and the Rewind/Stunned intents that the runtime body carries out. |
+| **Sensors** | Grid-based sight and line of sight; propagated sound level and source data in `SensorSnapshot`; the Tracker's own cell and heading; player visibility/position; graph changes; stun state and game time. |
+
+**Task environment and agent type.** The environment is partially observable because the Tracker does not continuously know the player's location; it retains last-known position and remembered noises. It is sequential, dynamic, multi-agent and continuous in the world but discretised onto the grid for search. The shared hierarchical FSM supplies the model-based control state, while `NoiseMemory` retains and decays information that is absent from the current percept. GBFS is a goal-based, heuristic-only search: `f(n) = h(n)` with octile distance, complete on this finite graph with its closed set but not optimal. Sound propagation is uniform-cost search (bounded Dijkstra) over acoustic path loss, so the loudest surviving route accounts for distance and closed-door penalties. This is a programmed, non-learning hybrid of reactive transitions, remembered state and search.
+
+The measured comparison below is the evidence for the search choice: over the same 20 pairs, GBFS expanded 1,659 nodes against A*'s 7,080 and took 4.10 ms against 17.98 ms, while its total paths were 16.3% longer. A* remains the shortest-path baseline; GBFS accepts that path-quality loss for cheaper, eager pursuit.
 
 ## Maths to defend
 
@@ -263,7 +278,7 @@ For an otherwise equivalent noise aged 5 seconds, the multiplier is `exp(-0.3 * 
 
 ## Tests
 
-### Required GBFS and sound tests — planned
+### Required GBFS and sound tests — completed
 
 | Required test/evidence | What it must establish | Status |
 | --- | --- | --- |
@@ -278,7 +293,19 @@ For an otherwise equivalent noise aged 5 seconds, the multiplier is `exp(-0.3 * 
 
 ### Brain tests (EditMode, all passing)
 
-`Tests/EditMode/TrackerBrainTests.cs` (46), on a 20 m x 10 m open grid driven tick by tick with game time:
+The six focused fixtures contain **127 tests** in the current repository:
+
+| Fixture | Tests |
+| --- | ---: |
+| `TrackerBrainTests` | 52 |
+| `NoisePropagationTests` | 27 |
+| `NoiseMemoryTests` | 16 |
+| `GreedyBestFirstSearchTests` | 16 |
+| `WindUpEnergyTests` | 10 |
+| `CompositeStateTests` | 6 |
+| **Total** | **127** |
+
+`Tests/EditMode/TrackerBrainTests.cs` (52), on a 20 m x 10 m open grid driven tick by tick with game time:
 - **Patrol:** `FirstTickPatrolsWithAGbfsRoute`, `PatrolKeepsItsRouteUntilArrivalThenGoesToTheNextPoint`.
 - **Hearing:** `ALoudNoiseStartsAnInvestigation`, `InvestigationLooksAroundThenReturnsToPatrolAndDoesNotRepeat`, `ARepeatingSourceDistractsUntilItGoesQuiet`, `ARepeatingSourceBeatsALouderOneOffShot`.
 - **Lures:** `AToyPullsTheTrackerOffAChaseUntilItGoesQuiet`, `APlayerWithinThreeMetresIsChasedEvenWithAToyTicking`, `ADistractedTrackerStopsShortOfTheToyFacingItAndFollowsOnlyOnceItWalksOff`, `ADistractedTrackerNoticesThePlayerOnlyWithinTwoMetres`, `ARewindFromTheHuntWithAToyTickingGoesStraightToTheToy`, `AThrownToyDistractsOnItsFirstTick`, `AThrownToysFirstTickPullsTheTrackerOffAChase`.
@@ -293,22 +320,22 @@ For an otherwise equivalent noise aged 5 seconds, the multiplier is `exp(-0.3 * 
 
 `Tests/EditMode/NoiseMemoryTests.cs` (16): decay formula, a marked lure repeating from its first noise, the player never repeating, a repeating beep beating an older louder shot, the best lure ignoring a louder one-off shot, the 1.5 s repeat window, the closer-noise tie-break, handled noises, forgetting at the threshold, ignoring out-of-order noises, and replacing the weakest entry when full.
 
-`Tests/EditMode/NoisePropagationTests.cs` (25): full level at the source; 4 per metre along the grid, not the straight line; a closed door costs 35, an open one nothing, a deep door 35 once, two doors 70; a door slam is heard on both sides; walls and boxes block; sound goes round corners with exactly the A* route's loss; fades out at the threshold (footsteps 11 at 3.5 m, gone at 4 m) and exactly-10 is not heard; only audible cells are expanded; a source in a wall snaps out; off-grid sources are heard nowhere; no allocation on reuse; and `SensorSnapshot.Loudest`.
+`Tests/EditMode/NoisePropagationTests.cs` (27): full level at the source; 4 per metre along the grid, not the straight line; a closed door costs 35, an open one nothing, a deep door 35 once, two doors 70; a door slam is heard on both sides; walls and boxes block; sound goes round corners with exactly the A* route's loss; fades out at the threshold (footsteps 11 at 3.5 m, gone at 4 m) and exactly-10 is not heard; only audible cells are expanded; a source in a wall snaps out; off-grid sources are heard nowhere; no allocation on reuse; and `SensorSnapshot.Loudest`.
 
 `Tests/EditMode/CompositeStateTests.cs` (6): the child is entered and ticked inside the parent, child transitions run inside it, leaving exits the running child first, re-entry restarts at the initial child, and a child that never ran is never exited.
 
 Full suites after the evidence branch: EditMode 730/730, PlayMode 138/138.
 
-### Planned S1 delivery schedule
+### S1 delivery schedule — completed
 
-These are the Full Plan's schedule entries, not a completion checklist. See Current implementation status for what exists in this checkout.
+The Full Plan's scheduled Tracker deliverables are present in the current repository. The tests and measurements in this document provide the completion evidence.
 
-| Week | Planned work |
-| --- | --- |
-| 11 | GridGraph from NavMesh; grid debug overlay; FSM framework. |
-| 12 | GBFS; Tracker Patrol / Investigate / Chase; noise propagation. |
-| 13 | Search and Rewind states; wind-down energy; edge cases. |
-| 14 | Tracker edge-case tests; GBFS versus A* comparison table. |
+| Week | Delivery | Evidence |
+| --- | --- | --- |
+| 11 | GridGraph from NavMesh; grid debug overlay; FSM framework | Implemented; grid and FSM regression tests are on `develop`. |
+| 12 | GBFS; Tracker Patrol / Investigate / Chase; noise propagation | Implemented; focused fixtures are counted above. |
+| 13 | Search and Rewind states; wind-down energy; edge cases | Implemented; `TrackerBrainTests` and `WindUpEnergyTests`. |
+| 14 | Tracker edge-case tests; GBFS versus A* comparison | Implemented; edge-case table above and measured 20-pair comparison below. |
 
 ## Measured results
 
@@ -318,10 +345,10 @@ Full table in [AIPerformanceLog.md](../AIPerformanceLog.md) (Tracker brain tick)
 
 | | Per tick | Notes |
 | --- | --- | --- |
-| Median | 0.8 µs | |
-| p99 | 18.7 µs | |
-| Seven Trackers at once | 95.5 µs per frame at p99 | |
-| Allocations | Only on the 1.3% of ticks that hand the body a new route, about 4 each | Every other tick allocates nothing |
+| One Tracker, median | 0.5 µs | 1,800 ticks |
+| One Tracker, p99 | 8.2 µs | 60 s scripted editor run |
+| Seven Trackers, p99 | 59.3 µs per frame | 12,600 ticks; 0.5 µs median per individual tick |
+| Allocations | Only on the 1.1% of ticks that hand the body a new route, about 4 each | Every other tick allocates nothing |
 
 ### Evidence scenes
 
@@ -349,7 +376,7 @@ GBFS matched A*'s path length on 12 pairs and was longer on 8 (on the earlier gr
 
 | Evidence | Status |
 | --- | --- |
-| Results for the same 20 GBFS/A* pairs | Done (above; lab-machine timing still to record) |
-| Tracker test execution results | Done: 40 brain, noise-memory and composite-state tests passing (see Tests) |
-| Tracker profiling | Done: brain tick for 1 and 7 Trackers on the prototype-room grid, p99 under 0.06 ms per frame for 7 (see AIPerformanceLog) |
-| Four-agent stress test (`Test_FourAgentsStress`) | S4, pending |
+| Results for the same 20 GBFS/A* pairs | Done: editor measurements above from 9 October; no player-build timing was measured. |
+| Tracker focused test inventory | Done: 127 tests across the six fixtures listed above. |
+| Tracker profiling | Done: 9 October brain tick measurements for 1 and 7 Trackers on the prototype-room grid; seven-Tracker p99 was 0.0593 ms per frame. |
+| Seven-agent stress test (`Test_FourAgentsStress`) | Done: 9 October run recorded all seven agents, though its four Saboteurs still used the placeholder brain. The 16 October re-run used the real Saboteur brain: Tracker p99 was 0.032 / 0.026 ms and whole-AI p99 was 0.141 / 0.110 ms across two runs. See `AIPerformanceLog.md` for method and limitations. |
