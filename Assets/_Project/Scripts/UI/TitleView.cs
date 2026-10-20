@@ -6,9 +6,9 @@ using UnityEngine.UI;
 namespace ToyFactory.UI
 {
     /// <summary>
-    /// The title screen: the game's name, the four chapters, the controls and a Start button.
-    /// It only draws and reports the request to start; when it shows and what Start does is the
-    /// screens presenter's job.
+    /// The title screen: the game's name, the four chapters, the controls, a Start button, and the
+    /// Credits and Quit buttons in the bottom corners. It only draws and reports what the player asked
+    /// for; when it shows and what Start, Credits and Quit do is the screens presenter's job.
     /// </summary>
     public sealed class TitleView : MonoBehaviour
     {
@@ -39,6 +39,9 @@ namespace ToyFactory.UI
         /// <summary>Raised when the player presses the Credits button.</summary>
         public event Action CreditsRequested;
 
+        /// <summary>Raised when the player presses the Quit button.</summary>
+        public event Action QuitRequested;
+
         /// <summary>Builds the screen, hidden, under this view's object.</summary>
         internal void Build(int sortingOrder)
         {
@@ -58,6 +61,7 @@ namespace ToyFactory.UI
 
             BuildControls(root);
             BuildCreditsButton(root);
+            BuildQuitButton(root);
 
             Button start = HudWidgets.MakeButton("Start", root, "START", HudWidgets.Mint, HudWidgets.Plum, 56);
             HudWidgets.Place((RectTransform)start.transform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 120f), new Vector2(440f, 100f));
@@ -89,6 +93,9 @@ namespace ToyFactory.UI
         /// <summary>Asks for the credits, as the button does.</summary>
         public void RequestCredits() => CreditsRequested?.Invoke();
 
+        /// <summary>Asks to quit the game, as the button does.</summary>
+        public void RequestQuit() => QuitRequested?.Invoke();
+
         void Update()
         {
             if (!IsShowing)
@@ -107,6 +114,14 @@ namespace ToyFactory.UI
             Button credits = HudWidgets.MakeButton("Credits", root, "CREDITS", HudWidgets.PlumLight, HudWidgets.Ink, 34);
             HudWidgets.Place((RectTransform)credits.transform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(40f, 40f), new Vector2(280f, 76f));
             credits.onClick.AddListener(RequestCredits);
+        }
+
+        // The Quit button, in the bottom-right corner opposite Credits, in the same size so the two balance Start.
+        void BuildQuitButton(Transform root)
+        {
+            Button quit = HudWidgets.MakeButton("Quit", root, "QUIT", HudWidgets.PlumLight, HudWidgets.Ink, 34);
+            HudWidgets.Place((RectTransform)quit.transform, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-40f, 40f), new Vector2(280f, 76f));
+            quit.onClick.AddListener(RequestQuit);
         }
 
         // Two columns of keys and what they do, on one panel.

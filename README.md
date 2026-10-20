@@ -17,6 +17,26 @@ Joint project for SE3032 Graphics & Visualization and SE3062 Intelligent Systems
 
 Four chapters in a fixed order: Assembly Floor, Painting Room, Storage Area, Control Room. Each chapter's control switch is sealed in an energy cage until the tasks in that area are done. Restoring a switch plays the next cutscene. The Captain sleeps until the second switch is restored, and the Saboteurs, once scrapped, stay scrapped. Design decisions are in [Docs/DesignDoc.md](Docs/DesignDoc.md).
 
+## Saboteur Squad and models (S3)
+
+The Saboteur Squad is four instances (A to D) of one utility-AI brain: each action (close a door, arm a trap, steal a battery, attack, flee, search, patrol) is scored from response curves, and a thin squad layer keeps the four apart through target claims, attack saturation and one shared detour cache. A Saboteur closes the door that lengthens the player's route most, and Saboteur A drops the chapter keycard when it is scrapped. The design, the maths and the measurements are in [Docs/AI/SaboteurBot.md](Docs/AI/SaboteurBot.md) and [Docs/AIPerformanceLog.md](Docs/AIPerformanceLog.md).
+
+Press **F3** in the Editor or in a build for the AI debug overlay; the Saboteur layer lists every action's considerations and scores, who has claimed which target, and why each candidate lost.
+
+S3 modelled the Tracker, the Saboteur (one body, squad colour on the belt and claws), the Guard, the Captain, Unit 047 and the keycard, and made the task props (the pushable crate, belts, lever, blaster, wind-up key and the redesigned palette-plastic props). Every model is a rigid-part hierarchy exported from `Blender/` to `Assets/_Project/Models/` with the validated settings in [CONTRIBUTING.md](CONTRIBUTING.md); triangle counts, texture memory and UV layouts are in [Docs/OptimisationLog.md](Docs/OptimisationLog.md) and `Docs/Evidence/Models/`. S3's textures share one import preset (`Assets/_Project/Textures/S3_Texture_BC7.preset`: BC7, mipmaps, power of two).
+
+### Third-party credits
+
+Some props and the music are not the team's work. Each pack's author, licence, link and the changes made are in its README under `Assets/_ThirdParty/`; the game's credits screen shows the credits the licences ask for.
+
+| Pack | Used for | Licence |
+| --- | --- | --- |
+| Kenney (Factory Kit, Blaster Kit, Platformer Kit) | Starting shapes of some task props, redesigned since | CC0 1.0 |
+| Poly Pizza: iPoly3D (Cage), Quaternius (Pickup Sphere) | Switch cage, power core | CC0 1.0 |
+| Poly Pizza: Tiff Eidmann (Toy robot), J-Toastie (Concrete Barrier), dook (Vending Machine), Anastasiia Ku (Low poly vending machine) | Wind-up toy, plate stop, crate dispenser, charger | CC BY 3.0 |
+| Music: epb9000, MintoDog, cynicmusic, Kistol | Title, Control Room and Results music | CC0 1.0 |
+| Music: Eric Matyas, www.soundimage.org | Assembly Floor, Painting Room and Storage Area music | Free with credit |
+
 ## Requirements
 
 - Unity **6000.6.2f1** (exact version in `ProjectSettings/ProjectVersion.txt`; everyone installs the same build)
@@ -28,6 +48,8 @@ Four chapters in a fixed order: Assembly Floor, Painting Room, Storage Area, Con
 1. Clone the repo and open the folder in Unity Hub.
 2. Set up Smart Merge in your local `.git/config` (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 3. Open `Assets/_Project/Scenes/Bootstrap.unity` and press Play. It loads `Env`, `Interactables`, `Agents` and `UI` additively and waits on the title screen; press Start.
+
+The title screen has three buttons: **Start** (or Enter, or Space), **Credits** (bottom left) and **Quit** (bottom right). Quit stops Play mode in the Editor and closes the game in a build; the Results screen has the same Quit button.
 
 ## Controls
 

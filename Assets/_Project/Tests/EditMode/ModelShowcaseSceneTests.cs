@@ -95,6 +95,31 @@ namespace ToyFactory.Tests.EditMode
             }
         }
 
+        // The wireframe builds its line meshes from each mesh's vertices and triangles, which Unity only allows in play mode
+        // for a mesh imported with Read/Write on; a model whose importer has it off logs an error and draws no lines.
+        [Test]
+        public void EveryModelTheShowcaseListsHasReadableMeshesSoTheWireframeCanBeBuilt()
+        {
+            SerializedObject controller = OpenController(out Scene scene);
+            try
+            {
+                SerializedProperty entries = controller.FindProperty("entries");
+                for (int i = 0; i < entries.arraySize; i++)
+                {
+                    var prefab = (GameObject)entries.GetArrayElementAtIndex(i).FindPropertyRelative("prefab").objectReferenceValue;
+                    foreach (MeshFilter filter in prefab.GetComponentsInChildren<MeshFilter>(true))
+                    {
+                        if (filter.sharedMesh != null)
+                            Assert.IsTrue(filter.sharedMesh.isReadable, prefab.name + " / " + filter.name + ": turn Read/Write on in the model's importer.");
+                    }
+                }
+            }
+            finally
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
+        }
+
         // ---- The Charger's LOD group
 
         static int Triangles(Renderer[] renderers) =>

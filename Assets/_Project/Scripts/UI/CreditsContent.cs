@@ -122,11 +122,11 @@ namespace ToyFactory.UI
         /// <summary>The group, in the order of the README's team table.</summary>
         public static readonly IReadOnlyList<TeamMember> Members = new[]
         {
-            new TeamMember("S1", "OnelDJ", "World Builder", "Tracker Toy", "Greedy Best-First Search + hierarchical FSM"),
+            new TeamMember("S1", "Onel De Silva", "World Builder", "Tracker Toy", "Greedy Best-First Search + hierarchical FSM"),
             new TeamMember("S2", "Dhananjaya Kularatne", "Systems Engineer", "Guard Bot", "Tactical A* + cover evaluation"),
             new TeamMember("S3", "Gayan Rajasinghe", "Core Developer", "Saboteur Squad",
                 "Utility AI with response curves and squad target claims"),
-            new TeamMember("S4", "Omira Nimsath", "Agent Controller (movement, animation, cutscenes)", "Captain Bot",
+            new TeamMember("S4", "Omira Kularatne", "Agent Controller (movement, animation, cutscenes)", "Captain Bot",
                 "Goal prediction + Dijkstra fields + A* intercept")
         };
 
