@@ -1,0 +1,20 @@
+How hidden the Guard is in cover, in the real Painting Room (Tests/PlayMode/GuardCoverEvidenceTests, 2026-10-19).
+The player stands at four spots in turn, 6 s each, two rounds (48 s); only the Guard is awake. Every frame the Guard
+stands still in InCover, a line is cast from the player's eye (1.6 m) to the Guard's knee, chest and head height.
+Share of those frames in which each is in plain view:
+
+                                                        knee (0.5 m)  chest (1.2 m)  head (2.0 m)
+Stops on arriving, up to a cell short of the cover:        39%           39%            100%
+Walks on to the cover's centre; tall cover preferred:      31%, 24%      31%, 24%       100%, 72%   (two runs)
+Also checks the spot it really stands on, gives it up:      7%            7%             79%
+
+Why the middle row is still 24-31%: a cover cell hugs its obstacle and the Guard's capsule is wide, so the body comes
+to rest 0.2-0.3 m off the cell's centre, where cover was judged, and from there the player can see it. The remaining
+7% is the 0.25 s it stands still before it judges the spot. The head is 2.0 m up on a 2.4 m model and most cover in
+the room is crate height, so it shows over it most of the time.
+
+Raw runs:
+2026-10-19 06:53  461 frames: knee 39%, chest 39%, head 100%
+2026-10-19 06:59  487 frames: knee 31%, chest 31%, head 100%
+2026-10-19 07:06  597 frames: knee 24%, chest 24%, head 72%
+2026-10-19 07:30  562 frames: knee 7%, chest 7%, head 79%

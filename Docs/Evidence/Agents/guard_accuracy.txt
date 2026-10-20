@@ -1,0 +1,16 @@
+Guard accuracy in the real Painting Room (Tests/PlayMode/GuardAccuracyEvidenceTests, 2026-10-19).
+The player stands still at four spots in turn, 6 s each, two rounds (48 s); only the Guard is awake.
+
+Brain judging sight at the muzzle, weapon not checking:  26 fired, 11 hit the player (42%)
+  missed on the terminal 2.0-2.2 m from the muzzle:      9
+  missed on a paint crate 0.3-0.5 m from the muzzle:     6
+Weapon holds fire on a blocked line (AgentWeapon):       11 fired, 11 hit (100%)
+Plus: three harmless shots and the Guard moves cover:    17 fired, 17 hit (100%)
+Plus: walks on to the cover's centre:                    20 fired, 20 hit (100%)
+Plus: gives up a cover that leaves it in view:           12 fired, 12 hit; 10 fired, 10 hit (100%, two runs)
+
+(The first row already has the brain's muzzle-height and peek changes; the Guard on develop, before any of them, was not measured.)
+The last row fires less often: it spends some of the 48 s moving off spots where the player could see it (guard_cover.txt).
+2026-10-19 06:58  Guard shots over 48 s in the Painting Room: 20 fired, 20 hit the player, 100% landed
+2026-10-19 07:29  Guard shots over 48 s in the Painting Room: 12 fired, 12 hit the player, 100% landed
+2026-10-19 07:49  Guard shots over 48 s in the Painting Room: 10 fired, 10 hit the player, 100% landed

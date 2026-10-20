@@ -1,0 +1,21 @@
+{
+    "name": "ToyFactory.Journey",
+    "rootNamespace": "ToyFactory.Journey",
+    "references": [
+        "ToyFactory.Interfaces",
+        "ToyFactory.AI.Core",
+        "Unity.Timeline",
+        "Unity.Cinemachine",
+        "Unity.InputSystem",
+        "UnityEngine.UI"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,118 @@
+using System;
+using UnityEngine;
+using ToyFactory.Interfaces;
+using ToyFactory.Runtime.Effects;
+
+namespace ToyFactory.Player
+{
+    /// <summary>
+    /// The player's health ("integrity"). Agents' shots arrive here through
+    /// <see cref="IPlayerState.TakeDamage"/>. At zero the player is recalled: with a restart
+    /// left the run waits for the player to go back to the checkpoint (<see cref="IRunControl"/>);
+    /// otherwise the run ends and the game goes to the Results state.
+    /// </summary>
+    public sealed class PlayerHealth : MonoBehaviour
+    {
+        /// <summary><see cref="LastDamageSourceId"/> before anything has hit the player.</summary>
+        public const int NoSource = -1;
+
+        [SerializeField, Min(1f)] float maxHealth = 100f;
+
+        [Tooltip("Seconds without a hit before integrity starts to come back.")]
+        [SerializeField, Min(0f)] float regenDelay = 5f;
+
+        [Tooltip("Integrity restored a second once it does. The prototype's 3.")]
+        [SerializeField, Min(0f)] float regenPerSecond = 3f;
+
+        // A hit of less than this makes no sound, so the thin graze of a trap or a far shot is quiet.
+        const float HurtSoundThreshold = 4f;
+
+        float _lastDamageAt = float.NegativeInfinity;
+        float _safeUntil = float.NegativeInfinity;
+
+        public float Current { get; private set; }
+
+        /// <summary>Health left, 0 (recalled) to 1 (full).</summary>
+        public float Fraction => Current / maxHealth;
+
+        public bool IsAlive => Current > 0f;
+
+        /// <summary>Id of the agent whose shot landed last, for the Results screen.</summary>
+        public int LastDamageSourceId { get; private set; } = NoSource;
+
+        /// <summary>Raised on every hit that did damage: the amount and the agent's id.</summary>
+        public event Action<float, int> OnDamaged;
+
+        /// <summary>Raised once, when health reaches zero: the id of the agent that did it.</summary>
+        public event Action<int> OnDied;
+
+        void Awake() => Current = maxHealth;
+
+        static float Now => GameClock.Current != null ? GameClock.Current.GameTime : Time.time;
+
+        // Integrity comes back by itself once the player has been left alone for a few seconds.
+        void Update()
+        {
+            if (!IsAlive || Current >= maxHealth || regenPerSecond <= 0f)
+                return;
+
+            IGameClock clock = GameClock.Current;
+            if (clock != null && clock.State != GameState.Playing)
+                return;
+
+            if (Now - _lastDamageAt < regenDelay)
+                return;
+
+            Current = Mathf.Min(maxHealth, Current + regenPerSecond * Time.deltaTime);
+        }
+
+        /// <summary>A repair, e.g. from a battery pickup. False if integrity is already full or the player is down.</summary>
+        public bool Heal(float amount)
+        {
+            if (!IsAlive || amount <= 0f || Current >= maxHealth)
+                return false;
+            Current = Mathf.Min(maxHealth, Current + amount);
+            return true;
+        }
+
+        /// <summary>
+        /// Back to full integrity for a restart from the checkpoint, and safe from hits for
+        /// <paramref name="safeSeconds"/> of game time, so the player can get their bearings.
+        /// </summary>
+        public void Revive(float safeSeconds)
+        {
+            Current = maxHealth;
+            _lastDamageAt = float.NegativeInfinity;
+            _safeUntil = Now + Mathf.Max(0f, safeSeconds);
+        }
+
+        /// <summary>True while hits do nothing after a <see cref="Revive"/>.</summary>
+        public bool IsSafe => Now < _safeUntil;
+
+        public void TakeDamage(float amount, int sourceAgentId)
+        {
+            if (!IsAlive || amount <= 0f || IsSafe)
+                return;
+
+            // A shot already in the air when a cutscene or pause begins does no harm.
+            IGameClock clock = GameClock.Current;
+            if (clock != null && clock.State != GameState.Playing)
+                return;
+
+            Current = Mathf.Max(0f, Current - amount);
+            _lastDamageAt = Now;
+            LastDamageSourceId = sourceAgentId;
+            if (amount >= HurtSoundThreshold)
+                GameSfx.Play(Sfx.Hurt);
+            OnDamaged?.Invoke(amount, sourceAgentId);
+            if (IsAlive)
+                return;
+
+            OnDied?.Invoke(sourceAgentId);
+            IRunControl run = RunControl.Current;
+            if (run != null && run.OfferRestart())
+                return;
+            clock?.RequestState(GameState.Results);
+        }
+    }
+}

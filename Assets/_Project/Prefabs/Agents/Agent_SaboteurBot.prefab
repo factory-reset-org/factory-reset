@@ -1,0 +1,937 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &8364676418852828001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4499057061954017396}
+  - component: {fileID: 5717149258502898245}
+  - component: {fileID: 8664708463803033083}
+  - component: {fileID: 5172471769490426685}
+  - component: {fileID: 6835292230290014988}
+  - component: {fileID: 1142842270313622872}
+  - component: {fileID: 4357518660318742485}
+  - component: {fileID: 1604819290600208341}
+  - component: {fileID: 8991962682083835519}
+  - component: {fileID: 1038515747823336303}
+  - component: {fileID: 5280362402737932498}
+  - component: {fileID: 3709426959675120162}
+  - component: {fileID: 4089893507461461072}
+  m_Layer: 11
+  m_Name: Agent_SaboteurBot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4499057061954017396
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 720575241433806517}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!143 &5717149258502898245
+CharacterController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Height: 1.6
+  m_Radius: 0.45
+  m_SlopeLimit: 45
+  m_StepOffset: 0.3
+  m_SkinWidth: 0.08
+  m_MinMoveDistance: 0.001
+  m_Center: {x: 0, y: 0.8, z: 0}
+--- !u!114 &8664708463803033083
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 79a25d8792a00bd47a23d8c2e793cc33, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Movement.AgentPathFollower
+  arrivalRadius: 0.3
+  groundedStickSpeed: -2
+  turnSpeed: 360
+  acceleration: 12
+--- !u!114 &5172471769490426685
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4f6e4f5f7cbe0c04bbe15220690687b1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Agents.AgentController
+  smoothPaths: 1
+  hitPoints: 2
+  knockOutSeconds: 0
+  scrapWhenDown: 1
+  sabotageReach: 2.5
+  sabotageGiveUpSeconds: 2
+  blendReplans: 1
+--- !u!114 &6835292230290014988
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a9c7b7a9d4cc29c44a468950580051eb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentAnimatorBridge
+  animator: {fileID: 4458622914453848836}
+  dampTime: 0.1
+  aimBlendTime: 0.1
+--- !u!114 &1142842270313622872
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cec7c5fff6b0e9f4b8832d45e5d68327, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.WheelSpinner
+  wheels:
+  - pivot: {fileID: 1465884784387286978}
+    radius: 0.28
+    localAxis: {x: 1, y: 0, z: 0}
+--- !u!114 &4357518660318742485
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6fccee21ed4872a49b6245b387d3bc3a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AlertIcon
+  height: 2
+  size: 0.12
+  popSeconds: 0.25
+  suspiciousColour: {r: 1, g: 0.85, b: 0.2, a: 1}
+  alertColour: {r: 1, g: 0.25, b: 0.2, a: 1}
+--- !u!114 &1604819290600208341
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9f78bb11c4008474294bbb5c5dcd8e71, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Movement.PlayerStandOff
+  standOff: 1.6
+  release: 1.9000001
+  maxHeightDifference: 1.5
+--- !u!114 &8991962682083835519
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4522354b5faa804419782147296459d4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentClawSwipe
+  root: {fileID: 8653641931830487674}
+  interval: 1.2
+  duration: 0.6
+  contactAt: 0.5
+  reachMargin: 0.6
+  body: {fileID: 9042529498539615052}
+  shoulderLeft: {fileID: 1238280053909747224}
+  elbowLeft: {fileID: 9197797317552357272}
+  clawLeftTop: {fileID: 6385822917562425992}
+  clawLeftBottom: {fileID: 2799080169345318182}
+  shoulderRight: {fileID: 5971700328018922715}
+  elbowRight: {fileID: 8393719547479576529}
+  clawRightTop: {fileID: 1664436322241051680}
+  clawRightBottom: {fileID: 8868601608210266104}
+  damage: 10
+  roll:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: -0.26666665
+      outSlope: -0.26666665
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.3
+      value: -0.08
+      inSlope: 1.3166667
+      outSlope: 1.3166667
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.5
+      value: 0.5
+      inSlope: 1.45
+      outSlope: 1.45
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.65
+      value: 0.5
+      inSlope: -0.7142857
+      outSlope: -0.7142857
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: -1.4285713
+      outSlope: -1.4285713
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  twist:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: -83.33333
+      outSlope: -83.33333
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.3
+      value: -25
+      inSlope: 70.83334
+      outSlope: 70.83334
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.5
+      value: 20
+      inSlope: 95.833336
+      outSlope: 95.833336
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.65
+      value: 15
+      inSlope: -38.095238
+      outSlope: -38.095238
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: -42.85714
+      outSlope: -42.85714
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  lean:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: -26.666666
+      outSlope: -26.666666
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.3
+      value: -8
+      inSlope: 41.66667
+      outSlope: 41.66667
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.5
+      value: 14
+      inSlope: 48.333336
+      outSlope: 48.333336
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.65
+      value: 12
+      inSlope: -23.809525
+      outSlope: -23.809525
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: -34.285713
+      outSlope: -34.285713
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  shoulder:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: -466.66666
+      outSlope: -466.66666
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.3
+      value: -140
+      inSlope: -145.83331
+      outSlope: -145.83331
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.5
+      value: -105
+      inSlope: 120.83334
+      outSlope: 120.83334
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.65
+      value: -95
+      inSlope: 169.04762
+      outSlope: 169.04762
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 271.42856
+      outSlope: 271.42856
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  elbow:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: -99.99999
+      outSlope: -99.99999
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.3
+      value: -30
+      inSlope: 175.00002
+      outSlope: 175.00002
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.5
+      value: 60
+      inSlope: 208.33334
+      outSlope: 208.33334
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.65
+      value: 55
+      inSlope: -95.2381
+      outSlope: -95.2381
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: -157.14285
+      outSlope: -157.14285
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  pincer:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 116.666664
+      outSlope: 116.666664
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.3
+      value: 35
+      inSlope: 58.333332
+      outSlope: 58.333332
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.48
+      value: 35
+      inSlope: -500.0001
+      outSlope: -500.0001
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.52
+      value: -5
+      inSlope: -486.1112
+      outSlope: -486.1112
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.7
+      value: 0
+      inSlope: 13.888888
+      outSlope: 13.888888
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  otherShoulder:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 49.999996
+      outSlope: 49.999996
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.3
+      value: 15
+      inSlope: -50.000008
+      outSlope: -50.000008
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.5
+      value: -15
+      inSlope: -60.000008
+      outSlope: -60.000008
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 30
+      outSlope: 30
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+--- !u!114 &1038515747823336303
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5839d5c4ed5f2cb4ea167bc66d363f60, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentKnockdown
+  model: {fileID: 720575241433806517}
+  sparkMaterial: {fileID: 2100000, guid: 239af0130747e434099e034c0659c39b, type: 2}
+  knockOutWord: {fileID: 21300000, guid: a019917e8af69944fa8b4fe7d3887b49, type: 3}
+  scrapWord: {fileID: 21300000, guid: 0172a0140e32580459a38ad796afe4fc, type: 3}
+  starSprite: {fileID: 21300000, guid: a59956d2dacc1b84ebf5c0bce4b6ee96, type: 3}
+  starsAnchor: {fileID: 9042529498539615052}
+  starsOffset: {x: 0, y: 1.5, z: 0.25}
+  starsRadius: 0.3
+  starSize: 0.2
+  starsPeriod: 1.1
+  smokeFrom: {fileID: 0}
+  tipAngle: 78
+  tipSeconds: 0.4
+  standSeconds: 0.5
+  scrapLingerSeconds: 1.2
+  scrapSinkSeconds: 0.7
+  wordWidth: 1.1
+  wordSeconds: 1
+  dormantUntilCaptainWakes: 0
+  wakeStandDelay: 0.7
+  powerDownSeconds: 1.2
+  sagAngle: 5
+--- !u!114 &5280362402737932498
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a82b91abb02c3fd40a42409acf9f4866, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.AgentLights
+  lights:
+  - {fileID: 5897973163076581339}
+  - {fileID: 6429547579550764178}
+  lightMaterial: {fileID: 2100000, guid: dd46163783547f24896c87f25e415eea, type: 2}
+  colour: {r: 0.49, g: 1, b: 0.42, a: 1}
+  intensity: 2.5
+  outSeconds: 0.35
+  onSeconds: 0.6
+  darkUntilCaptainWakes: 0
+--- !u!114 &3709426959675120162
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 99833ee2affab0546b989f3a3c092ede, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.SaboteurSlump
+  body: {fileID: 9042529498539615052}
+  shoulderLeft: {fileID: 1238280053909747224}
+  shoulderRight: {fileID: 5971700328018922715}
+  elbowLeft: {fileID: 9197797317552357272}
+  elbowRight: {fileID: 8393719547479576529}
+  clawLeftTop: {fileID: 6385822917562425992}
+  clawLeftBottom: {fileID: 2799080169345318182}
+  clawRightTop: {fileID: 1664436322241051680}
+  clawRightBottom: {fileID: 8868601608210266104}
+  wobbleRoll: 12
+  wobbleRate: 2.5
+  wobbleSeconds: 0.7
+  lean: 30
+  leanFrom: 0.45
+  leanSeconds: 0.5
+  armDrop: 30
+  elbowHang: 5
+  clawOpen: 30
+  standSeconds: 0.9
+  clawShut: 4
+  standingReach: 0.5
+  slumpedReach: 0.93
+--- !u!114 &4089893507461461072
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8364676418852828001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 98d7c89a4b085274cb86c72895e160cf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ToyFactory.Runtime::ToyFactory.Runtime.Animation.SaboteurHandsOn
+  root: {fileID: 8653641931830487674}
+  body: {fileID: 9042529498539615052}
+  shoulderLeft: {fileID: 1238280053909747224}
+  elbowLeft: {fileID: 9197797317552357272}
+  clawLeftTop: {fileID: 6385822917562425992}
+  clawLeftBottom: {fileID: 2799080169345318182}
+  shoulderRight: {fileID: 5971700328018922715}
+  elbowRight: {fileID: 8393719547479576529}
+  clawRightTop: {fileID: 1664436322241051680}
+  clawRightBottom: {fileID: 8868601608210266104}
+  carriedBattery: {fileID: 8177884613914213957}
+  duration: 0.7
+  pinchAt: 0.5
+  maxTurn: 60
+  pincerReach: 1.3
+  maxRoll: 0.6
+  reach:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.3
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.65
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  lean: 18
+  shoulder: -70
+  elbow: 35
+  pincer:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 150
+      outSlope: 150
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.2
+      value: 30
+      inSlope: 75
+      outSlope: 75
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.46
+      value: 30
+      inSlope: -291.6668
+      outSlope: -291.6668
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.52
+      value: -5
+      inSlope: -277.77792
+      outSlope: -277.77792
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.7
+      value: 0
+      inSlope: 13.888888
+      outSlope: 13.888888
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+--- !u!1001 &6993411909807918050
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 4499057061954017396}
+    m_Modifications:
+    - target: {fileID: 7185977976637122541, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_Name
+      value: SaboteurBot
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 7185977976637122541, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 4458622914453848836}
+  m_SourcePrefab: {fileID: 100100000, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+--- !u!1 &194833399660817423 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 7185977976637122541, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!95 &4458622914453848836
+Animator:
+  serializedVersion: 7
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 194833399660817423}
+  m_Enabled: 1
+  m_Avatar: {fileID: 0}
+  m_Controller: {fileID: 9100000, guid: fdc3f4c8d3ae10749ad2f68916253b91, type: 2}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_AnimatePhysics: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
+--- !u!4 &720575241433806517 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 7562221387311234391, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &1238280053909747224 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 8080256190445764090, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &1465884784387286978 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 8456151950950116384, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &1664436322241051680 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 8508657663670302658, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &2799080169345318182 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 5176258306552673988, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!23 &5897973163076581339 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 3518534255881829433, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &5971700328018922715 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 3734094162617730873, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &6385822917562425992 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 4148544269185788266, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!23 &6429547579550764178 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 4050917913049089904, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &8177884613914213957 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1184510122264327591, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &8393719547479576529 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 1545276047175681075, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &8653641931830487674 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 1808897188642169240, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &8868601608210266104 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 1881956232546417690, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &9042529498539615052 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 2049159542241470638, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &9197797317552357272 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 2209214602668536954, guid: d4eb7ea7425a8b44c9cac7e9bdc77c82, type: 3}
+  m_PrefabInstance: {fileID: 6993411909807918050}
+  m_PrefabAsset: {fileID: 0}

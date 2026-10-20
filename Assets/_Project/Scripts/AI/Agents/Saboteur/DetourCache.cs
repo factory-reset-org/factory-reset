@@ -1,0 +1,605 @@
+using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using Unity.Profiling;
+using UnityEngine;
+using ToyFactory.AI.Core.Blackboard;
+using ToyFactory.AI.Core.Grid;
+using ToyFactory.AI.Core.Search;
+
+namespace ToyFactory.AI.Agents.Saboteur
+{
+    /// <summary>One open door and what closing it would do to the player's route to the objective.</summary>
+    public readonly struct DoorDetour
+    {
+        /// <summary>The door id (the grid's <c>DoorId</c>, which is also <c>AgentIntent.ActionTargetId</c>).</summary>
+        public int DoorId { get; }
+
+        /// <summary>The grid cells the door fills.</summary>
+        public IReadOnlyList<Vector2Int> Cells { get; }
+
+        /// <summary>The player's route cost with every door as it is now, in grid units.</summary>
+        public float OpenCost { get; }
+
+        /// <summary>The player's route cost with this door closed; infinite for a lockout.</summary>
+        public float ClosedCost { get; }
+
+        /// <summary>
+        /// <c>(closed - open) / open</c>: 0 for a door off the player's route, 0.6 for a route that
+        /// grows from 10 to 16. Infinite for a lockout, so check <see cref="IsLockout"/> first.
+        /// </summary>
+        public float Gain { get; }
+
+        /// <summary>True when closing the door cuts the player off from the objective entirely.</summary>
+        public bool IsLockout => float.IsInfinity(ClosedCost);
+
+        /// <summary>Creates a result.</summary>
+        public DoorDetour(int doorId, IReadOnlyList<Vector2Int> cells, float openCost, float closedCost)
+        {
+            DoorId = doorId;
+            Cells = cells;
+            OpenCost = openCost;
+            ClosedCost = closedCost;
+            Gain = DetourCache.GainOf(openCost, closedCost);
+        }
+    }
+
+    /// <summary>
+    /// Works out, once for the whole squad, how much longer the player's route to the objective
+    /// becomes if each open door closes. Every Saboteur asks this cache, so four instances cost
+    /// the same searches as one: a refresh runs at most every <see cref="RefreshSeconds"/> of game
+    /// time (or sooner when the grid or the objectives change) and does one search for the current
+    /// route plus one per door that lies on it.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Objective.</b> The Captain's <see cref="PredictedGoal"/> when it is known with at
+    /// least <see cref="MinPredictionConfidence"/>; otherwise the nearest entry of
+    /// <see cref="WorldBlackboard.ObjectiveTargets"/>. The route starts at the player's cell.</para>
+    /// <para><b>Never changes the grid.</b> A closed door is only a price (<see cref="DoorClosureCostModel"/>),
+    /// so the live graph, its version and every other agent's routes are untouched.</para>
+    /// <para><b>Lockouts.</b> A door that would leave no route at all has an infinite
+    /// <see cref="DoorDetour.ClosedCost"/>. It is reported, not hidden. The player can open every door
+    /// a Saboteur closes, so the CloseDoor source treats it as the most a door can cost them, not as a
+    /// soft lock.</para>
+    /// <para><b>Room exits.</b> Each refresh also lists the open doors out of the player's room
+    /// (<see cref="PlayerRoomExits"/>), the doors that shut the player in.</para>
+    /// </remarks>
+    public sealed class DetourCache
+    {
+        /// <summary>Seconds of game time between two refreshes.</summary>
+        public const float RefreshSeconds = 0.5f;
+
+        /// <summary>Lowest prediction confidence at which the Captain's goal replaces the nearest objective.</summary>
+        public const float MinPredictionConfidence = 0.5f;
+
+        /// <summary>How far, in cells, an objective or player cell inside a prop may be moved to a walkable one.</summary>
+        public const int SnapRadius = 4;
+
+        static readonly ProfilerMarker Marker = new ProfilerMarker("AI.Saboteur.Detour");
+
+        // One cache per blackboard. The table holds its keys weakly, so a cache lives exactly as long as
+        // the level's blackboard and nothing is kept across levels or tests.
+        static readonly ConditionalWeakTable<WorldBlackboard, DetourCache> Shared =
+            new ConditionalWeakTable<WorldBlackboard, DetourCache>();
+
+        sealed class DoorEntry
+        {
+            public int Id;
+            public readonly List<Vector2Int> Cells = new List<Vector2Int>();
+            public bool Closed;
+        }
+
+        readonly GridGraph _grid;
+        readonly IPathfinder _pathfinder;
+        readonly DoorClosureCostModel _closure = new DoorClosureCostModel();
+        readonly List<DoorEntry> _entries = new List<DoorEntry>();
+        readonly List<DoorDetour> _results = new List<DoorDetour>();
+        readonly Dictionary<int, int> _resultIndex = new Dictionary<int, int>();
+        readonly HashSet<Vector2Int> _routeNeighbourhood = new HashSet<Vector2Int>();
+        readonly List<Vector2Int> _route = new List<Vector2Int>();
+        readonly List<Vector2Int> _stagingRoute = new List<Vector2Int>();
+        readonly List<int> _roomExits = new List<int>();
+        readonly HashSet<Vector2Int> _playerRoom = new HashSet<Vector2Int>();
+        readonly Queue<Vector2Int> _floodQueue = new Queue<Vector2Int>();
+
+        // A refresh in progress. Its results are built here and published together when the last search
+        // is done, so a reader never sees half a refresh.
+        readonly List<DoorDetour> _staging = new List<DoorDetour>();
+        bool _inProgress;
+        int _nextEntry;
+        Vector2Int _sliceStart;
+        Vector2Int _sliceGoal;
+        float _sliceOpenCost;
+
+        int _doorsVersion = -1;
+        int _gridVersion = -1;
+        int _objectivesVersion = -1;
+        float _computedAt;
+        bool _hasComputed;
+
+        /// <summary>Creates a cache over the level grid and the shared search.</summary>
+        public DetourCache(GridGraph grid, IPathfinder pathfinder)
+        {
+            _grid = grid ?? throw new ArgumentNullException(nameof(grid));
+            _pathfinder = pathfinder ?? throw new ArgumentNullException(nameof(pathfinder));
+        }
+
+        /// <summary>
+        /// The one cache for a level's squad: every Saboteur built over the same blackboard gets the
+        /// same instance, so four Saboteurs cost the searches of one, without the spawner passing a
+        /// cache around. The grid and pathfinder of the first call are used. Its refresh is spread over
+        /// calls, one search each (<see cref="SearchesPerCall"/>), so no tick pays for the whole refresh.
+        /// </summary>
+        public static DetourCache For(WorldBlackboard blackboard, GridGraph grid, IPathfinder pathfinder)
+        {
+            if (blackboard == null)
+                throw new ArgumentNullException(nameof(blackboard));
+
+            return Shared.GetValue(blackboard, _ => new DetourCache(grid, pathfinder) { SearchesPerCall = 1 });
+        }
+
+        /// <summary>The open doors from the latest refresh. Empty while <see cref="HasObjective"/> is false.</summary>
+        public IReadOnlyList<DoorDetour> Doors => _results;
+
+        /// <summary>True when the latest refresh found a player, an objective and a route between them.</summary>
+        public bool HasObjective { get; private set; }
+
+        /// <summary>The grid the cache searches over.</summary>
+        public GridGraph Grid => _grid;
+
+        /// <summary>
+        /// The player's open route from the latest refresh, from the player's cell to the objective, so
+        /// the trap source can predict which traps the player will pass and when. Empty while
+        /// <see cref="HasObjective"/> is false. It is up to <see cref="RefreshSeconds"/> old.
+        /// </summary>
+        public IReadOnlyList<Vector2Int> PlayerRoute => _route;
+
+        /// <summary>The cell the latest refresh measured the player's route to.</summary>
+        public Vector2Int ObjectiveCell { get; private set; }
+
+        /// <summary>
+        /// The open doors out of the room the player stands in, from the latest refresh: closing one shuts
+        /// the player in until they open it again. Worked out with or without an objective, so the squad can
+        /// shut a player in wherever they are. The room is the floor reached from the player's cell without
+        /// passing a door, within <see cref="RoomPatrolPlanner.MaxRadiusCells"/>; empty with no live player.
+        /// </summary>
+        public IReadOnlyList<int> PlayerRoomExits => _roomExits;
+
+        /// <summary>True when door <paramref name="doorId"/> was an open way out of the player's room at the latest refresh.</summary>
+        public bool IsPlayerRoomExit(int doorId) => _roomExits.Contains(doorId);
+
+        /// <summary>
+        /// True when <paramref name="cell"/> was in the player's room at the latest refresh: on its floor, or next to
+        /// it (a body standing in a doorway, or on a cell the grid counts as blocked, such as the edge of a prop).
+        /// False with no live player.
+        /// </summary>
+        public bool IsInPlayerRoom(Vector2Int cell)
+        {
+            if (_playerRoom.Count == 0)
+                return false;
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    if (_playerRoom.Contains(new Vector2Int(cell.x + dx, cell.y + dy)))
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// How many A* searches one <see cref="Refresh"/> call may start. A refresh needs one search for the
+        /// route plus one per door on it; with a limit of 1 it is spread over that many calls, so no single
+        /// Saboteur tick pays for all of them, and the new results are published together after the last.
+        /// The default is unlimited: the whole refresh happens in one call. <see cref="For"/> sets 1.
+        /// </summary>
+        public int SearchesPerCall { get; set; } = int.MaxValue;
+
+        /// <summary>Refreshes done so far, for tests and the evidence log.</summary>
+        public int Refreshes { get; private set; }
+
+        /// <summary>Searches made so far by refreshes (the route plus one per door on it), for tests and the evidence log.</summary>
+        public int Searches { get; private set; }
+
+        /// <summary>
+        /// Fresh searches made by <see cref="WouldLockPlayerOut"/> so far, one per call. They are not refresh
+        /// searches, so they are counted apart from <see cref="Searches"/>.
+        /// </summary>
+        public int LockoutChecks { get; private set; }
+
+        /// <summary>
+        /// Brings the results up to date for game time <paramref name="now"/>. Cheap when nothing
+        /// is due, so every Saboteur calls it before reading <see cref="Doors"/>.
+        /// </summary>
+        public void Refresh(WorldBlackboard world, float now)
+        {
+            if (world == null)
+                throw new ArgumentNullException(nameof(world));
+
+            if (_inProgress)
+            {
+                using (Marker.Auto())
+                    Continue(now);
+                return;
+            }
+
+            bool due = !_hasComputed
+                || now < _computedAt
+                || now - _computedAt >= RefreshSeconds
+                || _grid.Version != _gridVersion
+                || world.ObjectivesVersion != _objectivesVersion;
+            if (!due)
+                return;
+
+            using (Marker.Auto())
+            {
+                _gridVersion = _grid.Version;
+                _objectivesVersion = world.ObjectivesVersion;
+                _hasComputed = true;
+                Begin(world, now);
+            }
+        }
+
+        /// <summary>The latest result for a door, or false if it is closed, unknown or the route is unknown.</summary>
+        public bool TryGet(int doorId, out DoorDetour detour)
+        {
+            if (_resultIndex.TryGetValue(doorId, out int index))
+            {
+                detour = _results[index];
+                return true;
+            }
+
+            detour = default;
+            return false;
+        }
+
+        /// <summary>
+        /// The cells of a door by id, open or closed, from the latest scan of the grid. False for an
+        /// id the grid does not have. Valid after the first <see cref="Refresh"/>.
+        /// </summary>
+        public bool TryGetCells(int doorId, out IReadOnlyList<Vector2Int> cells)
+        {
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                if (_entries[i].Id == doorId)
+                {
+                    cells = _entries[i].Cells;
+                    return true;
+                }
+            }
+
+            cells = null;
+            return false;
+        }
+
+        /// <summary>
+        /// True when closing door <paramref name="doorId"/> right now would leave the player no route to
+        /// the objective. Unlike <see cref="TryGet"/> this searches fresh against the grid as it is at
+        /// this moment, so a door another Saboteur has just shut is already counted: two doors that are
+        /// each no lockout alone can be one together (the two entrances of one room), and the cache's
+        /// results can be half a second old. The brain no longer refuses such a door, since the player can
+        /// open it again; this stays a query for diagnostics. A door with no known cells, or no player,
+        /// objective or route to compare, is not a lockout. The grid is never changed.
+        /// </summary>
+        public bool WouldLockPlayerOut(WorldBlackboard world, int doorId)
+        {
+            if (world == null)
+                throw new ArgumentNullException(nameof(world));
+            if (!TryGetCells(doorId, out IReadOnlyList<Vector2Int> cells) || cells.Count == 0)
+                return false;
+
+            PlayerSnapshot player = world.Player;
+            if (!player.IsKnown || !player.IsAlive)
+                return false;
+            if (!Snap(player.Cell, out Vector2Int start) || !TryPickObjective(world, start, out Vector2Int objective)
+                || !Snap(objective, out Vector2Int goal) || start == goal)
+                return false;
+
+            using (Marker.Auto())
+            {
+                LockoutChecks++;
+                _closure.SetClosed(cells);
+                PathResult result = _pathfinder.FindPath(start, goal, _closure);
+                bool lockout = !result.Found || result.Cells == null
+                    || float.IsInfinity(DoorClosureCostModel.PathCost(result.Cells, _closure));
+                _closure.Clear();
+                return lockout;
+            }
+        }
+
+        /// <summary>
+        /// The detour gain: <c>(closed - open) / open</c>, infinite for a lockout. Returns 0 when the
+        /// open route is free (the player is already there), because the ratio is undefined.
+        /// </summary>
+        public static float GainOf(float openCost, float closedCost)
+        {
+            if (float.IsNaN(openCost) || float.IsNaN(closedCost) || openCost <= 0f || float.IsInfinity(openCost))
+                return 0f;
+            if (float.IsInfinity(closedCost))
+                return float.PositiveInfinity;
+
+            return Math.Max(0f, (closedCost - openCost) / openCost);
+        }
+
+        /// <summary>
+        /// The consideration input for a gain: clamped to [0, 1], so a route that grows by 100% or
+        /// more saturates. A lockout (infinite gain) scores 0 here; the CloseDoor source values it
+        /// itself, as a door the player must stop and open.
+        /// </summary>
+        public static float GainScore(float gain)
+        {
+            if (float.IsNaN(gain) || float.IsInfinity(gain) || gain <= 0f)
+                return 0f;
+            return gain >= 1f ? 1f : gain;
+        }
+
+        void Begin(WorldBlackboard world, float now)
+        {
+            _staging.Clear();
+            ScanDoors();
+            FindRoomExits(world.Player);
+
+            if (!TryGetRoute(world, out _sliceStart, out _sliceGoal, out List<Vector2Int> route, out _sliceOpenCost))
+            {
+                Publish(now, false);
+                return;
+            }
+
+            MarkRouteNeighbourhood(route);
+            _stagingRoute.Clear();
+            _stagingRoute.AddRange(route);
+            _nextEntry = 0;
+            _inProgress = true;
+            Continue(now, 1);
+        }
+
+        void Continue(float now, int used = 0)
+        {
+            int budget = SearchesPerCall < 1 ? 1 : SearchesPerCall;
+            while (_nextEntry < _entries.Count)
+            {
+                DoorEntry door = _entries[_nextEntry];
+                if (door.Closed)
+                {
+                    _nextEntry++;
+                    continue;
+                }
+
+                float closedCost = _sliceOpenCost;
+                if (TouchesRoute(door))
+                {
+                    if (used >= budget)
+                        return;
+
+                    used++;
+                    _closure.SetClosed(door.Cells);
+                    Searches++;
+                    PathResult result = _pathfinder.FindPath(_sliceStart, _sliceGoal, _closure);
+                    closedCost = result.Found && result.Cells != null
+                        ? DoorClosureCostModel.PathCost(result.Cells, _closure)
+                        : float.PositiveInfinity;
+                    _closure.Clear();
+                }
+
+                _staging.Add(new DoorDetour(door.Id, door.Cells, _sliceOpenCost, closedCost));
+                _nextEntry++;
+            }
+
+            Publish(now, true);
+        }
+
+        void Publish(float now, bool hasObjective)
+        {
+            _results.Clear();
+            _resultIndex.Clear();
+            for (int i = 0; i < _staging.Count; i++)
+            {
+                _resultIndex[_staging[i].DoorId] = _results.Count;
+                _results.Add(_staging[i]);
+            }
+
+            _route.Clear();
+            if (hasObjective)
+                _route.AddRange(_stagingRoute);
+
+            HasObjective = hasObjective;
+            if (hasObjective)
+                ObjectiveCell = _sliceGoal;
+            _inProgress = false;
+            _computedAt = now;
+            Refreshes++;
+        }
+
+        // The grid's doors change only with its version, so the scan is redone then and not per refresh.
+        // Door state (open or closed) is read each time because it changes with the version too.
+        void ScanDoors()
+        {
+            if (_doorsVersion == _grid.Version)
+                return;
+
+            _doorsVersion = _grid.Version;
+            for (int i = 0; i < _entries.Count; i++)
+                _entries[i].Cells.Clear();
+            int used = 0;
+
+            for (int y = 0; y < _grid.Height; y++)
+            {
+                for (int x = 0; x < _grid.Width; x++)
+                {
+                    GridNode node = _grid.GetNode(new Vector2Int(x, y));
+                    if (!node.DoorId.HasValue)
+                        continue;
+
+                    DoorEntry entry = FindEntry(node.DoorId.Value, used, out bool isNew);
+                    if (isNew)
+                        used++;
+                    entry.Cells.Add(node.Cell);
+                    entry.Closed = node.IsDoorClosed;
+                }
+            }
+
+            _entries.RemoveRange(used, _entries.Count - used);
+        }
+
+        // The open doors touching the player's room. One flood per refresh for the whole squad, over the same
+        // floor the room patrol uses (walls and props bound it, a doorway ends it), reusing its set and queue.
+        void FindRoomExits(in PlayerSnapshot player)
+        {
+            _roomExits.Clear();
+            _playerRoom.Clear();
+            _floodQueue.Clear();
+            if (!player.IsKnown || !player.IsAlive || !Snap(player.Cell, out Vector2Int start))
+                return;
+
+            _playerRoom.Add(start);
+            _floodQueue.Enqueue(start);
+            while (_floodQueue.Count > 0)
+            {
+                Vector2Int cell = _floodQueue.Dequeue();
+                for (int i = 0; i < 4; i++)
+                {
+                    Vector2Int next = cell + FloodSteps[i];
+                    if (_playerRoom.Contains(next) || !_grid.Contains(next))
+                        continue;
+                    if (Math.Abs(next.x - start.x) > RoomPatrolPlanner.MaxRadiusCells
+                        || Math.Abs(next.y - start.y) > RoomPatrolPlanner.MaxRadiusCells)
+                        continue;
+                    GridNode node = _grid.GetNode(next);
+                    if (node.DoorId.HasValue || !node.IsSoundTraversable)
+                        continue;
+
+                    _playerRoom.Add(next);
+                    _floodQueue.Enqueue(next);
+                }
+            }
+
+            for (int e = 0; e < _entries.Count; e++)
+            {
+                DoorEntry door = _entries[e];
+                if (!door.Closed && TouchesCells(door, _playerRoom))
+                    _roomExits.Add(door.Id);
+            }
+        }
+
+        static readonly Vector2Int[] FloodSteps = { Vector2Int.right, Vector2Int.left, Vector2Int.up, Vector2Int.down };
+
+        // Entries are kept in a prefix of _entries so the lists are reused from scan to scan.
+        DoorEntry FindEntry(int doorId, int used, out bool isNew)
+        {
+            for (int i = 0; i < used; i++)
+            {
+                if (_entries[i].Id == doorId)
+                {
+                    isNew = false;
+                    return _entries[i];
+                }
+            }
+
+            isNew = true;
+            if (used < _entries.Count)
+            {
+                _entries[used].Id = doorId;
+                return _entries[used];
+            }
+
+            var created = new DoorEntry { Id = doorId };
+            _entries.Add(created);
+            return created;
+        }
+
+        bool TryGetRoute(WorldBlackboard world, out Vector2Int start, out Vector2Int goal,
+            out List<Vector2Int> route, out float openCost)
+        {
+            start = default;
+            goal = default;
+            route = null;
+            openCost = 0f;
+
+            PlayerSnapshot player = world.Player;
+            if (!player.IsKnown || !player.IsAlive)
+                return false;
+            if (!Snap(player.Cell, out start) || !TryPickObjective(world, start, out Vector2Int objective) || !Snap(objective, out goal))
+                return false;
+            if (start == goal)
+                return false;
+
+            Searches++;
+            PathResult open = _pathfinder.FindPath(start, goal, BaseCostModel.Instance);
+            if (!open.Found || open.Cells == null || open.Cells.Count < 2)
+                return false;
+
+            route = open.Cells;
+            openCost = DoorClosureCostModel.PathCost(route, BaseCostModel.Instance);
+            return openCost > 0f;
+        }
+
+        bool TryPickObjective(WorldBlackboard world, Vector2Int from, out Vector2Int cell)
+        {
+            PredictedGoal prediction = world.PredictedGoal;
+            if (prediction.IsKnown && prediction.Confidence >= MinPredictionConfidence)
+            {
+                cell = prediction.Cell;
+                return true;
+            }
+
+            IReadOnlyList<ObjectiveTarget> targets = world.ObjectiveTargets;
+            bool found = false;
+            float best = float.MaxValue;
+            cell = default;
+            for (int i = 0; i < targets.Count; i++)
+            {
+                float distance = BaseCostModel.OctileDistance(from, targets[i].Cell);
+                if (!found || distance < best)
+                {
+                    found = true;
+                    best = distance;
+                    cell = targets[i].Cell;
+                }
+            }
+
+            return found;
+        }
+
+        bool Snap(Vector2Int cell, out Vector2Int result)
+        {
+            if (_grid.IsTraversable(cell))
+            {
+                result = cell;
+                return true;
+            }
+
+            return _grid.TryFindNearestTraversable(cell, SnapRadius, out result);
+        }
+
+        // A door matters to the route if the route passes through it or squeezes diagonally past it,
+        // so any route cell within one cell of a door cell counts.
+        void MarkRouteNeighbourhood(List<Vector2Int> route)
+        {
+            _routeNeighbourhood.Clear();
+            for (int i = 0; i < route.Count; i++)
+                _routeNeighbourhood.Add(route[i]);
+        }
+
+        bool TouchesRoute(DoorEntry door) => TouchesCells(door, _routeNeighbourhood);
+
+        static bool TouchesCells(DoorEntry door, HashSet<Vector2Int> cells)
+        {
+            for (int i = 0; i < door.Cells.Count; i++)
+            {
+                Vector2Int cell = door.Cells[i];
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        if (cells.Contains(new Vector2Int(cell.x + dx, cell.y + dy)))
+                            return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+    }
+}

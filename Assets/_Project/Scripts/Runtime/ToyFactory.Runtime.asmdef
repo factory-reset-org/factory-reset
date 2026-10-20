@@ -5,7 +5,8 @@
         "ToyFactory.AI.Core",
         "ToyFactory.AI.Agents",
         "ToyFactory.Interfaces",
-        "Unity.AI.Navigation"
+        "Unity.AI.Navigation",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

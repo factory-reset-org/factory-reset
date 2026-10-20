@@ -10,26 +10,26 @@ git config user.name "Your Full Name"
 git config user.email "verified-email@your-github-account"   # unverified = unlinked commits
 ```
 
-Add Unity Smart Merge to **this repo's** `.git/config` (fix the path to your Unity version):
+Add Unity Smart Merge to **this repo's** `.git/config` (fix the path to your Unity version). `.gitattributes` routes scenes, prefabs, materials, assets and Timeline `.playable` files through it:
 
 ```ini
 [merge "unityyamlmerge"]
     name = Unity Smart Merge
-    driver = 'C:/Program Files/Unity/Hub/Editor/2022.3.XXf1/Editor/Data/Tools/UnityYAMLMerge.exe' merge -h -p --force --fallback none %O %B %A %A
+    driver = 'C:/Program Files/Unity/Hub/Editor/6000.6.2f1/Editor/Data/Tools/UnityYAMLMerge.exe' merge -h -p --force --fallback none %O %B %A %A
 ```
 
 ## Branches
 
 ```text
-main   stable, demo-ready, tagged releases only
-dev    integration, merged into daily
+main      stable, demo-ready, tagged releases only
+develop   integration, merged into daily
   s<N>/<type>/<topic>   e.g. s1/feat/gbfs-search, s3/art/tracker-toy-uv
 ```
 
-- Short-lived task branches off `dev`, merged back within 1-3 days.
-- Pull requests only. No direct pushes to `main` or `dev`. At least one reviewer.
+- Raise a change that belongs to another student's area with its owner directly (not as a GitHub Issue), say exactly what you need and why, and let the owner make it, even for one line. Interface changes need all four reviewers.
+- Short-lived task branches off `develop`, merged back within 1-3 days.
+- Pull requests only. No direct pushes to `main` or `develop`. At least one reviewer.
 - **Merge commits** (`--no-ff`), never squash. Squashing erases individual authorship.
-- Put `Closes #<issue>` in the PR description so the project board updates.
 
 ## Commits
 
@@ -58,8 +58,11 @@ Check your weekly count: `git shortlog -sn --since="1 week ago"`.
   | `ToyFactory.AI.Agents` | AI.Core |
   | `ToyFactory.Interfaces` | nothing |
   | `ToyFactory.Runtime` | AI.Core, AI.Agents, Interfaces, AI Navigation |
-  | `ToyFactory.Tests.EditMode` | AI.Core, AI.Agents, test framework |
+  | `ToyFactory.Journey` | Interfaces, AI.Core, Timeline, Cinemachine (never AI.Agents, Runtime or UI) |
+  | `ToyFactory.UI` | Interfaces, Journey (events only), TextMeshPro, uGUI (never AI.Agents or Runtime) |
+  | `ToyFactory.Tests.EditMode` | AI.Core, AI.Agents, Interfaces, Journey, UI, test framework |
 
+- `ToyFactory.Journey` holds chapters (`Journey/Chapters/`, S1) and cutscenes (`Journey/Cutscenes/`, S4). It never references AI.Agents, Runtime or UI. The UI assembly reads Journey events only, and Runtime must not reference Journey or UI.
 - `Player/`, `Interaction/` and `Managers/` compile into Unity's default assembly. They can use every assembly above, but Runtime cannot see them, so Runtime talks to them only through `Interfaces/`.
 - Physics and NavMesh queries (Linecast, SamplePosition) belong in Runtime, behind an interface the brain receives. Tests use a fake.
 - Namespaces follow the assembly name. Use `ToyFactory.Runtime.Diagnostics` for code in `Runtime/Debug/`: a namespace ending in `.Debug` hides `UnityEngine.Debug`.
@@ -73,19 +76,50 @@ Check your weekly count: `git shortlog -sn --since="1 week ago"`.
 | `Env` | S1 (only scene with static geometry; bake lighting with Env alone loaded) |
 | `Interactables` | S2 (everything non-static, lit by Light Probes) |
 | `Agents` | S4 |
-| `ModelShowcase` | S3 (not in build) |
+| `UI` | S3 (HUD, subtitles, chapter card, title, results; added to Build Settings and loaded by S2) |
+| `ModelShowcase` | S3 (model turntable and wireframe line-up; never in build) |
+| `Test/Test_SquadClaims` | S3 (four Saboteurs and two doors for the squad evidence; a personal test scene, never in build) |
 
-Only the owner edits a scene. Everyone else works in a personal test scene and hands over prefabs.
+Only the owner edits a scene, including its metadata. Everyone else works in a personal test scene and hands over prefabs. Test scenes live under `Scenes/Test/` and stay out of the build.
 
 ## Art pipeline
 
 - Blender sources go in `Blender/` (outside `Assets/`, so Unity never tries to import `.blend` files).
-- Export FBX to `Assets/_Project/Models/<Model>/`: Apply Transform, Forward -Z, Up Y, Leaf Bones off.
-- Textures power-of-two, BC7. Follow [Docs/ArtBible.md](Docs/ArtBible.md).
+- Export FBX to `Assets/_Project/Models/<Model>/`, overwriting the existing file so its `.meta` GUID is kept: Forward Y, Up Z, Apply Transform off, Apply Scalings "FBX Units Scale", Leaf Bones off, Object Types Empty and Mesh only, Bake Animation off. Keep **Bake Axis Conversion** enabled in the Unity model importer. This is the validated pipeline: models authored facing Blender +Y import facing Unity +Z, and every node in the rigid-part hierarchy keeps rotation 0 and scale 1.
+- Character and keycard materials (`Materials/Characters/M_Char_*`) are set by the menu item Factory Reset > Materials > Build Character Materials, which also rewrites the character prefab variants. Change a colour in `CharacterMaterialBuilder` and run it again; do not edit those materials or the prefab material slots by hand. Unit 047's decal texture (`Textures/Characters/T_Char_Unit047Decals.png`) is painted, not generated: edit the PNG, keep each plate's half of it, and run the builder again.
+- Prop materials: untextured props use the shared `M_Char_*` plastics; parts that S2 tints or that need a texture get their own `Materials/Props/M_Prop_*` material, so a tint never reaches another prop.
+- Textures are power-of-two and BC7 on Standalone, through the shared preset `Textures/S3_Texture_BC7.preset` rather than one-off settings: mipmaps on, not readable, sRGB, no non-power-of-two scaling, at most 1,024 pixels; filter, anisotropy, wrap and alpha stay per texture. A texture in `Textures/Characters/` or `Textures/Props/` gets it from the menu item Factory Reset > Textures > Apply S3 Texture Preset, and `TexturePresetTests` fails if one differs. There is no prop atlas: props use the shared palette plastics, and a prop that needs a picture gets its own small texture and material (decision log, 2026-10-20). Follow [Docs/ArtBible.md](Docs/ArtBible.md); S1 owns palette changes.
+- **Third-party models:** only with a licence that allows it (CC0 preferred; CC BY only with the credit), recorded in the [Docs/DesignDoc.md](Docs/DesignDoc.md) decision log. Keep the fitted `.blend` in `Blender/ThirdParty/<Source>/`, the FBX export (and the original `License.txt` when the source ships one) in `Assets/_ThirdParty/<Source>/`, and a `README.md` there naming each model's author, licence, link and changes. A CC BY model also goes in `ThirdPartyCredits` (`Scripts/UI/`), which the Credits screen shows, and `ThirdPartyCreditsTests` fails if the README and the game disagree. Map their colours to the shared palette plastics where they have no texture. Export and import them like our own models; their prefabs go in `Prefabs/Props/` and their materials in `Materials/Props/`. Third-party models never count as anyone's own models.
 - Only S1 commits lighting and NavMesh bake output, and only after major changes (LFS quota).
+
+### Model handoff
+
+S3 owns everything under `Assets/_Project/Models/`, the character prefab variants in `Prefabs/Characters/`, and character and prop materials. Model ownership does not cover a brain, animation clips or placement in another student's scene.
+
+- **Hierarchy contract:** the node names, parents and pivots in [Docs/DesignDoc.md](Docs/DesignDoc.md) section 8 are frozen once S4 accepts them. Never rename, reparent, move or re-rotate a contracted node. Final modelling may only add non-animated detail meshes beneath existing nodes. Prefer adding small details (pupils, decals, trims) inside an existing mesh as an extra material slot: no new node means no new collider override and nothing for S4 to recheck. A new rigged or animated asset (for example Unit 047) needs its own section 8-style contract, agreed with S4 before S4 animates it.
+- **New models:** a newly imported FBX starts with Unity's defaults (Bake Axis Conversion off, Preserve Hierarchy off, Import Animation on). Set those three to match the existing models' importer before making the prefab variant, and compare the new `.meta` with an existing model's.
+- **Props:** a prop that plays no animation (the keycard and the rest of the task-prop kit) uses Rig > Animation Type **None**; only the characters use Generic. Unity names a prefab's root GameObject after the prefab file, so name the prefab for the root you want (for example `Keycard_Root.prefab` for a `Keycard_Root` > `Keycard` hierarchy) and keep the child mesh name different from the root.
+- **Reimporting:** the importer generates file IDs from node names, so renaming or reparenting a node orphans prefab-variant overrides such as the disabled colliders. Overwrite the FBX in place, keep its `.meta`, then check the prefab variants for missing references and console errors.
+- **Budgets:** check triangle counts after import, not in Blender (Tracker < 2,000, Saboteur < 3,000, Unit 047 < 2,500, each task prop < 600). Keep a final model inside its greybox silhouette so S4's capsule sizes and S1's NavMesh stay valid.
+- **Characters:** one disabled primitive collider per mesh part and no Rigidbody; S4 enables them at fall-apart. Saboteur colour variants share one material and are tinted per instance; where the tint component's script lives is agreed with S4.
+- **Handing over:** the PR says what the asset is for, how the import was validated (triangles, +Z facing, identity transforms, pivots, UVs, colliders), and what the scene owner has to do. Tell S4 after any reimport so animation bindings are rechecked. Props are handed to S2 as prefabs; S2 places them in `Interactables`.
+- **Evidence:** record actual before/after numbers in the modelling section of `Docs/OptimisationLog.md` (poly stats, BC7 memory, material and SetPass counts, LOD, tint approach), with machine and scene. Never record a number that was not measured. Factory Reset > Models > Export UV Layouts writes one UV picture per model and `UV_SUMMARY.md` to `Docs/Evidence/Models/UV/`; run it after a model changes. The SetPass and canvas measurements are explicit PlayMode tests (category Evidence) that need a graphics device: run them without `-nographics`.
+- **Branches and commits:** `s3/art/<model>` and `art(<model>): ...`. Keep a model's `.blend`, FBX, prefab, materials and `.meta` files in one commit. Use `perf(models)` only with measured evidence.
+
+### ModelShowcase
+
+- `Scenes/ModelShowcase.unity` is S3's presentation scene (turntable and wireframe views). It stays out of Build Settings.
+- Add every S3 model to it, including Unit 047 once it exists. Its turntable must not depend on S4's animation clips.
+- Keys: Tab line-up or turntable, Left and Right pick the turntable model, Space spin, W wireframe, L hold a LOD level, Up and Down move the turntable camera.
+- A new model's prefab goes in the `Showcase` object's entries (`ModelShowcaseSceneTests` fails if a character or a `*_Root` prop prefab is missing). Its importer needs Read/Write on: the wireframe reads each mesh's vertices in play mode, and the same test fails for a mesh that is not readable.
+- A LOD level is named `<Model>_Far`, never `_LOD1`: Unity builds a LOD group by itself from a file whose nodes end in `_LOD0`, `_LOD1`, and a test fails on such a name.
+- Open it fresh in Unity at 16:9 for a clean lit check. Do not bake lighting or NavMesh from it.
+- The models keep a neutral rotation so the line-up matches DesignDoc section 8.9.
 
 ## Before opening a PR
 
 - EditMode tests pass; paste the summary into the PR.
 - `.meta` files are committed with their assets.
+- Art PRs: triangle counts after import and the validation notes from Model handoff are in the description; `.blend`, `.fbx` and textures are tracked by Git LFS.
+- Docs that describe a changed behaviour or decision are updated in the same PR.
 - The game plays from `Bootstrap` without console errors.

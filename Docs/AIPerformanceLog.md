@@ -6,8 +6,457 @@ Measured with ProfilerMarkers (`AI.Tracker.GBFS`, `AI.Guard.AStar`, ...) on the 
 
 | Date | Agent | Algorithm | Start → Goal | Nodes expanded | Path length | ms |
 | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-04 | Tracker | GBFS | 20 random pairs on the level grid (total) | 1,270 | 468.2 m | 2.62 |
+| 2026-10-04 | Tracker | A* (baseline, same pairs) | 20 random pairs on the level grid (total) | 5,426 | 412.2 m | 12.27 |
+| 2026-10-09 | Tracker | GBFS | 20 random pairs on the prototype-room grid (total) | 1,659 | 511.6 m | 4.10 |
+| 2026-10-09 | Tracker | A* (baseline, same pairs) | 20 random pairs on the prototype-room grid (total) | 7,080 | 439.8 m | 17.98 |
+
+### GBFS vs A* (Tracker, S1)
+
+Level grid with the prototype rooms (`Env.unity`, 83 x 83 cells of 0.5 m, 4,963 walkable, 4,955 traversable with the Control Room doors closed), 2026-10-09. 20 start/goal pairs drawn from traversable cells with `System.Random(2026)`, keeping only pairs A* can reach; both searches use `BaseCostModel` and the same reused instances, after one warm-up search each. Editor timing, not the lab machine. Cells are in grid coordinates.
+
+| # | Start | Goal | A* nodes | GBFS nodes | A* length (m) | GBFS length (m) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 8,13 | 33,21 | 53 | 26 | 14.2 | 14.2 |
+| 2 | 74,73 | 19,7 | 935 | 187 | 48.9 | 62.0 |
+| 3 | 26,52 | 8,69 | 81 | 25 | 14.3 | 14.3 |
+| 4 | 58,48 | 37,27 | 504 | 164 | 21.8 | 26.1 |
+| 5 | 76,72 | 33,15 | 556 | 140 | 41.0 | 54.1 |
+| 6 | 33,30 | 38,37 | 17 | 8 | 4.5 | 4.5 |
+| 7 | 49,10 | 38,23 | 41 | 15 | 9.1 | 9.1 |
+| 8 | 61,37 | 63,9 | 81 | 29 | 14.4 | 14.4 |
+| 9 | 48,38 | 80,62 | 321 | 45 | 24.5 | 24.5 |
+| 10 | 50,29 | 80,63 | 414 | 44 | 25.8 | 25.8 |
+| 11 | 49,19 | 62,47 | 101 | 29 | 16.7 | 16.7 |
+| 12 | 56,64 | 77,2 | 703 | 143 | 38.3 | 51.0 |
+| 13 | 58,11 | 71,9 | 21 | 14 | 6.9 | 6.9 |
+| 14 | 3,20 | 54,8 | 394 | 104 | 28.3 | 35.8 |
+| 15 | 50,22 | 71,24 | 41 | 25 | 12.3 | 12.3 |
+| 16 | 61,21 | 19,40 | 256 | 103 | 25.8 | 33.4 |
+| 17 | 48,48 | 43,15 | 274 | 102 | 24.6 | 28.6 |
+| 18 | 12,7 | 63,80 | 2260 | 435 | 56.4 | 65.9 |
+| 19 | 69,62 | 65,66 | 10 | 6 | 3.1 | 3.1 |
+| 20 | 13,4 | 22,18 | 17 | 15 | 8.9 | 8.9 |
+| **Total** | | | **7,080** | **1,659** | **439.8** | **511.6** |
+
+- GBFS expanded **77% fewer nodes** (1,659 vs 7,080) and ran **4.4x faster** (4.10 ms vs 17.98 ms in total).
+- Its paths were **16.3% longer** in total: equal to A*'s on 12 of 20 pairs, longer on the other 8. The longest detours (pairs 2, 5 and 12, about 13 m each) are cross-level routes that must go round the central walls and through the shelf maze: greedy heads straight for the goal, meets a wall or a shelf run, then follows it.
+- Worst case for A*, pair 18 (2,260 nodes, from the Assembly Floor to the far corner of Storage through two doorways and the maze): GBFS needed 435. For a chaser replanning every 0.5 s, that is the trade the Tracker is designed to make.
+- **Before the prototype rooms** (2026-10-04, 5,318 walkable cells, a different set of pairs from the same seed): 77% fewer nodes, 4.7x faster, 13.6% longer. The conclusion is unchanged.
+
+### A* vs Dijkstra (Guard search, S2)
+
+The Guard plans with `AStarSearch` (octile heuristic) under two costs: the plain octile step and the tactical cost `TacticalCostModel` (each exposed step costs (1 + lambda) times, lambda = 3). The admissibility argument (the heuristic never overestimates because no step costs less than its octile length) says A* must return the same cost as Dijkstra under both. `Tests/EditMode/AStarVsDijkstraEvidenceTests` (category Evidence) checks it on a level-sized grid: 83 x 83 cells, a quarter blocked, a third exposed, all seeded, 20 seeded start/goal pairs. Dijkstra is `DijkstraField` run from the start and stopped at the A* answer's cost, so both answer the same question. Run 2026-10-18, Unity 6000.6.2f1 editor.
+
+| Cost | Pairs found | Cost equal on | A* cells expanded (total) | Dijkstra cells expanded (total) | A* ms (total) | Dijkstra ms (total) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Octile | 20 | 20 | 10,367 | 53,704 | 5.02 | 15.66 |
+| Tactical, lambda 3 | 20 | 20 | 22,355 | 53,096 | 11.00 | 14.95 |
+
+- **Optimal in both costs:** A* matched Dijkstra's cost on all 20 pairs, plain and tactical. `AStarSearchTests.CostMatchesReferenceDijkstraOnFiftyRandomGrids` checks the same on 50 small random grids against a simple uniform-cost search.
+- **Work saved:** A* expanded 19% of Dijkstra's cells with the octile cost and 42% with the tactical cost. The tactical cost makes the heuristic weaker (it still only counts octile length, while exposed steps cost four times as much), so A* looks round more of the grid, but stays well under Dijkstra.
+- **Why not Dijkstra for the Guard:** the Guard needs one route to one cover cell at a time. A whole field (what the Captain uses, because it asks about many goals at once) costs two to five times the search here for a single answer.
+- **Limits:** a generated grid, not the level's; editor timings on one machine.
+
+### Noise propagation (Tracker hearing, S1)
+
+`NoisePropagation.Propagate` on the level grid with the prototype rooms (83 x 83 cells, 4,963 walkable), one noise from the middle of the Assembly Floor (10.5, 10.5), doors 3 and 4 closed. Average of 50 runs after one warm-up, Unity editor (Mono), 2026-10-09.
+
+| Source | L0 | Audible radius | Cells reached | Time per noise |
+| --- | ---: | ---: | ---: | ---: |
+| Blaster shot | 100 | 22.5 m | 2,109 | 5.64 ms |
+| Relay alarm / core explosion | 90 | 20 m | 1,826 | 5.07 ms |
+| Wind-up toy landing | 70 | 15 m | 1,504 | 3.86 ms |
+| Door slam / terminal beep | 60 | 12.5 m | 1,387 | 3.62 ms |
+| Box impact | 50 | 10 m | 1,058 | 2.84 ms |
+| Pressure plate click | 40 | 7.5 m | 589 | 2.10 ms |
+| Running footsteps | 25 | 3.75 m | 160 | 0.41 ms |
+
+- The cost scales with the audible area, not the level size: the threshold bound stops the spread, so footsteps touch 160 cells while a shot touches 2,109 of the 4,963 walkable cells. Quiet noises (footsteps every few frames) stay cheap; loud ones are rare events.
+- A few more cells than on the old layout (a shot reached 1,980): the presses moved from the middle of the Assembly Floor to its west side, so the area round the source is more open.
+- **No allocations** over 100 blaster-shot propagations (stamped arrays and a reused heap), checked with the GC.Alloc recorder (see the note under Tracker brain tick).
+- Closed-door check at door 4, on the first cell inside the Control Room: 21 behind the closed door, 56 with it open (difference exactly 35).
+- Lab-machine and player-build timings still to record; the editor's per-cell cost (about 2.7 µs) matches A*'s on the same grid (about 2.5 µs per expanded node).
+
+### Tracker brain tick (S1, and S1's share of the stress test)
+
+**Setup:**
+- `TrackerBrain.Tick` driven on the level grid with the prototype rooms: 83 x 83 cells, 4,963 walkable, doors 3 and 4 closed as in Chapter 1.
+- 60 s of game time at 30 ticks/s. A simple body walks each route at the brain's speed. The Trackers patrol S4's Tracker waypoints round the Assembly Floor ((4, 14), (17, 14), (17, 5), (4, 5)); with 7, each starts at a different waypoint.
+- Script:
+  - patrol on the Assembly Floor
+  - from 10 s, the colour terminal beeps from the Painting Room (60, every 0.8 s for 6.4 s)
+  - at 30 s, a blaster shot (100) on the Assembly Floor
+  - from 40 s to 46 s, the player is in sight in the middle of the Assembly Floor, then gone
+- Noise reaches a brain only where `NoisePropagation` says the Tracker's cell hears it, as at runtime.
+- States reached: Patrol, Investigate, Chase, Rewind and Search. **Not Distracted:** on this layout the terminal (31, 10.5) is about 14 m from the nearest point of the patrol, just past the beep's 12.5 m audible radius, so the beeps never reach the patrol. In play the Tracker hears the terminal only if it is already near the Painting door; Distracted is covered by `TrackerBrainTests` and the `Test_TerminalNoise` scene.
+- Only `Tick` is timed. Noise propagation runs in S4's runtime once per noise, so it is excluded (its cost is in the table above).
+- Unity editor (Mono), 2026-10-09, Intel Core Ultra 7 155H. Allocations are counted with the "GC.Alloc" profiler recorder (see the note below).
+
+| Trackers | Ticks | Tick mean | Median | p99 | Max | Whole frame, all Trackers: mean / p99 / max | Ticks that allocate |
+| ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| 1 | 1,800 | 1.1 µs | 0.5 µs | 8.2 µs | 95 µs | 1.1 / 8.2 / 95 µs | 20 (1.1%), 86 allocations |
+| 7 | 12,600 | 0.9 µs | 0.5 µs | 4.8 µs | 103 µs | 6.3 / 59.3 µs / 0.31 ms | 134 (1.1%), 582 allocations |
+
+- **Allocations happen only when the brain hands the body a new route.** Every allocating tick returned a path (20 of 20 for one Tracker, 134 of 134 for seven). Each one allocates the route cells and the world-space path, about 4 small allocations. Every other tick allocates nothing.
+- **Seven Trackers at once** (the plan's stress test has 7 agents) cost under 0.06 ms per frame at p99. That is about 0.4% of a 16.7 ms frame.
+- **Compared with the run before the prototype rooms** (2026-10-08, 5,310 walkable cells): the same picture. One Tracker then had a mean of 2.7 µs and a single 1.66 ms first-run (JIT) outlier; this run came after the code had already run in the editor, so it has no JIT outlier.
+- **Limits:** these are editor timings for the brain alone, not a player build. The full stress test (`Test_FourAgentsStress`, below) is S4's, with all agent types and the bodies.
+
+**Measuring allocations: `GC.GetAllocatedBytesForCurrentThread()` does not work in Unity.**
+- Under Unity's Mono it always returns 0: allocating a 100 KB array shows a change of 0. So any "allocates nothing" test built on it can never fail.
+- S1's tests now count allocations with Unity's "GC.Alloc" profiler recorder, through `Tests/EditMode/GcAllocations.Count`. That covers GBFS, noise propagation, grid, FSM, cost model, wind-up energy and the blackboard. They all still pass, so those claims are now verified.
+- One claim was made exact rather than "zero": a successful GBFS search costs exactly 2 allocations, its path list and the list's array. `BuildPath` now sizes the list up front, so it never regrows.
+- S3's and S4's tests that still use the old counter are listed in the PR for their owners.
 
 ## Stress test (`Test_FourAgentsStress`)
 
-| Date | Build | Avg FPS | Worst frame (ms) | AI ms / frame | GC Alloc in searches |
+`Tests/PlayMode/FourAgentsStressTests` (category Evidence, explicit: run it on its own). It loads `Bootstrap`, jumps to Chapter 4 with the debug chapter jump (the Captain awake, every door open), then walks the player round a loop through the Control Room and the Storage doorway at 4 m/s for 30 s after a 3 s warm-up, so all seven agents (1 Tracker, 1 Guard, 4 Saboteurs, the Captain) keep seeing, hearing and chasing. The player's health is refilled every frame so the run is not cut short. AI time is the sum of the `AI.Brain.Tick.<type>` markers (around each brain's `Tick` in `AgentController`, so searches are inside them). Allocation is Unity's "GC Allocated In Frame", which counts everything in the frame, the test's own per-frame work included, not only the AI.
+
+| Date | Build | Avg FPS | Frame ms (avg / p99 / worst) | AI ms / frame (avg / p99 / worst) | GC allocated in frame, everything (avg / p99) |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-09 | Editor (Mono), 30 s, 5,887 frames | 196.2 | 5.10 / 13.55 / 44.58 | 0.179 / **5.191** / 14.04 | 10.3 KB / 12.7 KB |
+
+**By brain** (same run):
+
+| Brain | Avg ms / frame | p99 | Worst | Frames over 1 ms |
+| --- | --- | --- | --- | --- |
+| Tracker (S1) | 0.011 | 0.020 | 0.082 | 0 |
+| Guard (S2) | 0.071 | 3.052 | 11.790 | 83 |
+| Saboteur x4 (S3, placeholder brain; the real brain is measured in the 2026-10-16 re-run below) | 0.002 | 0.004 | 0.047 | 0 |
+| Captain (S4) | 0.095 | 4.967 | 14.007 | 67 |
+
+| Search marker | Avg ms / frame | Worst | Frames over 1 ms |
+| --- | --- | --- | --- |
+| `AI.Tracker.GBFS` | 0.000 | 0.062 | 0 |
+| `AI.AStarSearch.FindPath` | 0.012 | 5.791 | 19 |
+| `AI.DijkstraField.Compute` | 0.089 | 13.911 | 67 |
+| `AI.NoisePropagation.Propagate` | 0.000 | 0.000 | 0 |
+
+**What it shows:**
+- **On average the AI is cheap:** 0.18 ms a frame for all seven agents, about 1% of a 16.7 ms frame.
+- **But it spikes past the 2 ms budget on about 1% of frames** (p99 5.2 ms). The test logged a warning for this rather than failing; see the re-run after the Captain fix below. Two brains cause it:
+  - **Captain:** 67 frames over 1 ms in 30 s, about two a second, which is its 2 Hz decision. Every spike is `DijkstraField.Compute`. With the player still, the cached goal fields are never rebuilt (5 computations, then none); the spikes come from the two fields each decision rebuilds while the player moves, the player's field (goal inference) and the Captain's own (intercept). One full-level field costs 4.33 ms median (6.95 ms worst, 4,878 cells expanded) in the editor; a bounded one 2.0 ms. Two in one decision exceed the budget. This is fixed and re-measured in `OptimisationLog.md`.
+  - **Guard:** 83 frames over 1 ms. A* accounts for 19 of them (worst 5.8 ms); the rest is other work in the Guard's tick, probably cover scoring. Reported to S2.
+- **Limits:** editor timings with Mono; a player build is faster. The worst frame (44.6 ms) includes editor work outside the AI.
+
+### After the Captain fix (2026-10-09)
+
+Three changes, each written up in `OptimisationLog.md`:
+1. a shared neighbour table (`GridAdjacency`) that every field reads;
+2. a cost-only A* (`OneToOneCost`) for the two single-pair questions that used to build a whole field;
+3. goal fields repaired in place after a grid change (`DijkstraField.Refresh`), one per frame.
+
+Before and after were run back to back in one editor session: `develop` first, then this branch. That session ran the editor slower than the first run above (about 129 FPS, not 196), so compare the rows with each other, not with the table above.
+
+| Captain (S4), `Test_FourAgentsStress` | Avg ms / frame | p99 | Worst | Frames over 1 ms |
+| --- | --- | --- | --- | --- |
+| Before (`develop`, 3,843 frames) | 0.174 | 7.167 | 15.069 | 67 |
+| After (this branch, 3,875 frames) | 0.014 | 0.139 | 1.136 | 1 |
+
+`AI.DijkstraField.Compute` worst per frame: 14.98 ms before, 0.09 ms after. The new `AI.OneToOneCost.Compute` worst is 0.48 ms.
+
+**Pushed box (`Test_PushedBoxStress`).** This is a new evidence test in the same fixture: the same Chapter 4 run for 20 s, with a box-sized blocker moved one cell every 0.5 s through `GridManager.SetBlocker`, the call `PushableBox` makes. That is 40 moves and 41 grid changes, and every move makes all four of the Captain's goal fields stale.
+
+| Captain (S4), `Test_PushedBoxStress` | Avg ms / frame | p99 | Worst | Frames over 1 ms |
+| --- | --- | --- | --- | --- |
+| Before (`develop`, 2,476 frames) | 0.575 | 32.014 | 39.077 | 45 |
+| After (this branch, 2,670 frames) | 0.016 | 0.201 | 0.920 | 0 |
+
+After the change, all of the field work is repairs: 157 frames held one (40 moves × 4 goal fields, give or take a decision), with a worst of 0.51 ms. Before it, each move recomputed every goal field, plus the player's field and the Captain's own, all in one decision.
+
+**What it shows now:**
+- **The Captain** is at p99 0.14 ms in normal play and 0.20 ms with a box being pushed. Both tests now check its p99 against 1 ms, half the AI budget, and fail above it.
+- **The Guard** is what remains over the 2 ms AI budget: p99 4.93 ms, worst 23.6 ms, 78 frames over 1 ms. `AStarSearch` accounts for 41 of those frames (worst 19.2 ms). The total budget stays a warning until S2's fix; the test cannot fix another agent's brain. `AStarSearch` could read `GridAdjacency` the way `DijkstraField` now does, which took the field from 4.8 to 0.7 ms; this has been offered to S2.
+- **Limits:** editor timings. One Captain frame of 1.14 ms in the stress run is not a field: the field marker never went above 0.09 ms in the whole run. It is probably the Captain's own A* route (`MoveTo`) or editor noise.
+
+### After the Guard fix (2026-10-09)
+
+The Guard was the brain left over the AI budget above. Four changes, in the order they were made:
+1. **Sight memory** (`CachedCoverVisibility`): each cell's line of sight is tested once and remembered until the player changes cell, the grid changes, or the Guard's own cover is flanked. One cover decision used to ask about the same cell up to ten times (its own protection, its neighbours' peek checks, every A* step), and each ask is a physics raycast.
+2. **Best-first cover search** (`CoverEvaluator.FindBest`): every possible cell first gets an upper bound, its score if it turned out to be full, peekable cover. Cells are sight-tested in that order and the search stops once the worst cell kept scores at least the next bound. It returns the same top three as scoring every candidate (tested against the exhaustive ranking at three ranges). The cells next to obstacles, the only ones that can be cover, are worked out once per grid version instead of on every decision.
+3. **Bounded, cost-only path costing**: ranking needs the cost of a route, not the route, and only up to `MaxPathCost` (60), past which the travel term of the score is zero. `OneToOneCost` is used with that cost bound and a new effort limit of 400 cells (`GuardBrain.CostSearchCells`). A cover that cannot be costed within the limit counts as far. Whether it can be reached at all is read from `GridRegions`, the grid's connected areas, rebuilt only when the grid changes.
+4. **`AStarSearch` reads `GridAdjacency`**, the shared neighbour table, as offered above. Same paths.
+
+Changes 1, 2 and 4 do not change which cover is chosen. Change 3 does in one case: a cover that needs more than 400 cells of search to cost is scored as far even if its true cost was under 60.
+
+**How it was found.** The first two attempts were guesses and the second gained almost nothing. `Tests/PlayMode/GuardTickEvidenceTests` (category Evidence, explicit) was then written: the same scenario as `Test_FourAgentsStress`, with every slow Guard frame broken down by `ProfilerMarker`s inside `GuardBrain` (`AI.Guard.FindBest`, `AI.Guard.PathCost`, `AI.Guard.MoveTo`, ...), the sight checks made, and the Guard's state. It showed that with the sight memory in place the slow frames ran no sight checks at all: 46% of their time was the loop over about 3,700 cells looking for obstacles, and 45% was path costing that spread over most of the level, because out of the player's sight every step is cheap and the cost bound alone never stopped it.
+
+| Guard (S2), `Test_FourAgentsStress` | Avg ms / frame | p99 | Worst | Frames over 1 ms | AI total p99 | Budget warning |
+| --- | --- | --- | --- | --- | --- | --- |
+| Before (the 2026-10-09 run above) | not recorded | 4.93 | 23.6 | 78 | over 2 | yes |
+| Changes 1, 2, 4 (3,822 frames) | 0.093 | 2.434 | 12.915 | 82 | 2.523 | yes |
+| Plus the cost bound, no effort limit (3,357 frames) | 0.089 | 2.412 | 10.623 | 82 | 2.535 | yes |
+| All four (3,051 frames) | 0.068 | 1.690 | 7.931 | 52 | **1.755** | no |
+
+The last three rows are from one editor session; the first is the earlier session logged above, so compare it only roughly. A second run of the final build stalled the editor for 39 s in one frame (1,424 frames measured instead of about 3,000) and is not used.
+
+| `Test_GuardTickBreakdown`, slow frames only | Before the obstacle-cell list and the effort limit | After |
+| --- | --- | --- |
+| Guard frames over 1 ms | 88 | 50 |
+| `AI.Guard.FindBest`, average in a slow frame | 1.329 ms | 0.600 ms |
+| `AI.Guard.PathCost`, worst | 6.325 ms | 2.559 ms |
+| `AI.Guard.PathCost`, average in a slow frame | 1.299 ms | 1.254 ms |
+| Sight checks in the slow frames | 2,621 | 0 |
+
+**What it shows now:**
+- **The AI total is under its 2 ms budget** at p99 (1.76 ms) in the one clean run of the final build, and the warning is not logged. One clean run is thin evidence; it should be re-run before the warning is turned into a hard check.
+- **The Guard is at p99 1.69 ms**, from 4.93 ms. It is still the largest share of the AI budget.
+- **What is left:** path costing is still about 1.25 ms in a typical slow frame (three or four capped searches in one tick), and the few worst frames (5 of 50) are now the tactical route search itself, `MoveTo`, at 2.6 to 9.2 ms when the Guard is 18 to 27 m from the player. Neither is addressed here. The next step would be to spread one decision over several frames, which is the path request scheduler that is still not built.
+- **Limits:** editor timings with Mono, one session.
+
+
+### Path request scheduler (2026-10-09, measured 2026-10-10)
+
+`BrainTickScheduler` now gives brain decisions a per-frame budget of 2 ms: once a frame's brains have used it, the remaining agents tick in the next frame, at most 2 frames late (see the DesignDoc's path follower section). It cannot split one decision, so the Guard's single 2.6 to 9.2 ms route searches still take their frame; what it removes is two heavy decisions landing in the same frame, which is what pushes the AI total over its budget.
+
+- **Tested:** `AgentSchedulingTests`. Three brains costing 3 ms each no longer all tick in the same frame, none waits more than 2 frames, and light brains never wait.
+- **Measured in the level:** `Test_FourAgentsStress` (budget 2 ms) and `Test_FourAgentsStress_NoScheduler` (the same run with an unlimited budget, so nothing ever waits), run back to back twice in one editor session with Unity focused. Chapter 4, all 7 agents, 30 s each, about 3,000 frames per run.
+
+| Run | Scheduler | AI p99 | AI worst | AI frames over 2 ms | Decisions deferred | Avg FPS |
+| --- | --- | --- | --- | --- | --- | --- |
+| Pair 1 | On (2 ms) | 1.519 ms | 3.584 ms | 19 | 85 | 99.5 |
+| Pair 1 | Off | 2.030 ms | 7.807 ms | 33 | 0 | 100.3 |
+| Pair 2 | On (2 ms) | 1.978 ms | 7.522 ms | 24 | 121 | 102.8 |
+| Pair 2 | Off | 2.036 ms | 6.727 ms | 32 | 0 | 102.8 |
+
+**What it shows:**
+- **About a third fewer frames over the AI budget** (19 and 24 against 33 and 32), and p99 kept just under 2 ms where it is just over without the scheduler.
+- **The worst frames are unchanged, as predicted:** they are single Guard route searches (the Guard's worst tick was 2.9 to 7.7 ms) that are longer than the whole budget on their own. Only splitting the Guard's search over several ticks (S2's brain) would cut those.
+- **The cost is small:** 85 and 121 decisions in about 3,000 frames waited one frame (under 4%), always within the 2-frame limit, and the frame rate is the same.
+- **Variance:** a single earlier run that day with the scheduler on gave p99 2.007 ms and a worst frame of 11.3 ms (the Guard's tick). Run-to-run differences come mostly from when the Guard searches, so compare runs within one session, as here. Editor timings, one machine.
+
+### Re-run with the real Saboteur brain (S3, 2026-10-16)
+
+The 2026-10-09 stress table above was taken when the Saboteurs ran a placeholder brain (0.002 ms a frame), so it said nothing about the squad. This is the same test, `Test_FourAgentsStress`, on `develop` at `cf1fabd`: all six Saboteur actions (Attack with the chase, CloseDoor, Flee, ArmTrap, StealBattery and Idle), the shared `DetourCache`, the Guard and Captain fixes, the path request scheduler (2 ms brain budget), and Chapter 4 with every door open, so a Saboteur can close doors. Two runs, 30 s each after a 3 s warm-up.
+
+**Machine and method.** AMD Ryzen 7 5800H (16 threads), 27.9 GB, Windows 11, Unity 6000.6.2f1, Mono. Run in batch mode with `-nographics` on a copy of the project, so **nothing is rendered**: the frame times below leave out rendering and are not comparable with the 2026-10-09 frame times (an Editor window with graphics). The per-brain times are `ProfilerRecorder` readings of the `AI.Brain.Tick.*` markers and are comparable. The test passed in both runs (the Captain's p99 check is the only hard one).
+
+| Date | Build | Avg FPS | Frame ms (avg / p99 / worst) | AI ms / frame (avg / p99 / worst) | Frames over 2 ms (AI total) | GC allocated in frame, everything (avg / p99) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-16, run 1 | Editor (Mono, no graphics), 12,390 frames | 413.0 | 2.42 / 4.66 / 15.60 | 0.050 / 0.141 / 3.149 | 16 | 2.18 KB / 2.23 KB |
+| 2026-10-16, run 2 | Editor (Mono, no graphics), 13,890 frames | 463.0 | 2.16 / 3.63 / 13.09 | 0.042 / 0.110 / 3.731 | 16 | 2.15 KB / 2.23 KB |
+
+**By brain** (scheduler on, run 1 / run 2):
+
+| Brain | Avg ms / frame | p99 | Worst | Frames over 1 ms |
+| --- | --- | --- | --- | --- |
+| Tracker (S1) | 0.015 / 0.013 | 0.032 / 0.026 | 0.480 / 0.310 | 0 / 0 |
+| Guard (S2) | 0.008 / 0.007 | 0.018 / 0.015 | 0.287 / 0.209 | 0 / 0 |
+| **Saboteur x4 (S3, real brain)** | **0.013 / 0.011** | **0.054 / 0.046** | **2.766 / 3.712** | **16 / 15** |
+| Captain (S4) | 0.014 / 0.011 | 0.032 / 0.022 | 3.091 / 2.229 | 7 / 7 |
+
+| Search marker (run 1 / run 2) | Avg ms / frame | Worst | Frames over 1 ms |
+| --- | --- | --- | --- |
+| `AI.AStarSearch.FindPath` | 0.003 / 0.003 | 2.648 / 2.510 | 14 / 14 |
+| `AI.DijkstraField.Compute` | 0.0001 / 0.0001 | 0.133 / 0.126 | 0 / 0 |
+| `AI.OneToOneCost.Compute` | 0.0005 / 0.0004 | 0.519 / 0.516 | 0 / 0 |
+
+With the scheduler off (the comparison run in the same session): Saboteurs avg 0.011 / 0.015, p99 0.049 / 0.051, worst 2.311 / 6.217 ms, frames over 1 ms 18 / 23; `FindPath` worst 2.216 / 6.048 ms. With it on, 31 and 36 brain decisions were deferred to a later frame.
+
+**What it shows:**
+- **On average the squad is cheap:** 0.011 to 0.013 ms a frame for all four Saboteurs, under 0.1% of a 16.7 ms frame, and the whole AI (seven agents) averages 0.042 to 0.050 ms. At p99 the Saboteurs cost 0.046 to 0.054 ms and the whole AI 0.11 to 0.14 ms, far under the 2 ms budget.
+- **But about 0.1% of frames (15 or 16 of 12,390 and 13,890) go over 1 ms in the Saboteur brains, up to 2.8 and 3.7 ms.** That is over the 2 ms search budget on those frames. The slow frames line up with `AStarSearch.FindPath` (14 frames over 1 ms, worst 2.5 to 2.6 ms), which fits one closed-door search in the detour cache on this 83 x 83 grid, already measured at about 2.5 ms in the squad scenario above. The test does not break the Saboteur frames down by cause, so this is the likely cause, not a proven one.
+- **The refresh is already spread** (one search per call), so no tick pays for more than one search. Going lower needs a pausable A* from S2; it is not changed here.
+- **The whole-AI total went over 2 ms in 16 frames in each run** (about 0.1% of frames, worst 3.1 and 3.7 ms), split between the Saboteurs and the Captain (7 frames over 1 ms each run), so neither is alone.
+- **Compared with 2026-10-09** the whole-AI p99 fell from 5.191 to 0.110 to 0.141 ms and the average from 0.179 to 0.042 to 0.050 ms. That is mostly the Guard and Captain fixes in this log, not the Saboteur change (the Saboteurs went from a placeholder to the real brain and cost slightly more).
+- **Limits:** two runs on one machine; Editor timings with Mono and no rendering, so frame times are not what a player sees (the Windows build measurements belong to the final playthroughs); the GC figure is everything in the frame, about 2.2 KB every frame, and is not attributed to the Saboteurs (their own allocation is not measured separately); the player is walked on a loop at 4 m/s and kept alive, so a hurt player, a fight and an actual door closing are not exercised here.
+
+### Re-run with the Saboteur brain of 20 October (S3, 2026-10-20)
+
+The 16 October run above was taken before the Saboteurs got their own senses and memory, search, room patrol, body-aware routes and sabotage before combat (#302 to #304, 19 and 20 October). This is the same test, `Test_FourAgentsStress`, on `develop` at `ce900ab` plus the changes of the two S3 branches (none of them changes what the Saboteur decides; the Saboteur code only gained profiler markers) to the Saboteur brain (`AI.Saboteur.WalkReach`, `.Route`, `.Decide`, `.PatrolPlan`; `.Detour` already existed), so the cost can be split by cause. Same machine and method as the 16 October run (AMD Ryzen 7 5800H, Unity 6000.6.2f1, Mono, batch mode with `-nographics`, 30 s after a 3 s warm-up, Chapter 4, every door open), two runs, with nothing else running on the machine.
+
+| Run | Frames | Avg FPS | Frame ms (avg / p99 / worst) | AI ms / frame (avg / p99 / worst) | Frames over 2 ms (AI total) | GC in frame, everything (avg / p99) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-20, run A (scheduler on) | 14,742 | 491.4 | 2.04 / 3.30 / 13.42 | 0.059 / 0.440 / 10.147 | 20 | 2.20 KB / 2.87 KB |
+| 2026-10-20, run B (scheduler on) | 14,905 | 496.8 | 2.01 / 3.13 / 12.62 | 0.055 / 0.388 / 10.122 | 17 | 2.19 KB / 2.47 KB |
+
+**By brain** (scheduler on, run A / run B; the 16 October figures in brackets):
+
+| Brain | Avg ms / frame | p99 | Worst | Frames over 1 ms |
+| --- | --- | --- | --- | --- |
+| Tracker (S1) | 0.0093 / 0.0085 | 0.016 / 0.016 | 5.730 / 0.342 | 3 / 0 |
+| Guard (S2) | 0.0062 / 0.0064 | 0.011 / 0.011 | 0.166 / 0.073 | 0 / 0 |
+| **Saboteur x4 (S3)** | **0.0282 / 0.0255** (0.013 / 0.011) | **0.177 / 0.149** (0.054 / 0.046) | **9.305 / 9.489** (2.766 / 3.712) | **29 / 23** (16 / 15) |
+| Captain (S4) | 0.0153 / 0.0145 | 0.031 / 0.026 | 10.115 / 10.087 | 12 / 11 |
+
+**Where the Saboteur time goes** (markers, scheduler on, run A / run B):
+
+| Marker | Avg ms / frame | Worst | Frames over 1 ms |
+| --- | --- | --- | --- |
+| `AI.Saboteur.Decide` (the 4 Hz decision, includes the detour refresh) | 0.0070 / 0.0065 | 4.551 / 4.599 | 17 / 12 |
+| `AI.Saboteur.Detour` (the shared detour cache refresh, one search per call) | 0.0040 / 0.0039 | 4.409 / 4.525 | 13 / 12 |
+| `AI.Saboteur.Route` (the body-aware A* for patrol, search, attack and flee walks) | 0.0032 / 0.0024 | 6.831 / 7.044 | 6 / 9 |
+| `AI.Saboteur.WalkReach` (reachability of a door, trap or battery) | 0.0025 / 0.0020 | 1.323 / 0.690 | 1 / 0 |
+| `AI.Saboteur.PatrolPlan` (room patrol planning) | 0.0005 / 0.0005 | 2.658 / 2.424 | 3 / 3 |
+| `AI.AStarSearch.FindPath` (all searches, every brain) | 0.0082 / 0.0069 | 6.828 / 7.041 | 22 / 22 |
+
+With the scheduler off (same session): Saboteurs avg 0.0311 / 0.0309, p99 0.181 / 0.180, worst 18.143 / 8.881 ms, frames over 1 ms 62 / 61; `WalkReach` then goes over 1 ms in 24 and 33 frames, and with it on the scheduler deferred 41 and 48 decisions to a later frame.
+
+**What it shows:**
+- **The squad cost about twice as much on average as on 16 October** (0.026 to 0.028 ms against 0.011 to 0.013) **and three times as much at p99** (0.15 to 0.18 ms against 0.05), as expected from the new senses, search, patrol, body avoidance and sabotage. It is still about 0.17% of a 16.7 ms frame on average, and the whole AI averages 0.055 to 0.059 ms.
+- **Slow frames are a little more common and the worst frame is longer**: 23 and 29 Saboteur frames over 1 ms of about 14,800 (0.16% to 0.20%, against 0.1%), worst 9.3 and 9.5 ms (against 2.8 and 3.7). Over the whole AI, 17 and 20 frames went over the 2 ms budget (0.12% to 0.14%).
+- **The spikes are searches, and mostly not the ones that were feared.** The reachability searches added for sabotage (`WalkReach`) are cheap (avg 0.002 ms, at most one frame over 1 ms with the scheduler on). The slow Saboteur frames come from the detour cache refresh (a closed-door search of 4.4 to 4.5 ms, 12 to 13 frames, the known limit from 15 October) and from the body-aware route search (`Route`, up to 7 ms, 6 to 9 frames), where the 21-step cost around a standing body probably makes A* expand much more of the grid (not checked by counting expanded cells).
+- **The worst whole-AI frame (10.1 ms) is the Captain's** (10.087 and 10.115 ms), not the Saboteurs' (9.3 and 9.5).
+- **Not changed:** no Saboteur code was made faster in this round; only the markers were added. Ways to cut the `Route` spike, if it is wanted, are a cached route per start and goal cell for about a second, or a bounded search (S2's `AStarSearch` has neither), neither done.
+- **An earlier pair of runs was worse and is not quoted** (scheduler on: Saboteurs avg 0.052, p99 0.443, worst 18.9 ms, 82 frames over 1 ms; whole AI over 2 ms in 45 frames). They were taken the same afternoon on the same code before the markers were added, while other work was going on in the machine; the later pair were taken with nothing else running. I did not find what made the difference, so the quiet pair is the one to quote and the earlier pair says what a busy machine does to these numbers.
+- **Limits:** two runs on one machine; Editor timings in Mono with no rendering, so these are not frame times a player sees; the Windows build has not been measured (checklist H1 asks for the fps table); the player walks a loop at 4 m/s and is kept alive, so a hurt player and a fight are not in the run.
+
+## Captain prediction and intercept in the real level (S4, 2026-10-10)
+
+From `CaptainAccuracyEvidenceTests` (EditMode, category Evidence, about 5 s). The level is a snapshot of the game's grid and objective targets taken in Play mode from Bootstrap (`Tests/EditMode/Data/CaptainLevelSnapshot.txt`: 83 x 83 cells, Chapter 3 and Chapter 4 goal sets), so every run is deterministic. Seeded scripted players walk from random walkable cells (at least 12 m from their goal) straight to it, by a detour through a cell near the middle of the route (35-70% longer), or with a feint (half way towards another goal, then turning). The Captain's `GoalInference` is fed exactly as the brain feeds it: the player's cell at 2 Hz and the cell 5 s ago. Two simpler predictors are measured on the same samples: the goal nearest the player (shortest path), and the highest prior. Accuracy is the share of samples whose most likely goal is the true one. "Confidently" means P >= 0.5, the commit threshold.
+
+### In game: real priors, the player heading where the game lets them
+
+| Chapter | Route | Predictor | 1st quarter | 2nd | 3rd | 4th | All |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 3 | Direct | Captain (Bayesian) | 100% | 100% | 100% | 100% | 100% |
+| 3 | Direct | Nearest goal | 32% | 57% | 89% | 100% | 70% |
+| 3 | Direct | Prior only | 100% | 100% | 100% | 100% | 100% |
+| 3 | Detour | Captain (Bayesian) | 99% | 99% | 96% | 100% | 98% |
+| 3 | Detour | Nearest goal | 37% | 65% | 78% | 99% | 70% |
+| 3 | Detour | Prior only | 100% | 100% | 100% | 100% | 100% |
+| 3 | Feint | Captain (Bayesian) | 86% | 82% | 99% | 100% | 91% |
+| 3 | Feint | Nearest goal | 17% | 22% | 58% | 100% | 49% |
+| 3 | Feint | Prior only | 100% | 100% | 100% | 100% | 100% |
+| 4 | Direct | Captain (Bayesian) | 47% | 55% | 86% | 98% | 71% |
+| 4 | Direct | Nearest goal | 8% | 9% | 12% | 63% | 22% |
+| 4 | Direct | Prior only | 38% | 37% | 38% | 37% | 38% |
+| 4 | Detour | Captain (Bayesian) | 40% | 46% | 46% | 87% | 54% |
+| 4 | Detour | Nearest goal | 16% | 20% | 23% | 69% | 31% |
+| 4 | Detour | Prior only | 37% | 37% | 36% | 36% | 37% |
+| 4 | Feint | Captain (Bayesian) | 21% | 20% | 57% | 98% | 48% |
+| 4 | Feint | Nearest goal | 15% | 13% | 15% | 61% | 25% |
+| 4 | Feint | Prior only | 28% | 27% | 29% | 27% | 28% |
+
+| Chapter | Route | Confidently right (P >= 0.5) | Median time to it | Median share of the trip left | Confidently wrong | Feint: took the bait | Feint: switched back | Median switch delay |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 3 | Direct | 100% | 0.5 s | 94% | 0% | - | - | - |
+| 3 | Detour | 100% | 0.5 s | 94% | 12% | - | - | - |
+| 3 | Feint | 100% | 5.0 s | 47% | 5% | 23% | 100% | 0.4 s |
+| 4 | Direct | 90% | 5.0 s | 35% | 0% | - | - | - |
+| 4 | Detour | 82% | 5.0 s | 25% | 47% | - | - | - |
+| 4 | Feint | 83% | 6.0 s | 27% | 2% | 13% | 98% | 1.1 s |
+
+Chapter 3 is easy by construction: the snapshot has one open task, and its switch and the console are sealed, so the prior alone already names it. Chapter 4 (three cores) is where the predictors differ.
+
+### Before the sealed-goal priors (same runs, old `GoalPriors`)
+
+| Chapter 4, to a core | Accuracy before | After | Confidently wrong before | After | Feint: switched back before | After |
+| --- | --- | --- | --- | --- | --- | --- |
+| Straight | 30% | 71% | 53% | 0% | - | - |
+| Detour | 28% | 54% | 65% | 47% | - | - |
+| Feint | 24% | 48% | 25% | 2% | 77% | 98% |
+
+With the console at 0.45 next to three cores at 0.18 each, the Captain was sure of the console before the player had moved, although the console is sealed until the cores are down. Sealed goals now get 0.05 (see CaptainBot.md, Priors). The check `PredictionInGameInTheRealLevel` fails on the old priors.
+
+### Movement only: every goal equally likely beforehand, any goal the true one
+
+| Chapter | Route | Predictor | 1st quarter | 2nd | 3rd | 4th | All |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 3 | Direct | Captain (Bayesian) | 54% | 60% | 65% | 86% | 66% |
+| 3 | Direct | Nearest goal | 24% | 37% | 56% | 72% | 47% |
+| 3 | Direct | Prior only | 37% | 37% | 36% | 39% | 37% |
+| 3 | Detour | Captain (Bayesian) | 52% | 54% | 58% | 83% | 61% |
+| 3 | Detour | Nearest goal | 33% | 49% | 65% | 83% | 57% |
+| 3 | Detour | Prior only | 42% | 41% | 42% | 41% | 42% |
+| 3 | Feint | Captain (Bayesian) | 18% | 16% | 44% | 80% | 39% |
+| 3 | Feint | Nearest goal | 21% | 18% | 39% | 69% | 36% |
+| 3 | Feint | Prior only | 32% | 33% | 32% | 32% | 32% |
+| 4 | Direct | Captain (Bayesian) | 40% | 46% | 72% | 91% | 62% |
+| 4 | Direct | Nearest goal | 23% | 23% | 25% | 68% | 34% |
+| 4 | Direct | Prior only | 37% | 36% | 37% | 35% | 36% |
+| 4 | Detour | Captain (Bayesian) | 33% | 27% | 23% | 69% | 37% |
+| 4 | Detour | Nearest goal | 33% | 33% | 32% | 64% | 40% |
+| 4 | Detour | Prior only | 24% | 24% | 24% | 23% | 24% |
+| 4 | Feint | Captain (Bayesian) | 11% | 11% | 39% | 86% | 36% |
+| 4 | Feint | Nearest goal | 27% | 29% | 29% | 64% | 37% |
+| 4 | Feint | Prior only | 19% | 18% | 19% | 18% | 19% |
+
+| Chapter | Route | Confidently right (P >= 0.5) | Median time to it | Median share of the trip left | Confidently wrong | Feint: took the bait | Feint: switched back | Median switch delay |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 3 | Direct | 80% | 5.0 s | 32% | 3% | - | - | - |
+| 3 | Detour | 75% | 4.0 s | 50% | 37% | - | - | - |
+| 3 | Feint | 87% | 7.5 s | 26% | 15% | 28% | 98% | 2.0 s |
+| 4 | Direct | 68% | 5.5 s | 22% | 0% | - | - | - |
+| 4 | Detour | 53% | 6.5 s | 17% | 37% | - | - | - |
+| 4 | Feint | 48% | 6.5 s | 31% | 0% | 12% | 92% | 1.4 s |
+
+Overall the inference beats the nearest goal; it ties or loses slightly on Chapter 4 detours and feints, where every goal lies behind the same two Control Room doorways, so a route there fits all of them until the player is inside.
+
+### Intercepting against chasing
+
+Chapter 3, the Captain starting at its spawn by the console and the player heading for the open task; 40 seeded trips per row, each starting at least 20 m away and out of its sight.
+Contact = the Captain within 18 m of the player (its fight range since 15 October) with line of sight, before the player reaches their goal. Re-run 2026-10-17; the 10 m figures from 2026-10-10 are in the last column.
+
+| Player | Route | Captain | Contact before the goal | Median seconds to spare | At 10 m (10 Oct) |
+| --- | --- | --- | --- | --- | --- |
+| Walking 4 m/s | Direct | Predicts and intercepts | 98% | 3.6 s | 85% |
+| Walking 4 m/s | Direct | Chases | 73% | 3.8 s | 50% |
+| Walking 4 m/s | Detour | Predicts and intercepts | 100% | 3.2 s | 70% |
+| Walking 4 m/s | Detour | Chases | 93% | 3.8 s | 78% |
+| Sprinting 7 m/s | Direct | Predicts and intercepts | 75% | 2.2 s | 50% |
+| Sprinting 7 m/s | Direct | Chases | 58% | 1.9 s | 10% |
+| Sprinting 7 m/s | Detour | Predicts and intercepts | 80% | 2.2 s | 63% |
+| Sprinting 7 m/s | Detour | Chases | 75% | 2.0 s | 38% |
+
+"Chases" is the same body re-planning the shortest route to the player every 0.5 s at the Captain's 4.6 m/s. Overall: 88% contact for the Captain against 75% for chasing (67% against 44% at 10 m). Predicting and intercepting now wins every row, including the walking detour it lost at 10 m (100% against 93%). The longer range helps the chaser more, because a chaser behind the player is usually far away but in view down the same corridor, so the gap is smaller than at 10 m; it is largest against a sprinter on a straight route (75% against 58%), the player a chaser cannot catch.
+
+**Limits:** scripted players on the level's grid, not people; detours are random rather than tactical; Chapter 3 had one open task when the snapshot was taken. Re-take the snapshot if the level changes.
+
+## Saboteur Flee: choosing a retreat (S3, 2026-10-11)
+
+`FleePlanner.TryChooseRetreat` picks where a fleeing Saboteur runs (24 compass candidates plus its patrol points ranked by straight-line distance, then at most 3 shared A* searches). Measured by `SaboteurFleeEvidenceTests.RetreatCostOnALevelSizedGrid`: an 84 x 84 grid (the level is about 83 cells a side) with one cell in six blocked at random (seed 7) plus three long bars, 300 retreats with a random Saboteur and a random player within 14 m, after one warm-up call. Unity 6000.6.2f1 Editor in batch mode, AMD Ryzen 7 5800H, one session.
+
+| Measure | Result |
+| --- | --- |
+| Retreats found | 293 of 300 (98%) |
+| A* searches per retreat | 1.00 (budget 3) |
+| Time per retreat | mean 0.096 ms, median 0.058 ms, 95th percentile 0.338 ms, worst 0.567 ms |
+
+A fleeing Saboteur chooses again once a second at most, so the cost is under 0.1 ms a second per fleeing Saboteur. The first-ranked refuge was reachable almost every time (1.00 searches), so the extra searches in the budget are rarely used. **Limits:** a random grid, not the real level's rooms; Editor timings, not a build; the cost of the brain's 4 Hz decision round (Idle, Attack, Flee and the squad layer) has not been measured separately.
+
+## Saboteur squad: two doors, four instances (S3, 2026-10-15)
+
+The scenario is `SaboteurSquadScenarioTests` (EditMode) and `Test_SquadClaims.unity` with `SquadClaimsSceneTests` (PlayMode). A 60 x 40 grid (30 x 20 m, cells of 0.5 m) has two walls, each with a doorway and a gap round one end; the player at (4, 20) walks east to the objective at (56, 20) through both doors, so closing either one lengthens the route without locking the player out. Four Saboteurs use the real `CloseDoorSource`, `DetourCache`, `TargetClaims` and A*; they tick at 64 frames a second, as the controller does. Unity 6000.6.2f1 Editor in batch mode (Mono, not a build), AMD Ryzen 7 5800H, one session. The timings are printed by the tests, not asserted; the assertions hold only what does not depend on the machine.
+
+**What the squad does.**
+
+| Check | Result |
+| --- | --- |
+| Door 1 / door 2 detour (open route 52.0) | Closed route 65.8 and 67.8: gains 27% and 30%, neither a lockout |
+| Saboteurs A and B, each beside one door | A takes door 1 and B takes door 2, each holding the claim; C and D, with no door left, take none |
+| A destroyed while holding door 1 | Its claim is released at once; one of C and D takes door 1 within 3 s, B keeps door 2, and the two never share a door |
+| A door the squad has closed | Not offered again, and its claim is released |
+| Live scene (`Test_SquadClaims`, Play Mode) | Both doors get closed by different Saboteurs, never more than two at once and no door claimed twice. A stands 4 m from the player in plain sight and attacks instead of taking a door, so B and C share the doors: the squad mixes jobs |
+
+**Searches (20 s of game time, player and objective fixed).**
+
+| Measure | One Saboteur | Four Saboteurs |
+| --- | --- | --- |
+| Detour cache searches | 120 | 120 |
+| Routes the Saboteurs planned to the door they chose (16 October, bodies walking: see below) | 4 | 10 |
+
+The cache does three searches (the open route and one for each of the two doors on it) every half second, and four Saboteurs asking cost exactly what one does. The route searches belong to the Saboteurs that picked a door and are their own work, not shared. **Changed on 16 October:** the 15 October figures (1 and 2) were measured with the bodies standing still at their start cells, which the brain now treats as being stuck and gives up on after 8 s, so the run now walks each body toward the door it chose, one cell every eighth of a second. A walking Saboteur whose best door changes as it moves plans another route, which is why the counts are higher (4 and 10 in 20 s); the cache figure is unchanged at 120 for one and for four. Each door plan also makes one fresh lockout search just before it closes its door (`DetourCache.LockoutChecks`, one search per plan whoever asks); it runs on the cache's pathfinder but is not a refresh, so it is counted apart and not included in the 120. With the player moving every frame the count stays at 120 (6.0 a second), because the cache refreshes on a timer, not on every change.
+
+**Cost of the squad's ticks (4 Saboteurs, 20 s, 5,120 ticks).**
+
+| Measure | Result |
+| --- | --- |
+| Median tick | 1.1 us |
+| Mean tick | 16.4 us |
+| 95th percentile | 3.6 us |
+| Slow ticks (over 0.5 ms) | 40, all of them cache refreshes, averaging 1.99 ms; worst tick 2.1 ms |
+| All four Saboteurs together | 4.2 ms per second of game time |
+
+**The cache's refresh on a level-sized grid.** The same two-wall layout on 84 x 84 cells (the level is about 83 a side), open route 76.0, closed routes 123.3 and 125.3: three searches per refresh, **median 7.70 ms, mean 7.71 ms, worst 8.1 ms**, once every half second. That is about 2.6 ms a search (an earlier run of the same test gave a median of 7.95 ms), and the whole refresh runs inside one Saboteur's tick, so it is a frame spike of the size of half a 60 fps frame, about one frame in thirty, and four times the 2 ms budget for search work in a frame. S4's decision queue keeps two agents' heavy decisions out of the same frame but does not split one decision. This is the one result that missed a target, so the refresh was spread (next paragraph).
+
+**Spreading the refresh (S3, 2026-10-15).** `DetourCache` now does at most `SearchesPerCall` searches in one `Refresh` call (the squad's shared cache uses 1; the constructor default stays unlimited for tests). A refresh starts when due, runs one search per call, and publishes its results together after the last, so a reader never sees half a refresh and keeps the previous results meanwhile. Same 84 x 84 grid, the squad calling the cache 16 times a second (four Saboteurs at 4 Hz) for 20 s: **worst single call 8.09 ms with the whole refresh in one call, 4.69 ms spread** (a run before gave 5.04 ms), the same searches per refresh (3.0). Results now arrive up to two ticks (about 0.12 s) after the refresh starts, and a refresh takes about 0.6 s from start to start instead of 0.5 s (32 refreshes in 20 s instead of 40). **The spike is smaller, not gone:** the worst call is now one closed-door search, which A* has to spend most of the grid on to find the way round (the open-route search is cheaper), so it is still above the 2 ms budget for search work in a frame. Cutting it further needs a search that can be paused part-way (S2's `AStarSearch`), which is not S3's code.
+
+**Anti-dithering.** Two doors scored 0.60 and 0.58, each moving by up to 0.1 either way at 4 Hz for 2 minutes (480 decisions); mean of 20 seeded runs: **232.2 switches** with no momentum and no commitment, **8.1 switches** with momentum 0.15 and 1.5 s commitment, 97% fewer.
+
+**Curve tuning.** No curve, momentum, commitment or cooldown value was changed: in the scenario every choice was the one the design predicts (nearer Saboteur first, the farther ones fall back to Idle or Attack, no door claimed twice), and the stability numbers above are already large. The reasons are recorded in `Docs/AI/SaboteurBot.md`.
+
+**Limits.** Editor timings in the Mono runtime, not an IL2CPP build, so the absolute numbers will be lower in a build, though the ratios should hold. The grids are two clean walls, not the real rooms, and the real level has no loop yet, so CloseDoor still never fires there. The Saboteurs stand still in the EditMode scenario (positions fixed per Saboteur), so travel and arrival are covered only by the PlayMode scene.
+
+**Note (S3, 2026-10-16).** Two of these limits no longer hold; the 15 October results above are left as measured. CloseDoor can fire in the real level in Chapter 4: probed on the real grid (436 player and objective pairs, every door open), no door is a lockout there because the four rooms form a ring, and `SaboteurChapterFourSceneTests` shows a door closed on the real map (#284). Before Chapter 4 the Control Room's doors are locked, so every open door is still a lockout and CloseDoor is not offered. The EditMode scenario now walks its Saboteurs toward their doors (see the search table's 16 October row).

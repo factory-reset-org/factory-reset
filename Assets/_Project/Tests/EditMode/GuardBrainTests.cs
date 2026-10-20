@@ -1,0 +1,974 @@
+using System.Collections.Generic;
+using NUnit.Framework;
+using UnityEngine;
+using ToyFactory.AI.Agents.Guard;
+using ToyFactory.AI.Core;
+using ToyFactory.AI.Core.Blackboard;
+using ToyFactory.AI.Core.Grid;
+using ToyFactory.AI.Core.Perception;
+using ToyFactory.AI.Core.Search;
+
+namespace ToyFactory.Tests.EditMode
+{
+    public class GuardBrainTests
+    {
+        // A 30 x 11 open room with one wall column at x = 15, y = 3..7. The player stands to
+        // the west, so the cells just east of the wall (x = 16..19, y = 3..7) are in its shadow.
+        const int Width = 30;
+        const int Height = 11;
+        const int WallX = 15;
+        const int GuardId = 7;
+
+        static readonly Vector2Int PlayerCell = new Vector2Int(5, 5);
+        static readonly Vector2Int GuardStart = new Vector2Int(22, 5);
+
+        sealed class FakeVisibility : ICoverVisibility
+        {
+            public bool WallCastsShadow = true;
+            public bool HalfHeightOnly;
+            public readonly HashSet<Vector2Int> Exposed = new HashSet<Vector2Int>();
+
+            // Cells the player has no line of sight to at any height (the far side of a wall).
+            public readonly HashSet<Vector2Int> Blocked = new HashSet<Vector2Int>();
+
+            // The spot the Guard really stands on is in view, whatever its cell's centre says.
+            public bool SeenWhereItStands;
+
+            public bool IsBlockedAt(Vector3 point) => !SeenWhereItStands;
+
+            public bool IsBlocked(Vector2Int cell, float height)
+            {
+                if (Blocked.Contains(cell))
+                    return true;
+                if (!WallCastsShadow || Exposed.Contains(cell))
+                    return false;
+                bool inShadow = cell.x > WallX && cell.x <= WallX + 4 && cell.y >= 3 && cell.y <= 7;
+                if (!inShadow)
+                    return false;
+                return !HalfHeightOnly || height < 1f;
+            }
+        }
+
+        // A room that spans the world x range [MinX, MaxX], all of z.
+        sealed class FakeHome : IGuardHome
+        {
+            public float MinX, MaxX;
+            public readonly HashSet<Vector3> NoCover = new HashSet<Vector3>();
+
+            public bool Contains(Vector3 position, float margin) =>
+                position.x >= MinX - margin && position.x <= MaxX + margin;
+
+            public bool AllowsCover(Vector3 position) => !NoCover.Contains(position);
+        }
+
+        GridGraph _grid;
+        WorldBlackboard _world;
+        FakeVisibility _visibility;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _grid = new GridGraph(Width, Height, Vector3.zero);
+            for (int y = 3; y <= 7; y++)
+                _grid.SetWalkable(new Vector2Int(WallX, y), false);
+            _world = new WorldBlackboard();
+            _visibility = new FakeVisibility();
+        }
+
+        GuardBrain Guard(int id = GuardId, IReadOnlyList<Vector3> patrol = null, IGuardHome home = null) =>
+            new GuardBrain(_grid, new AStarSearch(_grid), _world, _visibility, id, patrol, home);
+
+        void SetPlayer(float ammo = 1f, float overcharge = 0f, bool alive = true, bool reloading = false,
+            Vector2Int? at = null, Vector3? facing = null, float lastShot = -1f)
+        {
+            Vector2Int cell = at ?? PlayerCell;
+            _world.SetPlayer(new PlayerSnapshot(
+                isKnown: true,
+                cell: cell,
+                position: _grid.CellToWorld(cell),
+                velocity: Vector3.zero,
+                forward: facing ?? Vector3.right,
+                sprintSpeed: 7f,
+                isAlive: alive,
+                healthFraction: 1f,
+                ammoFraction: ammo,
+                isReloading: reloading,
+                overchargeTimeLeft: overcharge,
+                lastShotTime: lastShot));
+        }
+
+        AgentIntent TickAt(GuardBrain brain, Vector3 position, float time) =>
+            brain.Tick(new AgentContext(_grid.WorldToCell(position), position, Vector3.left, time,
+                _world, default(SensorSnapshot)));
+
+        AgentIntent TickAt(GuardBrain brain, Vector2Int cell, float time) =>
+            TickAt(brain, _grid.CellToWorld(cell), time);
+
+        AgentIntent TickAt(GuardBrain brain, Vector2Int cell, float time, SensorSnapshot senses) =>
+            brain.Tick(new AgentContext(cell, _grid.CellToWorld(cell), Vector3.left, time, _world, senses));
+
+        // Walks the Guard into its cover: one tick to choose it, one tick standing on it.
+        Vector2Int SettleInCover(GuardBrain brain)
+        {
+            TickAt(brain, GuardStart, 0f);
+            Vector2Int cover = brain.CoverCell;
+            TickAt(brain, cover, 0.5f);
+            Assert.AreEqual("InCover", brain.StateName);
+            return cover;
+        }
+
+        [Test]
+        public void Guard_NoPlayer_PatrolsOrHolds()
+        {
+            GuardBrain brain = Guard();
+
+            AgentIntent intent = TickAt(brain, GuardStart, 0f);
+
+            Assert.AreEqual("Patrol", brain.StateName);
+            Assert.AreEqual(AgentAction.None, intent.Action);
+            Assert.IsFalse(brain.HasCover);
+        }
+
+        [Test]
+        public void Guard_DeadPlayer_PatrolsOrHolds()
+        {
+            SetPlayer(alive: false);
+            GuardBrain brain = Guard();
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.AreEqual("Patrol", brain.StateName);
+        }
+
+        [Test]
+        public void Guard_NoPlayerWithPatrolPoints_WalksToThem()
+        {
+            var patrol = new List<Vector3> { _grid.CellToWorld(new Vector2Int(25, 2)) };
+            GuardBrain brain = Guard(patrol: patrol);
+
+            AgentIntent intent = TickAt(brain, GuardStart, 0f);
+
+            Assert.IsNotNull(intent.Path);
+            Assert.Greater(intent.Path.Count, 0);
+            Assert.AreEqual(patrol[0], intent.Path[intent.Path.Count - 1]);
+        }
+
+        [Test]
+        public void Guard_PlayerInRange_TakesCoverAndReservesIt()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+
+            AgentIntent intent = TickAt(brain, GuardStart, 0f);
+
+            Assert.AreEqual("TakeCover", brain.StateName);
+            Assert.IsTrue(brain.HasCover);
+            Assert.AreEqual(GuardId, _world.Reservations.ReservedBy(brain.CoverCell));
+            Assert.AreEqual(_grid.CellToWorld(brain.CoverCell), intent.Path[intent.Path.Count - 1]);
+        }
+
+        [Test]
+        public void Guard_PlayerBeyondAlertRange_StaysOnPatrol()
+        {
+            _grid = new GridGraph(100, Height, Vector3.zero);
+            SetPlayer();
+            GuardBrain brain = Guard();
+
+            TickAt(brain, new Vector2Int(90, 5), 0f);
+
+            Assert.AreEqual("Patrol", brain.StateName);
+        }
+
+        [Test]
+        public void Guard_ArrivalUsesDistanceNotCell()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            TickAt(brain, GuardStart, 0f);
+            Vector2Int cover = brain.CoverCell;
+
+            // 0.4 m east of the cover centre: a neighbouring cell, but within the 0.5 m radius.
+            Vector3 nearby = _grid.CellToWorld(cover) + new Vector3(0.4f, 0f, 0f);
+            TickAt(brain, nearby, 0.5f);
+
+            Assert.AreNotEqual(cover, _grid.WorldToCell(nearby));
+            Assert.AreEqual("InCover", brain.StateName);
+        }
+
+        [Test]
+        public void Guard_HoldTimerElapses_PeeksAndShoots()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+
+            AgentIntent peek = TickAt(brain, cover, 2f);
+            Assert.AreEqual("PeekAndShoot", brain.StateName);
+
+            Vector3 peekPosition = peek.Path[peek.Path.Count - 1];
+            AgentIntent shot = TickAt(brain, peekPosition, 2.2f);
+
+            Assert.AreEqual(AgentAction.Shoot, shot.Action);
+            Assert.AreEqual(_grid.CellToWorld(PlayerCell), shot.LookTarget);
+        }
+
+        // S4 saw a Guard sit in cover for a minute against a player in view who never fired. A cover with no
+        // cell to peek from can never allow a peek, so nothing moved it. It must push in and get a shot.
+        [Test]
+        public void Guard_CoverWithNoPeek_PushesInAndShootsAPlayerWhoNeverFires()
+        {
+            // A full wall at x = 15 with one gap at y = 0. The player sees nothing east of it, so every cover
+            // there is safe; the only two that could peek (beside the gap) are held by another agent.
+            for (int y = 1; y < Height; y++)
+                _grid.SetWalkable(new Vector2Int(WallX, y), false);
+            for (int x = WallX + 1; x < Width; x++)
+                for (int y = 0; y < Height; y++)
+                    _visibility.Blocked.Add(new Vector2Int(x, y));
+            _world.Reservations.TryReserve(new Vector2Int(WallX + 1, 0), 98);
+            _world.Reservations.TryReserve(new Vector2Int(WallX + 1, 1), 99);
+            SetPlayer();
+            GuardBrain brain = Guard();
+            TickAt(brain, GuardStart, 0f);
+            Vector2Int cover = brain.CoverCell;
+            for (int i = 0; i < 6 && brain.StateName != "InCover"; i++)
+            {
+                cover = brain.CoverCell;
+                TickAt(brain, cover, 0.5f + i * 0.1f);
+            }
+            Assert.AreEqual("InCover", brain.StateName, "it settles in a cover");
+            Assert.IsFalse(brain.CoverCanPeek, "the setup gives a cover with nowhere to peek from: " + brain.CoverCell);
+
+            // The hold runs out: before the fix it stayed InCover here for good.
+            AgentIntent intent = TickAt(brain, cover, 3f);
+            for (int i = 0; i < 3 && brain.StateName != "Advance"; i++)
+                intent = TickAt(brain, cover, 3.1f + i * 0.1f);
+            Assert.AreEqual("Advance", brain.StateName, "it leaves the cover it cannot shoot from");
+            for (int i = 0; i < 4 && (intent.Path == null || intent.Path.Count == 0); i++)
+                intent = TickAt(brain, cover, 3.5f + i * 0.1f);
+            Assert.IsNotNull(intent.Path, "and walks");
+            Vector3 end = intent.Path[intent.Path.Count - 1];
+            Assert.Less(end.x, _grid.CellToWorld(cover).x, "towards the player");
+
+            // Once it can see the player it fires, though the player never has.
+            Vector2Int inView = new Vector2Int(12, 5);
+            AgentIntent shot = TickAt(brain, inView, 4f);
+            for (int i = 0; i < 5 && shot.Action != AgentAction.Shoot; i++)
+                shot = TickAt(brain, inView, 4.5f + i * 0.5f);
+            Assert.AreEqual(AgentAction.Shoot, shot.Action, "it shoots the player who never fired");
+        }
+
+        // The cannon fires from 0.89 m. Low cover the player sees over at chest height still stops it, so a cell
+        // that is clear at the chest but blocked at the muzzle is not one to shoot from.
+        [Test]
+        public void Guard_ChestVisibleButMuzzleBlocked_DoesNotShoot()
+        {
+            _visibility.HalfHeightOnly = true;   // the shadow cells are hidden below 1 m only
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int behindLowCover = new Vector2Int(WallX + 1, 5);
+            for (int i = 0; i < 6; i++)
+            {
+                AgentIntent intent = TickAt(brain, behindLowCover, 2f + i * 1.5f);
+                Assert.AreNotEqual(AgentAction.Shoot, intent.Action, "no shot through the low cover at " + (2f + i * 1.5f) + " s");
+            }
+        }
+
+        [Test]
+        public void Guard_PeeksFromAlternatingSidesWhenItHasTwo()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+            var peeks = new HashSet<Vector3>();
+            float t = 2f;
+            for (int round = 0; round < 3; round++)
+            {
+                AgentIntent peek = TickAt(brain, cover, t);
+                if (brain.StateName == "PeekAndShoot" && peek.Path != null && peek.Path.Count > 0)
+                    peeks.Add(peek.Path[peek.Path.Count - 1]);
+                t += PeekTimerAndHold;
+                TickAt(brain, cover, t);   // back in cover
+                t += 2f;
+            }
+            Assert.Greater(peeks.Count, 1, "it does not peek from the same corner every time");
+        }
+
+        const float PeekTimerAndHold = GuardBrain.PeekDuration + 0.1f;
+
+        [Test]
+        public void Guard_PlayerFiringWithItsAimOnTheGuard_DucksBackEarly()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+            AgentIntent peek = TickAt(brain, cover, 2f);
+            Assert.AreEqual("PeekAndShoot", brain.StateName);
+            Vector3 peekPosition = peek.Path[peek.Path.Count - 1];
+
+            // The player fires at it 0.5 s into the peek, well before the 2 s peek timer.
+            Vector3 toGuard = peekPosition - _grid.CellToWorld(PlayerCell);
+            toGuard.y = 0f;
+            SetPlayer(facing: toGuard.normalized, lastShot: 2.5f);
+            TickAt(brain, peekPosition, 2.6f);
+            Assert.AreEqual("InCover", brain.StateName, "it ducks back under fire");
+        }
+
+        [Test]
+        public void Guard_PlayerLooksAway_PeeksBeforeTheHoldRunsOut()
+        {
+            SetPlayer(facing: Vector3.left);   // the Guard is to the east
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+            TickAt(brain, cover, 0.5f + GuardBrain.MinHoldBeforeOpportunisticPeek + 0.05f);
+            Assert.AreEqual("PeekAndShoot", brain.StateName, "it takes the chance while the player looks away");
+        }
+
+        [Test]
+        public void Guard_NeverTakesCoverWhereItsRoomForbidsIt()
+        {
+            SetPlayer();
+            var home = new FakeHome { MinX = -100f, MaxX = 100f };
+            GuardBrain first = Guard(id: 1, home: home);
+            TickAt(first, GuardStart, 0f);
+            Vector2Int usual = first.CoverCell;
+            _world.Reservations.Release(1);
+
+            home.NoCover.Add(_grid.CellToWorld(usual));
+            GuardBrain brain = Guard(id: 2, home: home);
+            TickAt(brain, GuardStart, 0f);
+            Assert.IsTrue(brain.HasCover, "it still finds cover");
+            Assert.AreNotEqual(usual, brain.CoverCell, "but not by the task prop");
+        }
+
+        // The weapon holds fire when the real shot line is blocked, and the brain cannot see that; it can see that
+        // the player is not getting hurt. Three harmless shots from one cover and it gives that cover up.
+        [Test]
+        public void Guard_ThreeShotsThatDoNoHarm_GivesUpTheCoverForAnother()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+            float t = 2f;
+            int shots = 0;
+            for (int i = 0; i < 40 && shots < 3; i++, t += 0.4f)
+            {
+                Vector2Int at = brain.StateName == "PeekAndShoot" && brain.HasCover ? PeekOf(brain, cover) : cover;
+                AgentIntent intent = TickAt(brain, at, t);
+                if (intent.Action == AgentAction.Shoot)
+                    shots++;
+            }
+            Assert.AreEqual(3, shots, "it fired three times at a player whose health never changed");
+            TickAt(brain, cover, t + 0.1f);
+            Assert.AreNotEqual(cover, brain.CoverCell, "and then moved to another cover");
+        }
+
+        [Test]
+        public void Guard_StandingInViewOffItsCoverCentre_GivesUpTheCover()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+            TickAt(brain, cover, 0.6f);
+            Assert.AreEqual(cover, brain.CoverCell, "hidden where it stands: it stays");
+
+            // Its body came to rest off the centre, where the player can see it.
+            _visibility.SeenWhereItStands = true;
+            TickAt(brain, cover, 0.9f);
+
+            Assert.AreNotEqual(cover, brain.CoverCell, "it gives up the cover for another");
+        }
+
+        [Test]
+        public void Guard_StillWalkingIntoCover_DoesNotJudgeTheSpotYet()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+            _visibility.SeenWhereItStands = true;
+
+            TickAt(brain, cover, 0.6f);   // stopped only 0.1 s ago
+
+            Assert.AreEqual(cover, brain.CoverCell);
+        }
+
+        // The peek cell the brain would step to from its cover: the first open neighbour seen by the player.
+        Vector2Int PeekOf(GuardBrain brain, Vector2Int cover)
+        {
+            foreach (var offset in new[] { new Vector2Int(0, 1), new Vector2Int(0, -1), new Vector2Int(1, 0), new Vector2Int(-1, 0) })
+            {
+                Vector2Int cell = cover + offset;
+                if (_grid.IsTraversable(cell) && !_visibility.IsBlocked(cell, 1.2f) && !_visibility.IsBlocked(cell, 0.85f))
+                    return cell;
+            }
+            return cover;
+        }
+
+        [Test]
+        public void Guard_PeekTimerElapses_ReturnsToCover()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+            TickAt(brain, cover, 2f);
+
+            TickAt(brain, cover, 2f + GuardBrain.PeekDuration + 0.1f);
+
+            Assert.AreEqual("InCover", brain.StateName);
+        }
+
+        [Test]
+        public void Guard_OverchargeActive_UsesTwelveMetresAndDoesNotPeek()
+        {
+            SetPlayer(overcharge: 6f);
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+
+            TickAt(brain, cover, 4f);
+
+            Assert.AreEqual(GuardBrain.OverchargeRange, brain.IdealRange);
+            Assert.AreEqual("InCover", brain.StateName);
+        }
+
+        [Test]
+        public void Guard_OverchargeStartsMidPeek_ReturnsToCover()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+            TickAt(brain, cover, 2f);
+            Assert.AreEqual("PeekAndShoot", brain.StateName);
+
+            SetPlayer(overcharge: 6f);
+            TickAt(brain, cover, 2.1f);
+
+            Assert.AreEqual("InCover", brain.StateName);
+        }
+
+        [Test]
+        public void Guard_OverchargeEndsMidWait_ReevaluatesWithBatteryRow()
+        {
+            SetPlayer(overcharge: 6f);
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+
+            SetPlayer(ammo: 0.4f);
+            TickAt(brain, cover, 4f);
+
+            Assert.AreEqual(GuardBrain.MidBatteryRange, brain.IdealRange);
+        }
+
+        [Test]
+        public void Guard_OverchargeWithOnlyHalfCover_HasNoCover()
+        {
+            _visibility.HalfHeightOnly = true;
+            SetPlayer(overcharge: 6f);
+            GuardBrain brain = Guard();
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsFalse(brain.HasCover);
+            Assert.AreEqual("Retreat", brain.StateName);
+        }
+
+        [Test]
+        public void Guard_BatteryBelow25_ReducesIdealDistanceAndAdvances()
+        {
+            SetPlayer(ammo: 0.2f);
+            GuardBrain brain = Guard();
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.AreEqual(GuardBrain.LowBatteryRange, brain.IdealRange);
+            Assert.AreEqual("Advance", brain.StateName);
+        }
+
+        [Test]
+        public void Guard_PlayerReloading_Advances()
+        {
+            SetPlayer(reloading: true);
+            GuardBrain brain = Guard();
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.AreEqual("Advance", brain.StateName);
+        }
+
+        [Test]
+        public void Guard_BatteryTiers_SetTheIdealDistance()
+        {
+            SetPlayer(ammo: 0.9f);
+            GuardBrain brain = Guard();
+            TickAt(brain, GuardStart, 0f);
+            Assert.AreEqual(GuardBrain.HighBatteryRange, brain.IdealRange);
+
+            SetPlayer(ammo: 0.4f);
+            TickAt(brain, GuardStart, 0.1f);
+            Assert.AreEqual(GuardBrain.MidBatteryRange, brain.IdealRange);
+        }
+
+        [Test]
+        public void Guard_NoCoverAvailable_FallsBackToRetreat()
+        {
+            _visibility.WallCastsShadow = false;
+            SetPlayer();
+            GuardBrain brain = Guard();
+
+            AgentIntent intent = TickAt(brain, GuardStart, 0f);
+
+            // Every cell is exposed, so there is nowhere to retreat to: it stands and fights.
+            Assert.AreEqual("Retreat", brain.StateName);
+            Assert.IsFalse(brain.HasCover);
+            Assert.AreEqual(0, intent.Path.Count);
+            Assert.AreEqual(AgentAction.Shoot, intent.Action);
+        }
+
+        [Test]
+        public void Guard_ExposedMidCover_TransitionsToRelocate()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+
+            _visibility.Exposed.Add(cover);   // the player flanked it
+            AgentIntent intent = TickAt(brain, cover, 0.6f);
+
+            Assert.IsTrue(brain.HasCover);
+            Assert.AreNotEqual(cover, brain.CoverCell);
+            Assert.AreEqual("TakeCover", brain.StateName);
+            Assert.IsNull(_world.Reservations.ReservedBy(cover));
+            Assert.AreEqual(_grid.CellToWorld(brain.CoverCell), intent.Path[intent.Path.Count - 1]);
+        }
+
+        [Test]
+        public void Cover_ReservedByOtherAgent_SkipsToNextBest()
+        {
+            SetPlayer();
+            GuardBrain first = Guard(id: 1);
+            GuardBrain second = Guard(id: 2);
+
+            TickAt(first, GuardStart, 0f);
+            TickAt(second, GuardStart, 0f);
+
+            Assert.IsTrue(second.HasCover);
+            Assert.AreNotEqual(first.CoverCell, second.CoverCell);
+        }
+
+        [Test]
+        public void Cover_TargetBlockedByBox_Reselects()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            TickAt(brain, GuardStart, 0f);
+            Vector2Int cover = brain.CoverCell;
+
+            _grid.AddBlocker(cover);
+            brain.OnGraphChanged(new[] { cover });
+            TickAt(brain, GuardStart, 0.1f);
+
+            Assert.IsTrue(brain.HasCover);
+            Assert.AreNotEqual(cover, brain.CoverCell);
+        }
+
+        [Test]
+        public void Guard_GraphChangeOnRoute_Replans()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            AgentIntent first = TickAt(brain, GuardStart, 0f);
+            Vector3 blockedPoint = first.Path[1];
+            Vector2Int blocked = _grid.WorldToCell(blockedPoint);
+
+            _grid.AddBlocker(blocked);
+            brain.OnGraphChanged(new[] { blocked });
+            AgentIntent second = TickAt(brain, GuardStart, 0.1f);
+
+            Assert.IsNotNull(second.Path);
+            CollectionAssert.DoesNotContain(second.Path, blockedPoint);
+        }
+
+        [Test]
+        public void Guard_GraphChangeOffRoute_KeepsItsPath()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            TickAt(brain, GuardStart, 0f);
+
+            brain.OnGraphChanged(new[] { new Vector2Int(28, 9) });
+            AgentIntent intent = TickAt(brain, GuardStart, 0.1f);
+
+            Assert.IsNull(intent.Path);   // null = keep following the current path
+        }
+
+        [Test]
+        public void Guard_OnStunned_ReleasesCoverReservation()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+
+            brain.OnStunned(8f);
+
+            Assert.IsFalse(brain.HasCover);
+            Assert.IsNull(_world.Reservations.ReservedBy(cover));
+        }
+
+        [Test]
+        public void Guard_AfterReboot_PlansFreshRoute()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            SettleInCover(brain);
+            brain.OnStunned(8f);
+
+            AgentIntent intent = TickAt(brain, GuardStart, 9f);
+
+            Assert.AreEqual("TakeCover", brain.StateName);
+            Assert.IsNotNull(intent.Path);
+            Assert.Greater(intent.Path.Count, 0);
+            Assert.AreEqual(GuardId, _world.Reservations.ReservedBy(brain.CoverCell));
+        }
+
+        [Test]
+        public void Guard_OnDestroyed_ReleasesCoverReservation()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+
+            brain.OnDestroyed();
+
+            Assert.IsNull(_world.Reservations.ReservedBy(cover));
+        }
+
+        [Test]
+        public void Guard_PlayerLost_ReturnsToPatrolAndReleasesCover()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+
+            _world.SetPlayer(default);
+            TickAt(brain, cover, 1f);
+
+            Assert.AreEqual("Patrol", brain.StateName);
+            Assert.IsNull(_world.Reservations.ReservedBy(cover));
+        }
+
+        [Test]
+        public void Guard_Transitions_PickHighestPriorityValidOne()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+
+            // Stunned (100) and exposed cover (60) are both true: the stun wins, and the
+            // reboot tick then plans from scratch.
+            _visibility.Exposed.Add(cover);
+            brain.OnStunned(8f);
+            TickAt(brain, cover, 9f);
+
+            Assert.AreEqual("TakeCover", brain.StateName);
+            Assert.AreNotEqual(cover, brain.CoverCell);
+        }
+
+        // ---- Engagement: sight or sound, in its own room, from its chapter -------------
+
+        [Test]
+        public void Guard_PlayerInRangeBehindAWall_StaysOnPatrol()
+        {
+            _visibility.Blocked.Add(GuardStart);
+            SetPlayer();
+            GuardBrain brain = Guard();
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsFalse(brain.IsEngaged);
+            Assert.AreEqual("Patrol", brain.StateName);
+            Assert.IsFalse(brain.HasCover);
+        }
+
+        [Test]
+        public void Guard_PlayerInRangeInPlainSight_Engages()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsTrue(brain.IsEngaged);
+        }
+
+        [Test]
+        public void Guard_HearsThePlayerShootBehindAWall_Engages()
+        {
+            _visibility.Blocked.Add(GuardStart);
+            SetPlayer();
+            GuardBrain brain = Guard();
+            var shot = new SensorSnapshot(_grid.CellToWorld(PlayerCell), 60f, GuardBrain.PlayerNoiseSourceId, 0f);
+
+            TickAt(brain, GuardStart, 0f, shot);
+
+            Assert.IsTrue(brain.IsEngaged);
+        }
+
+        [Test]
+        public void Guard_OtherNoises_DoNotAlertIt()
+        {
+            _visibility.Blocked.Add(GuardStart);
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector3 at = _grid.CellToWorld(PlayerCell);
+
+            // A door slam (another source), a quiet player noise, and a shot that is five seconds old.
+            TickAt(brain, GuardStart, 0f, new SensorSnapshot(at, 60f, 12345, 0f));
+            Assert.IsFalse(brain.IsEngaged, "Not the player's noise.");
+
+            TickAt(brain, GuardStart, 0.1f, new SensorSnapshot(at, 20f, GuardBrain.PlayerNoiseSourceId, 0.1f));
+            Assert.IsFalse(brain.IsEngaged, "Too quiet to be a shot.");
+
+            TickAt(brain, GuardStart, 5f, new SensorSnapshot(at, 60f, GuardBrain.PlayerNoiseSourceId, 0f));
+            Assert.IsFalse(brain.IsEngaged, "Too old.");
+        }
+
+        [Test]
+        public void Guard_PlayerOutsideItsRoom_IsNotFought()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard(home: new FakeHome { MinX = 8f, MaxX = 14f });   // the player is at x 2.75
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsFalse(brain.IsEngaged);
+            Assert.AreEqual("Patrol", brain.StateName);
+        }
+
+        [Test]
+        public void Guard_PlayerJustOutsideItsDoor_IsFought()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard(home: new FakeHome { MinX = 5f, MaxX = 14f });   // within the 3 m margin
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsTrue(brain.IsEngaged);
+        }
+
+        [Test]
+        public void Guard_PlayerLeavesItsRoomMidFight_ReturnsToPatrolAndReleasesCover()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard(home: new FakeHome { MinX = 5f, MaxX = 14f });
+            Vector2Int cover = SettleInCover(brain);
+            Assert.AreEqual(GuardId, _world.Reservations.ReservedBy(cover));
+
+            SetPlayer(at: new Vector2Int(0, 5));   // x 0.25, more than 3 m outside the room
+            TickAt(brain, cover, 1f);
+
+            Assert.IsFalse(brain.IsEngaged);
+            Assert.AreEqual("Patrol", brain.StateName);
+            Assert.IsNull(_world.Reservations.ReservedBy(cover));
+        }
+
+        [Test]
+        public void Guard_PlayerStepsIntoItsRoom_IsDetectedWithoutALineOfSight()
+        {
+            _visibility.Blocked.Add(GuardStart);   // it cannot see the player
+            SetPlayer();
+            GuardBrain brain = Guard(home: new FakeHome { MinX = 1f, MaxX = 14f });   // the player is at x 2.75, inside
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsTrue(brain.IsEngaged);
+        }
+
+        [Test]
+        public void Guard_PlayerJustOutsideItsDoor_NeedsASightOrASoundToBeDetected()
+        {
+            _visibility.Blocked.Add(GuardStart);
+            SetPlayer();
+            GuardBrain brain = Guard(home: new FakeHome { MinX = 5f, MaxX = 14f });   // within the margin, not in the room
+
+            TickAt(brain, GuardStart, 0f);
+            Assert.IsFalse(brain.IsEngaged, "Not in the room, not seen, nothing heard.");
+
+            var shot = new SensorSnapshot(_grid.CellToWorld(PlayerCell), 60f, GuardBrain.PlayerNoiseSourceId, 0.1f);
+            TickAt(brain, GuardStart, 0.1f, shot);
+            Assert.IsTrue(brain.IsEngaged, "A shot gives it away.");
+        }
+
+        [Test]
+        public void Guard_IsNotHeldBackByTheChapter()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard(home: new FakeHome { MinX = 1f, MaxX = 14f });
+            _world.SetChapterIndex(1);
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsTrue(brain.IsEngaged, "The room is the Guard's from the start.");
+        }
+
+        [Test]
+        public void Guard_TakesCoverOnlyInsideItsRoom()
+        {
+            SetPlayer();
+            // The shadow cells are at world x 8.25 to 9.75. Cells up to 8.5 + 1 m of slack are on offer.
+            var home = new FakeHome { MinX = 5f, MaxX = 8.5f };
+            GuardBrain brain = Guard(home: home);
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsTrue(brain.HasCover);
+            Assert.LessOrEqual(_grid.CellToWorld(brain.CoverCell).x, home.MaxX + GuardBrain.CoverMargin + 0.01f);
+        }
+
+        [Test]
+        public void Guard_NoCoverInsideItsRoom_DoesNotLeaveToFindSome()
+        {
+            SetPlayer();
+            var home = new FakeHome { MinX = 5f, MaxX = 6f };   // every shadow cell is outside, even with the slack
+            GuardBrain brain = Guard(home: home);
+
+            TickAt(brain, GuardStart, 0f);
+
+            Assert.IsTrue(brain.IsEngaged);
+            Assert.IsFalse(brain.HasCover);
+        }
+
+        [Test]
+        public void Guard_TransitionTable_IsDataAndPrintable()
+        {
+            string table = Guard().DescribeTransitions();
+
+            StringAssert.Contains("100 | any -> Stunned", table);
+            StringAssert.Contains("80 | TakeCover -> InCover", table);
+            StringAssert.Contains("20 | Relocate -> Retreat", table);
+        }
+
+        // ---- Read-only state for the debug overlay ------------------------------------
+
+        [Test]
+        public void Guard_Engaged_ReportsTheCoverItScoredAndItsRoute()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            TickAt(brain, GuardStart, 0f);
+
+            var scored = new List<ScoredCover>();
+            brain.GetScoredCover(scored);
+
+            Assert.IsTrue(brain.IsEngaged);
+            Assert.AreEqual(_grid.CellToWorld(PlayerCell), brain.PlayerPosition);
+            Assert.AreEqual("High", brain.BatteryTierName);
+            Assert.That(scored.Count, Is.InRange(1, GuardBrain.TopCandidates + 1));
+            Assert.IsTrue(scored.Exists(c => c.Cell == brain.CoverCell), "The chosen cover is one of the scored ones.");
+            foreach (ScoredCover cover in scored)
+            {
+                Assert.That(cover.Score, Is.InRange(0f, 1f));
+                Assert.That(cover.PathCost, Is.InRange(0f, GuardBrain.MaxPathCost));
+            }
+            Assert.Greater(brain.RouteCells.Count, 1);
+            Assert.AreEqual(brain.CoverCell, brain.RouteCells[brain.RouteCells.Count - 1]);
+        }
+
+        [Test]
+        public void Guard_ScoredCover_IsAppendedAndNeverGrowsBetweenEvaluations()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            TickAt(brain, GuardStart, 0f);
+            var scored = new List<ScoredCover>();
+            brain.GetScoredCover(scored);
+            int first = scored.Count;
+
+            // A second evaluation a second later replaces the list instead of adding to it.
+            TickAt(brain, GuardStart, GuardBrain.CoverInterval + 0.1f);
+            brain.GetScoredCover(scored);
+
+            Assert.That(scored.Count - first, Is.InRange(1, GuardBrain.TopCandidates + 1));
+        }
+
+        [Test]
+        public void Guard_NotEngaged_ReportsNoCoverAndNoRoute()
+        {
+            GuardBrain brain = Guard();
+            TickAt(brain, GuardStart, 0f);
+
+            var scored = new List<ScoredCover>();
+            brain.GetScoredCover(scored);
+
+            Assert.IsFalse(brain.IsEngaged);
+            Assert.AreEqual(0, scored.Count);
+            Assert.AreEqual(0, brain.RouteCells.Count);
+        }
+
+        [Test]
+        public void Guard_PlayerLeaves_ClearsTheScoredCover()
+        {
+            SetPlayer();
+            GuardBrain brain = Guard();
+            TickAt(brain, GuardStart, 0f);
+
+            SetPlayer(alive: false);
+            TickAt(brain, GuardStart, 0.5f);
+
+            var scored = new List<ScoredCover>();
+            brain.GetScoredCover(scored);
+            Assert.AreEqual(0, scored.Count);
+        }
+
+        [Test]
+        public void Guard_BatteryTierName_FollowsThePlayersBattery()
+        {
+            GuardBrain brain = Guard();
+
+            SetPlayer(ammo: 0.4f);
+            TickAt(brain, GuardStart, 0f);
+            Assert.AreEqual("Mid", brain.BatteryTierName);
+
+            SetPlayer(ammo: 0.1f);
+            TickAt(brain, GuardStart, 0.1f);
+            Assert.AreEqual("Low", brain.BatteryTierName);
+
+            SetPlayer(overcharge: 5f);
+            TickAt(brain, GuardStart, 0.2f);
+            Assert.AreEqual("Overcharge", brain.BatteryTierName);
+        }
+    
+
+        [Test]
+        public void Guard_PlayerUnreachable_HoldsCoverWithoutFreezing()
+        {
+            // The player is sealed in a walled-off pocket, so no route to it exists. The Guard
+            // keeps the cover it has and keeps its hold and peek rhythm: it never freezes in
+            // one state, never gives up its cover and never leaves for the patrol.
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                    if (dx != 0 || dy != 0)
+                        _grid.SetWalkable(PlayerCell + new Vector2Int(dx, dy), false);
+            SetPlayer();
+            GuardBrain brain = Guard();
+            Vector2Int cover = SettleInCover(brain);
+
+            float time = 0.5f;
+            bool peeked = false;
+            bool returned = false;
+            for (int i = 0; i < 40; i++)
+            {
+                time += 0.25f;
+                TickAt(brain, cover, time);
+                Assert.IsTrue(brain.HasCover, "it keeps its cover");
+                Assert.AreEqual(cover, brain.CoverCell);
+                if (brain.StateName == "PeekAndShoot")
+                    peeked = true;
+                else if (peeked && brain.StateName == "InCover")
+                    returned = true;
+                Assert.AreNotEqual("Patrol", brain.StateName);
+                Assert.AreNotEqual("Retreat", brain.StateName);
+            }
+
+            Assert.IsTrue(peeked, "it still peeks");
+            Assert.IsTrue(returned, "and goes back behind its cover");
+        }
+    }
+}

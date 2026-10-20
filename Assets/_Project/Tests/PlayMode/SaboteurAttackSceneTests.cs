@@ -1,0 +1,129 @@
+using System;
+using System.Collections;
+using System.Linq;
+using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.TestTools;
+using ToyFactory.AI.Agents.Saboteur;
+using ToyFactory.AI.Core;
+using ToyFactory.Interfaces;
+using ToyFactory.Journey.Cutscenes;
+using ToyFactory.Runtime.Agents;
+
+namespace ToyFactory.Tests
+{
+    /// <summary>
+    /// The Saboteur squad in the real scenes: Bootstrap loads Env, Interactables and Agents, and the
+    /// spawner gives each Saboteur the brain with its attack. A player who walks up to a Saboteur
+    /// in the open makes it attack, and one who walks away lets it go back to patrolling.
+    /// </summary>
+    public sealed class SaboteurAttackSceneTests
+    {
+        const float LoadTimeout = 60f;
+
+        [UnityTearDown]
+        public IEnumerator TearDown()
+        {
+            Time.timeScale = 1f;
+
+            // Leave an empty scene behind, so the game does not run under the next test.
+            Scene empty = SceneManager.CreateScene("Empty after Saboteur attack " + Guid.NewGuid());
+            SceneManager.SetActiveScene(empty);
+            for (int i = SceneManager.sceneCount - 1; i >= 0; i--)
+            {
+                Scene scene = SceneManager.GetSceneAt(i);
+                if (scene != empty && scene.isLoaded)
+                    yield return SceneManager.UnloadSceneAsync(scene);
+            }
+
+            // GameManager publishes itself as the clock and does not clear it when it is destroyed.
+            if (GameClock.Current is UnityEngine.Object clock && clock == null)
+                GameClock.Publish(null);
+            if (PlayerState.Current is UnityEngine.Object player && player == null)
+                PlayerState.Publish(null);
+        }
+
+        static IEnumerator Until(Func<bool> condition, float timeout, string what)
+        {
+            float until = Time.realtimeSinceStartup + timeout;
+            while (!condition())
+            {
+                if (Time.realtimeSinceStartup > until)
+                    Assert.Fail("Timed out waiting for " + what);
+                yield return null;
+            }
+        }
+
+        static void Teleport(Component body, Vector3 to)
+        {
+            var controller = body.GetComponent<CharacterController>();
+            if (controller != null)
+                controller.enabled = false;
+            body.transform.position = to;
+            if (controller != null)
+                controller.enabled = true;
+        }
+
+        [UnityTest]
+        public IEnumerator SaboteurAttacksAPlayerWhoWalksUpToItAndPatrolsAgainWhenTheyLeave()
+        {
+            SceneManager.LoadScene("Bootstrap");
+            yield return Until(() => AgentSpawner.Instance != null && AgentSpawner.Instance.SpawnedAgents.Count == 7
+                && CutsceneDirector.Current != null && PlayerState.Current != null, LoadTimeout, "Bootstrap to spawn every agent");
+            // Bootstrap waits on the title screen; this is the player pressing Start.
+            if (GameClock.Current != null)
+                GameClock.Current.RequestState(GameState.Playing);
+            yield return Until(() => CutsceneDirector.Current.IsPlaying, 10f, "the intro");
+            CutsceneDirector.Current.Skip();
+            yield return Until(() => GameClock.Current != null && GameClock.Current.State == GameState.Playing, 10f, "Playing");
+
+            AgentController saboteur = AgentSpawner.Instance.SpawnedAgents
+                .First(a => a.Type == AgentType.Saboteur && a.Identity.SquadLetter == 'A');
+            Assert.IsInstanceOf<SaboteurBrain>(saboteur.Brain, "The spawner gives the Saboteur its brain.");
+            var player = (Component)PlayerState.Current;
+
+            // 4 m in front of the Saboteur, inside its vision cone, held there while it decides.
+            float until = Time.time + 10f;
+            while (saboteur.DebugState != "AttackPlayer" && Time.time < until)
+            {
+                Teleport(player, SaboteurScenePlacement.InFront(saboteur, 4f));
+                yield return null;
+            }
+
+            Assert.AreEqual("AttackPlayer", saboteur.DebugState, "A player in sight within 8 m is attacked.");
+            Assert.AreEqual(AlertLevel.Alert, saboteur.Alert);
+
+            // Gone from sight and far away: it searches where it last saw the player, then patrols again. The
+            // sighting is remembered for 6 s and a search ends within 14 s.
+            Teleport(player, saboteur.transform.position + new Vector3(40f, 0f, 0f));
+            yield return Until(() => saboteur.DebugState == "Search", 5f, "the Saboteur to search where it lost the player");
+            yield return Until(() => saboteur.DebugState == "Patrol", 25f, "the Saboteur to patrol again");
+        }
+
+        [UnityTest]
+        public IEnumerator SaboteurClosesInOnAPlayerWhoStandsStillAndHurtsThem()
+        {
+            SceneManager.LoadScene("Bootstrap");
+            yield return Until(() => AgentSpawner.Instance != null && AgentSpawner.Instance.SpawnedAgents.Count == 7
+                && CutsceneDirector.Current != null && PlayerState.Current != null, LoadTimeout, "Bootstrap to spawn every agent");
+            if (GameClock.Current != null)
+                GameClock.Current.RequestState(GameState.Playing);
+            yield return Until(() => CutsceneDirector.Current.IsPlaying, 10f, "the intro");
+            CutsceneDirector.Current.Skip();
+            yield return Until(() => GameClock.Current != null && GameClock.Current.State == GameState.Playing, 10f, "Playing");
+
+            AgentController saboteur = AgentSpawner.Instance.SpawnedAgents
+                .First(a => a.Type == AgentType.Saboteur && a.Identity.SquadLetter == 'A');
+            var player = (Component)PlayerState.Current;
+
+            // Placed once, 4 m in front of it, then left alone: the Saboteur has to walk the distance itself.
+            Teleport(player, SaboteurScenePlacement.InFront(saboteur, 4f));
+            float healthBefore = PlayerState.Current.HealthFraction;
+            yield return Until(() => PlayerState.Current.HealthFraction < healthBefore, 15f,
+                "the Saboteur to reach the player and land a swipe");
+
+            Assert.Less(PlayerState.Current.HealthFraction, healthBefore, "The claw swipe deals damage once the Saboteur is in reach.");
+        }
+    }
+}

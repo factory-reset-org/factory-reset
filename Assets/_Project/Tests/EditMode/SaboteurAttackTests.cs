@@ -1,0 +1,496 @@
+using System.Collections.Generic;
+using NUnit.Framework;
+using UnityEngine;
+using ToyFactory.AI.Agents.Guard;
+using ToyFactory.AI.Agents.Saboteur;
+using ToyFactory.AI.Core;
+using ToyFactory.AI.Core.Blackboard;
+using ToyFactory.AI.Core.Grid;
+using ToyFactory.AI.Core.Search;
+
+namespace ToyFactory.Tests.EditMode
+{
+    /// <summary>AttackPlayer: when it is offered, how it scores, and what the brain does with it.</summary>
+    public class SaboteurAttackTests
+    {
+        sealed class FakeSight : IPlayerSight
+        {
+            public bool Visible = true;
+            public bool CanSeeCell(Vector2Int cell) => Visible;
+        }
+
+        sealed class FakeVisibility : ICoverVisibility
+        {
+            public bool Blocked;
+            public float LastHeight;
+            public bool IsBlocked(Vector2Int cell, float height)
+            {
+                LastHeight = height;
+                return Blocked;
+            }
+        }
+
+        static readonly ActionKey Attack = new ActionKey(SaboteurActionKind.AttackPlayer);
+
+        // Exactly representable, like the squad tests, so the 62.5 ms stagger lines up with whole frames.
+        const float Frame = 1f / 64f;
+
+        GridGraph _grid;
+        TargetClaims _claims;
+        FakeSight _sight;
+        Vector2Int _home;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _grid = new GridGraph(60, 60, Vector3.zero);
+            _claims = new TargetClaims();
+            _sight = new FakeSight();
+            _home = new Vector2Int(10, 10);
+        }
+
+        static SaboteurIdentity Identity(SaboteurLetter letter) => new SaboteurIdentity((int)letter + 1, letter);
+
+        SaboteurBrain Brain(SaboteurLetter letter, params Vector2Int[] patrolCells)
+        {
+            var points = new List<Vector3>();
+            foreach (Vector2Int cell in patrolCells)
+                points.Add(_grid.CellToWorld(cell));
+            return new SaboteurBrain(Identity(letter), _grid, new AStarSearch(_grid), _claims, points, null, 0,
+                new AttackPlayerSource(_sight));
+        }
+
+        // The player standing this many metres east of the Saboteur's home cell.
+        PlayerSnapshot PlayerAt(float metresEast, bool alive = true, bool known = true, float height = 0f)
+        {
+            Vector3 position = _grid.CellToWorld(_home) + new Vector3(metresEast, height, 0f);
+            Vector2Int cell = _grid.TryWorldToCell(position, out Vector2Int found) ? found : _home;
+            return new PlayerSnapshot(known, cell, position, Vector3.zero, Vector3.forward, 5f,
+                alive, 1f, 1f, false, 0f, 0f);
+        }
+
+        // The Saboteur faces east, towards the player, so the player stands in its vision cone.
+        AgentContext Ctx(WorldBlackboard world, float time) =>
+            new AgentContext(_home, _grid.CellToWorld(_home), Vector3.right, time, world, default);
+
+        static WorldBlackboard WorldWith(PlayerSnapshot player)
+        {
+            var world = new WorldBlackboard();
+            world.SetPlayer(player);
+            return world;
+        }
+
+        List<ActionCandidate> Candidates(PlayerSnapshot player)
+        {
+            var list = new List<ActionCandidate>();
+            new AttackPlayerSource(_sight).AddCandidates(Ctx(WorldWith(player), 0f), Identity(SaboteurLetter.A), list);
+            return list;
+        }
+
+        // ---- The source
+
+        [Test]
+        public void PlayerInRangeAndInSightIsAnAttackCandidate()
+        {
+            List<ActionCandidate> list = Candidates(PlayerAt(2f));
+
+            Assert.AreEqual(1, list.Count);
+            Assert.AreEqual(Attack, list[0].Key);
+            // Two considerations at full health: raw 1 - 2/8 = 0.75, compensated 0.75 + 0.25 x 0.5 x 0.75.
+            Assert.AreEqual(0.84375f, list[0].BaseScore, 1e-4f);
+        }
+
+        [Test]
+        public void ClosePlayerScoresHigherThanFarPlayer()
+        {
+            float near = Candidates(PlayerAt(1f))[0].BaseScore;
+            float far = Candidates(PlayerAt(6f))[0].BaseScore;
+
+            Assert.Greater(near, far);
+        }
+
+        [Test]
+        public void PlayerOnTheSpotScoresOne()
+        {
+            Assert.AreEqual(1f, Candidates(PlayerAt(0f))[0].BaseScore, 1e-4f);
+        }
+
+        [TestCase(8f)]
+        [TestCase(8.5f)]
+        [TestCase(30f)]
+        public void PlayerAtOrBeyondEightMetresIsNotACandidate(float metres)
+        {
+            Assert.IsEmpty(Candidates(PlayerAt(metres)));
+        }
+
+        [Test]
+        public void JustInsideEightMetresIsACandidate()
+        {
+            List<ActionCandidate> list = Candidates(PlayerAt(7.9f));
+
+            Assert.AreEqual(1, list.Count);
+            Assert.Greater(list[0].BaseScore, 0f);
+        }
+
+        [Test]
+        public void RangeIsMeasuredOnTheGroundPlane()
+        {
+            // 2 m away and 10 m up (a catwalk, a jump): still 2 m by the design's ground distance.
+            Assert.AreEqual(1, Candidates(PlayerAt(2f, height: 10f)).Count);
+        }
+
+        [Test]
+        public void PlayerOutOfSightIsNotACandidate()
+        {
+            _sight.Visible = false;
+
+            Assert.IsEmpty(Candidates(PlayerAt(2f)));
+        }
+
+        [Test]
+        public void DeadPlayerIsNotACandidate()
+        {
+            Assert.IsEmpty(Candidates(PlayerAt(2f, alive: false)));
+        }
+
+        [Test]
+        public void UnknownPlayerIsNotACandidate()
+        {
+            Assert.IsEmpty(Candidates(PlayerAt(2f, known: false)));
+        }
+
+        [Test]
+        public void ContextWithoutABlackboardIsNotACandidate()
+        {
+            var list = new List<ActionCandidate>();
+            var ctx = new AgentContext(_home, _grid.CellToWorld(_home), Vector3.forward, 0f, null, default);
+
+            new AttackPlayerSource(_sight).AddCandidates(ctx, Identity(SaboteurLetter.A), list);
+
+            Assert.IsEmpty(list);
+        }
+
+        [Test]
+        public void SourceNeedsASightQuery()
+        {
+            Assert.Throws<System.ArgumentNullException>(() => new AttackPlayerSource(null));
+        }
+
+        // ---- The sight adapter
+
+        [Test]
+        public void SightIsClearWhenTheCoverQueryIsNotBlocked()
+        {
+            var visibility = new FakeVisibility();
+            var sight = new CoverVisibilitySight(visibility);
+
+            Assert.IsTrue(sight.CanSeeCell(_home));
+            Assert.AreEqual(CoverVisibilitySight.TargetHeight, visibility.LastHeight);
+
+            visibility.Blocked = true;
+            Assert.IsFalse(sight.CanSeeCell(_home));
+        }
+
+        [Test]
+        public void SightAdapterNeedsAVisibilityQuery()
+        {
+            Assert.Throws<System.ArgumentNullException>(() => new CoverVisibilitySight(null));
+        }
+
+        // ---- The brain
+
+        [Test]
+        public void FirstAttackTickWithinReachStopsTheBodyFacesThePlayerAndShoots()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            PlayerSnapshot player = PlayerAt(1.5f);
+
+            AgentIntent intent = brain.Tick(Ctx(WorldWith(player), 0f));
+
+            Assert.AreEqual(Attack, brain.CurrentAction);
+            Assert.AreEqual(AgentAction.Shoot, intent.Action);
+            Assert.AreEqual("AttackPlayer", intent.DebugState);
+            Assert.IsNotNull(intent.Path, "The first attack tick stops the body.");
+            Assert.AreEqual(0, intent.Path.Count);
+            Assert.AreEqual(player.Position, intent.LookTarget);
+        }
+
+        [Test]
+        public void MeleeConstantsMatchTheSwipe()
+        {
+            // The Saboteur prefab: stand-off 1.6 m, reach margin 0.6 m (hit reach 2.2 m), a swipe every 1.2 s.
+            Assert.AreEqual(1.2f, SaboteurBrain.AttackIntervalSeconds);
+            Assert.AreEqual(1.6f, SaboteurBrain.MeleeStandOffMetres);
+            Assert.AreEqual(2f, SaboteurBrain.MeleeReachMetres);
+            Assert.Less(SaboteurBrain.MeleeReachMetres, 1.6f + 0.6f, "Shoot is only asked for inside the distance the swipe lands.");
+            Assert.GreaterOrEqual(SaboteurBrain.MeleeReachMetres, SaboteurBrain.MeleeStandOffMetres);
+        }
+
+        [Test]
+        public void PlayerBeyondReachIsChasedNotShot()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            PlayerSnapshot player = PlayerAt(5f);
+
+            AgentIntent intent = brain.Tick(Ctx(WorldWith(player), 0f));
+
+            Assert.AreEqual(Attack, brain.CurrentAction);
+            Assert.AreEqual("AttackPlayer", intent.DebugState);
+            Assert.AreEqual(AgentAction.None, intent.Action, "The swipe only lands within about 2 m.");
+            Assert.IsNotNull(intent.Path);
+            Assert.Greater(intent.Path.Count, 0, "A route to the player, not a stop.");
+            Vector3 end = intent.Path[intent.Path.Count - 1];
+            Assert.Less(Vector3.Distance(end, player.Position), 1f, "The route ends at the player.");
+            Assert.AreEqual(player.Position, intent.LookTarget);
+        }
+
+        [TestCase(1.95f, true)]
+        [TestCase(2.05f, false)]
+        public void ShootIsAskedForOnlyWithinMeleeReach(float metres, bool shoots)
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+
+            AgentIntent intent = brain.Tick(Ctx(WorldWith(PlayerAt(metres)), 0f));
+
+            Assert.AreEqual(shoots ? AgentAction.Shoot : AgentAction.None, intent.Action);
+        }
+
+        [Test]
+        public void NoShotIsAskedForAtAnyDistanceBeyondReach()
+        {
+            // Up to 7 m: past about 7.2 m the attack scores below Idle and is not selected at all.
+            for (float metres = 2.1f; metres < 7f; metres += 0.35f)
+            {
+                _claims = new TargetClaims();
+                SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+
+                AgentIntent intent = brain.Tick(Ctx(WorldWith(PlayerAt(metres)), 0f));
+
+                Assert.AreEqual(Attack, brain.CurrentAction, $"{metres} m");
+                Assert.AreNotEqual(AgentAction.Shoot, intent.Action, $"{metres} m");
+            }
+        }
+
+        [Test]
+        public void ChaseRouteIsSentOnceWhileThePlayerStaysInTheSameCell()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            WorldBlackboard world = WorldWith(PlayerAt(5f));
+            Assert.IsNotNull(brain.Tick(Ctx(world, 0f)).Path);
+
+            AgentIntent keep = brain.Tick(Ctx(world, SaboteurBrain.ChaseReplanSeconds + Frame));
+
+            Assert.AreEqual("AttackPlayer", keep.DebugState);
+            Assert.IsNull(keep.Path, "The route already sent still leads to the player.");
+        }
+
+        [Test]
+        public void ChaseRoutesAgainWhenThePlayerMovesButNotBeforeTheReplanDelay()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            brain.Tick(Ctx(WorldWith(PlayerAt(5f)), 0f));
+            WorldBlackboard moved = WorldWith(PlayerAt(6.5f));
+
+            AgentIntent early = brain.Tick(Ctx(moved, SaboteurBrain.ChaseReplanSeconds - Frame));
+            Assert.IsNull(early.Path, "Not yet: searches are rationed.");
+
+            AgentIntent later = brain.Tick(Ctx(moved, SaboteurBrain.ChaseReplanSeconds));
+            Assert.IsNotNull(later.Path);
+            Assert.Greater(later.Path.Count, 0);
+            Assert.Less(Vector3.Distance(later.Path[later.Path.Count - 1], moved.Player.Position), 1f);
+        }
+
+        [Test]
+        public void GraphChangeMakesTheChaseSearchAgainEvenForAStillPlayer()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            WorldBlackboard world = WorldWith(PlayerAt(5f));
+            brain.Tick(Ctx(world, 0f));
+
+            brain.OnGraphChanged(new List<Vector2Int> { new Vector2Int(12, 10) });
+            AgentIntent intent = brain.Tick(Ctx(world, SaboteurBrain.ChaseReplanSeconds));
+
+            Assert.IsNotNull(intent.Path, "The route to the player may have been cut.");
+            Assert.Greater(intent.Path.Count, 0);
+        }
+
+        [Test]
+        public void ClosingInStopsTheBodyAndStrikes()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            Assert.AreNotEqual(AgentAction.Shoot, brain.Tick(Ctx(WorldWith(PlayerAt(5f)), 0f)).Action);
+
+            AgentIntent strike = brain.Tick(Ctx(WorldWith(PlayerAt(1.5f)), Frame));
+
+            Assert.AreEqual(AgentAction.Shoot, strike.Action);
+            Assert.IsNotNull(strike.Path, "Inside reach the chase route is replaced by a stop.");
+            Assert.AreEqual(0, strike.Path.Count);
+        }
+
+        [Test]
+        public void PlayerBackingOffDuringTheStrikeIsChasedAgain()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            Assert.AreEqual(AgentAction.Shoot, brain.Tick(Ctx(WorldWith(PlayerAt(1.5f)), 0f)).Action);
+
+            AgentIntent intent = brain.Tick(Ctx(WorldWith(PlayerAt(5f)), Frame));
+
+            Assert.AreEqual("AttackPlayer", intent.DebugState);
+            Assert.AreEqual(AgentAction.None, intent.Action);
+            Assert.IsNotNull(intent.Path);
+            Assert.Greater(intent.Path.Count, 0, "The stopped body is sent after the player.");
+        }
+
+        [Test]
+        public void ShotPacingHoldsAcrossAChaseAndAStrike()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            Assert.AreEqual(AgentAction.Shoot, brain.Tick(Ctx(WorldWith(PlayerAt(1.5f)), 0f)).Action);
+            brain.Tick(Ctx(WorldWith(PlayerAt(5f)), 0.5f));
+
+            AgentIntent tooSoon = brain.Tick(Ctx(WorldWith(PlayerAt(1.5f)), 0.75f));
+            Assert.AreEqual(AgentAction.None, tooSoon.Action, "Back in reach, but the swipe is still recovering.");
+
+            AgentIntent ready = brain.Tick(Ctx(WorldWith(PlayerAt(1.5f)), SaboteurBrain.AttackIntervalSeconds));
+            Assert.AreEqual(AgentAction.Shoot, ready.Action);
+        }
+
+        [Test]
+        public void UnreachablePlayerIsNotShotAtAndTheBodyHolds()
+        {
+            using (GridGraph.Batch batch = _grid.BeginBatch())
+            {
+                for (int x = 0; x < _grid.Width; x++)
+                for (int y = 0; y < _grid.Height; y++)
+                    if (Mathf.Abs(x - _home.x) > 1 || Mathf.Abs(y - _home.y) > 1)
+                        batch.SetWalkable(new Vector2Int(x, y), false);
+                batch.Commit();
+            }
+
+            SaboteurBrain brain = Brain(SaboteurLetter.A);
+            WorldBlackboard world = WorldWith(PlayerAt(5f));
+
+            AgentIntent first = brain.Tick(Ctx(world, 0f));
+            Assert.AreEqual("AttackPlayer", first.DebugState);
+            Assert.AreEqual(AgentAction.None, first.Action);
+            Assert.IsNotNull(first.Path, "No route to the player, so the body is stopped once.");
+            Assert.AreEqual(0, first.Path.Count);
+
+            AgentIntent next = brain.Tick(Ctx(world, SaboteurBrain.ChaseReplanSeconds + Frame));
+            Assert.AreEqual(AgentAction.None, next.Action);
+        }
+
+        [Test]
+        public void ShotsArePacedByTheAttackInterval()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            WorldBlackboard world = WorldWith(PlayerAt(1.5f));
+
+            Assert.AreEqual(AgentAction.Shoot, brain.Tick(Ctx(world, 0f)).Action);
+
+            AgentIntent between = brain.Tick(Ctx(world, SaboteurBrain.AttackIntervalSeconds - Frame));
+            Assert.AreEqual(AgentAction.None, between.Action, "Not yet.");
+            Assert.IsNull(between.Path, "The body stays stopped; no new path.");
+            Assert.AreEqual("AttackPlayer", between.DebugState);
+
+            Assert.AreEqual(AgentAction.Shoot, brain.Tick(Ctx(world, SaboteurBrain.AttackIntervalSeconds)).Action);
+        }
+
+        [Test]
+        public void PlayerLeavingRangeSendsTheSaboteurBackToPatrol()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            Assert.AreEqual(AgentAction.Shoot, brain.Tick(Ctx(WorldWith(PlayerAt(1.5f)), 0f)).Action);
+
+            // Out of range: the next decision drops the attack and the body is routed again.
+            AgentIntent intent = default;
+            WorldBlackboard far = WorldWith(PlayerAt(20f));
+            for (float t = Frame; t <= 2f; t += Frame)
+            {
+                intent = brain.Tick(Ctx(far, t));
+                if (intent.DebugState == "Patrol")
+                    break;
+            }
+
+            Assert.AreEqual("Patrol", intent.DebugState);
+            Assert.AreEqual(AgentAction.None, intent.Action);
+            Assert.IsNotNull(intent.Path, "A fresh patrol route, because the body had been stopped.");
+            Assert.Greater(intent.Path.Count, 0);
+        }
+
+        [Test]
+        public void PlayerDyingMidAttackStopsTheShootingAtOnce()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            Assert.AreEqual(AgentAction.Shoot, brain.Tick(Ctx(WorldWith(PlayerAt(1.5f)), 0f)).Action);
+
+            // A dead player must not be shot at, whether or not this tick is a decision slot.
+            AgentIntent intent = brain.Tick(Ctx(WorldWith(PlayerAt(1.5f, alive: false)), SaboteurBrain.AttackIntervalSeconds));
+
+            Assert.AreNotEqual(AgentAction.Shoot, intent.Action);
+            Assert.AreEqual("Patrol", intent.DebugState);
+        }
+
+        [Test]
+        public void StunDuringAnAttackResumesWithAFreshRoute()
+        {
+            SaboteurBrain brain = Brain(SaboteurLetter.A, new Vector2Int(30, 30));
+            WorldBlackboard far = WorldWith(PlayerAt(20f));
+            brain.Tick(Ctx(WorldWith(PlayerAt(3f)), 0f));
+
+            brain.OnStunned(2f);
+            AgentIntent intent = brain.Tick(Ctx(far, 5f));
+
+            // The player was seen 5 s ago and is now out of sight: the Saboteur goes to look where it last saw them,
+            // on a fresh route.
+            Assert.AreEqual("Search", intent.DebugState);
+            Assert.IsNotNull(intent.Path);
+            Assert.Greater(intent.Path.Count, 0);
+
+            // Once that memory has gone (6 s), it is back to its patrol.
+            AgentIntent later = brain.Tick(Ctx(far, 5f + SaboteurAwareness.MemorySeconds + 1f));
+            Assert.AreEqual("Patrol", later.DebugState);
+        }
+
+        [Test]
+        public void ThirdAttackerIsSaturatedAndPrefersToIdleWhenItsScoreIsLow()
+        {
+            // 7.04 m: raw 0.12, compensated 0.1728, above Idle (0.1). Saturated by two attackers: x 0.45 = 0.078, below it.
+            SaboteurBrain a = Brain(SaboteurLetter.A);
+            SaboteurBrain b = Brain(SaboteurLetter.B);
+            SaboteurBrain c = Brain(SaboteurLetter.C);
+            WorldBlackboard near = WorldWith(PlayerAt(2f));
+            WorldBlackboard edge = WorldWith(PlayerAt(7.04f));
+
+            // A and B attack from 2 m.
+            a.Tick(Ctx(near, 0f));
+            b.Tick(Ctx(near, 0f));
+            b.Tick(Ctx(near, SquadCoordinator.StaggerStep));
+            Assert.AreEqual(Attack, a.CurrentAction);
+            Assert.AreEqual(Attack, b.CurrentAction);
+
+            // C, 7.04 m away, sees two attackers and idles.
+            c.Tick(Ctx(edge, 0f));
+            c.Tick(Ctx(edge, 2 * SquadCoordinator.StaggerStep));
+            Assert.AreEqual(SaboteurActionKind.Idle, c.CurrentAction.Kind);
+
+            // Without the saturation the same Saboteur would attack.
+            _claims = new TargetClaims();
+            SaboteurBrain alone = Brain(SaboteurLetter.A);
+            alone.Tick(Ctx(edge, 0f));
+            Assert.AreEqual(Attack, alone.CurrentAction);
+        }
+
+        [Test]
+        public void BrainWithNoAttackSourceNeverShoots()
+        {
+            var brain = new SaboteurBrain(Identity(SaboteurLetter.A), _grid, new AStarSearch(_grid), _claims,
+                new List<Vector3> { _grid.CellToWorld(new Vector2Int(30, 30)) });
+
+            AgentIntent intent = brain.Tick(Ctx(WorldWith(PlayerAt(1f)), 0f));
+
+            Assert.AreEqual(AgentAction.None, intent.Action);
+            Assert.AreEqual("Patrol", intent.DebugState);
+        }
+    }
+}

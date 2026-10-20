@@ -5,7 +5,11 @@
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "ToyFactory.AI.Core",
-        "ToyFactory.AI.Agents"
+        "ToyFactory.AI.Agents",
+        "ToyFactory.Interfaces",
+        "ToyFactory.Journey",
+        "ToyFactory.UI",
+        "Unity.Timeline"
     ],
     "includePlatforms": [
         "Editor"

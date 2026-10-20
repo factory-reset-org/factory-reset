@@ -1,0 +1,27 @@
+{
+    "name": "ToyFactory.Tests.PlayMode",
+    "rootNamespace": "ToyFactory.Tests",
+    "references": [
+        "UnityEngine.TestRunner",
+        "ToyFactory.AI.Core",
+        "ToyFactory.AI.Agents",
+        "ToyFactory.Runtime",
+        "ToyFactory.Interfaces",
+        "ToyFactory.Journey",
+        "ToyFactory.UI",
+        "Unity.AI.Navigation",
+        "Unity.Timeline",
+        "Unity.Cinemachine",
+        "UnityEngine.UI",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": ["nunit.framework.dll"],
+    "autoReferenced": false,
+    "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,31 @@
+Scripted playthrough, title to results
+00:00  Start pressed, intro skipped, Chapter 1 begins
+00:01  ch1.lever: conveyor lever pulled, belts running
+00:05  ch1.plate: crate put on the top belt, rode to the stop and latched the plate
+00:05  ch1.fuse.1: fuse 1 picked up
+00:05  ch1.fuse.2: fuse 2 picked up
+00:05  ch1.fuse.3: fuse 3 picked up
+00:05  Switch 1 restored
+00:05  Chapter 1 frame rate: average 71 fps, lowest 2 fps over 375 frames
+00:06  Cutscene skipped, Chapter 2 begins
+00:09  ch2.targets: four spinning targets hit inside the 12 s window
+00:15  ch2.terminal: terminal held for 6 s, hacked
+00:15  Switch 2 restored
+00:15  Chapter 2 frame rate: average 87 fps, lowest 5 fps over 896 frames
+00:17  Cutscene skipped, Chapter 3 begins
+00:19  ch3.relays: relays pressed in the board's order (2, 3, 1)
+00:19  Saboteur A scrapped (2 hits taken), keycard dropped
+00:19  ch3.keycard: keycard picked up
+00:19  Switch 3 restored
+00:19  Chapter 3 frame rate: average 54 fps, lowest 3 fps over 196 frames
+00:20  Cutscene skipped (the Captain wakes, doors 3 and 4 unlock), Chapter 4 begins
+00:22  ch4.core.1: Core_1 destroyed
+00:22  ch4.core.2: Core_2 destroyed
+00:22  ch4.core.3: Core_3 destroyed
+00:25  console: final console held, factory reset
+00:25  Chapter 4 frame rate: average 65 fps, lowest 6 fps over 376 frames
+00:26  Results: Won, score 13,270, grade A, run time 00:26
+Damage the player took, by source (health was topped up after each hit):
+  Tracker: 16
+  Saboteur: 50
+  Guard: 30
