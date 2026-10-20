@@ -87,6 +87,9 @@ namespace ToyFactory.Runtime.Debugging
                 var camera = go.AddComponent<Camera>();
                 camera.depth = 50f;   // drawn over the player's camera
                 camera.fieldOfView = 60f;
+                // 37 m up is outside the baked occlusion volume, where the hidden ceilings still
+                // count as occluders and would cull every floor.
+                camera.useOcclusionCulling = false;
                 // The level is about 41 m square: 37 m up at 60 degrees shows all four rooms.
                 go.transform.SetPositionAndRotation(new Vector3(20.5f, 37f, 20.5f), Quaternion.Euler(90f, 0f, 0f));
                 AgentDebugOverlay.LabelCamera = camera;
