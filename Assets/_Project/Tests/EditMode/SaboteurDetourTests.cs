@@ -526,13 +526,17 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void SourceOffersTheDoorOnThePlayersRoute()
+        public void SourceOffersTheDoorOnThePlayersRouteAboveTheirRoomsOtherWayOut()
         {
             List<ActionCandidate> list = Offers(Cache(), new Vector2Int(14, 10));
 
-            Assert.AreEqual(1, list.Count, "Door 2 is off the route and door 1 is the only useful one.");
-            Assert.AreEqual(new ActionKey(SaboteurActionKind.CloseDoor, 1), list[0].Key);
-            Assert.Greater(list[0].BaseScore, SaboteurBrain.IdleScore);
+            // Both doors lead out of the player's room; door 1 is also the way their route takes.
+            Assert.AreEqual(2, list.Count);
+            ActionCandidate route = list.Find(c => c.Key.TargetId == 1);
+            ActionCandidate other = list.Find(c => c.Key.TargetId == 2);
+            Assert.AreEqual(new ActionKey(SaboteurActionKind.CloseDoor, 1), route.Key);
+            Assert.Greater(route.BaseScore, other.BaseScore, "The way they are heading comes first.");
+            Assert.Greater(other.BaseScore, SaboteurBrain.IdleScore, "The other way out is still worth shutting.");
         }
 
         [Test]
@@ -556,18 +560,29 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void LockoutDoorIsNotOffered()
+        public void TheOnlyWayOnIsOfferedAtFullValue()
         {
-            _grid.SetWalkable(Door2Cell, false);
+            // The player can open any door a Saboteur shuts, so their only way on is the most a door is worth.
+            _grid.SetDoor(Door2Cell, 2, true);
+            DetourCache cache = Cache();
+            cache.Refresh(_world, 0f);
+            Assert.IsTrue(Door(cache, 1).IsLockout);
 
-            Assert.IsEmpty(Offers(Cache(), new Vector2Int(14, 10)));
+            List<ActionCandidate> list = Offers(cache, new Vector2Int(14, 10));
+
+            Assert.AreEqual(1, list.Count);
+            Assert.AreEqual(new ActionKey(SaboteurActionKind.CloseDoor, 1), list[0].Key);
+            Assert.AreEqual(1f, CloseDoorSource.DoorValue(Door(cache, 1), roomExit: true));
         }
 
         [Test]
-        public void DoorWithNoDetourIsNotOffered()
+        public void DoorThatNeitherShutsThePlayerInNorLengthensTheirRouteIsNotOffered()
         {
-            // The player is past the wall already: neither door is on the way to the objective.
-            SetPlayer(new Vector2Int(30, 10));
+            // A solid wall at x = 28: the player's room (x 29 to 39) has no door, and their route does not pass one.
+            for (int y = 0; y < _grid.Height; y++)
+                _grid.SetWalkable(new Vector2Int(28, y), false);
+            SetPlayer(new Vector2Int(32, 10));
+            _world.SetObjectiveTargets(new[] { new ObjectiveTarget(7, new Vector2Int(38, 10), ObjectiveTargetKind.Task) });
 
             Assert.IsEmpty(Offers(Cache(), new Vector2Int(14, 10)));
         }
@@ -577,7 +592,9 @@ namespace ToyFactory.Tests.EditMode
         {
             SetPlayer(new Vector2Int(19, 10));
 
-            Assert.IsEmpty(Offers(Cache(), new Vector2Int(14, 10)));
+            List<ActionCandidate> list = Offers(Cache(), new Vector2Int(14, 10));
+
+            Assert.IsFalse(list.Exists(c => c.Key.TargetId == 1), "Never shut a door on the player.");
         }
 
         [Test]
@@ -585,9 +602,73 @@ namespace ToyFactory.Tests.EditMode
         {
             _grid.SetDoor(Door1Cell, 1, true);
 
-            Assert.IsEmpty(Offers(Cache(), new Vector2Int(14, 10)));
+            List<ActionCandidate> list = Offers(Cache(), new Vector2Int(14, 10));
+
+            Assert.IsFalse(list.Exists(c => c.Key.TargetId == 1));
+            Assert.IsTrue(list.Exists(c => c.Key.TargetId == 2), "The way out still open is.");
         }
 
+        [Test]
+        public void RoomExitsAreFoundWithoutAnObjective()
+        {
+            _world.SetObjectiveTargets(new ObjectiveTarget[0]);
+            DetourCache cache = Cache();
+            cache.Refresh(_world, 0f);
+
+            Assert.IsFalse(cache.HasObjective);
+            CollectionAssert.AreEquivalent(new[] { 1, 2 }, cache.PlayerRoomExits);
+            Assert.AreEqual(2, Offers(cache, new Vector2Int(14, 10)).Count, "A player shut in needs no objective.");
+        }
+
+        [Test]
+        public void ADeadPlayerHasNoRoomExits()
+        {
+            SetPlayer(PlayerCell, alive: false);
+            DetourCache cache = Cache();
+            cache.Refresh(_world, 0f);
+
+            Assert.IsEmpty(cache.PlayerRoomExits);
+        }
+
+        [Test]
+        public void ASaboteurInAnotherRoomIsOfferedNoDoor()
+        {
+            // The player is at (5, 10), the Saboteur across the wall: closing a door from there would shut it out of
+            // the player's room.
+            Assert.IsEmpty(Offers(Cache(), new Vector2Int(30, 10)));
+        }
+
+        [Test]
+        public void OnlyTheWaysOutOfTheRoomTheyShareAreOffered()
+        {
+            // A second wall at x = 30 with door 3 at y = 10: door 3 is on the player's route, but not a way out of
+            // the room the Saboteur and the player are in.
+            using (GridGraph.Batch batch = _grid.BeginBatch())
+            {
+                for (int y = 0; y < _grid.Height; y++)
+                {
+                    if (y != 10)
+                        batch.SetWalkable(new Vector2Int(30, y), false);
+                }
+                batch.SetDoor(new Vector2Int(30, 10), 3, false);
+                batch.Commit();
+            }
+
+            List<int> offered = Offers(Cache(), new Vector2Int(14, 10)).ConvertAll(c => c.Key.TargetId);
+
+            CollectionAssert.AreEquivalent(new[] { 1, 2 }, offered);
+        }
+
+        [Test]
+        public void ASaboteurInTheDoorwayOfThePlayersRoomCountsAsInIt()
+        {
+            DetourCache cache = Cache();
+            cache.Refresh(_world, 0f);
+
+            Assert.IsTrue(cache.IsInPlayerRoom(Door1Cell), "In the doorway, on the room's edge.");
+            Assert.IsTrue(cache.IsInPlayerRoom(new Vector2Int(14, 10)));
+            Assert.IsFalse(cache.IsInPlayerRoom(new Vector2Int(30, 10)), "Across the wall.");
+        }
         [Test]
         public void DoorwayCheckUsesAOneCellClearance()
         {
@@ -649,6 +730,7 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual(new ActionKey(SaboteurActionKind.CloseDoor, 1), brain.CurrentAction);
             Assert.AreEqual("CloseDoor", first.DebugState);
             Assert.AreEqual(AgentAction.None, first.Action);
+            Assert.IsTrue(first.IgnorePlayer, "Walking to the door, it does not stop in front of the player.");
             Assert.IsNotNull(first.Path);
             Assert.AreEqual(_grid.CellToWorld(Door1Cell), first.Path[first.Path.Count - 1]);
             Assert.AreEqual(1, _claims.ClaimedBy(1), "The Saboteur claimed the door.");
@@ -671,6 +753,7 @@ namespace ToyFactory.Tests.EditMode
             Assert.AreEqual("CloseDoor", intent.DebugState);
             Assert.AreEqual(0, intent.Path.Count, "The body stops once at the door.");
             Assert.AreEqual(_grid.CellToWorld(Door1Cell), intent.LookTarget);
+            Assert.IsTrue(intent.IgnorePlayer, "On an errand: the body does not stand off from or swing at the player.");
 
             AgentIntent again = brain.Tick(At(new Vector2Int(19, 10), 0.3f));
             Assert.AreEqual(AgentAction.CloseDoor, again.Action);
@@ -680,6 +763,7 @@ namespace ToyFactory.Tests.EditMode
         [Test]
         public void ClosedDoorEndsThePlanReleasesTheClaimAndSendsTheSaboteurBackToPatrol()
         {
+            _grid.SetDoor(Door2Cell, 2, true);   // one way out, so nothing is left to shut afterwards
             DetourCache cache = Cache();
             SaboteurBrain brain = Brain(SaboteurLetter.A, cache, new Vector2Int(2, 2));
             brain.Tick(At(new Vector2Int(19, 10), 0f));
@@ -695,8 +779,31 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void ADoorPlanEndsWithNoCooldownWhenThePlayerLeavesTheRoom()
+        {
+            DetourCache cache = Cache();
+            SaboteurBrain brain = Brain(SaboteurLetter.A, cache, new Vector2Int(2, 2));
+            Assert.AreEqual("CloseDoor", brain.Tick(At(new Vector2Int(10, 10), 0f)).DebugState);
+
+            // The player goes through door 1 into the other room before the Saboteur gets there.
+            SetPlayer(new Vector2Int(30, 10));
+            AgentIntent intent = default;
+            for (float t = 0.25f; t <= 1f; t += 0.25f)
+                intent = brain.Tick(At(new Vector2Int(12, 10), t));
+
+            Assert.AreNotEqual("CloseDoor", intent.DebugState, "Shutting the door now would shut it out of the player's room.");
+            Assert.IsNull(_claims.ClaimedBy(1), "The claim is released.");
+
+            // They come back: the door is offered again at once, with no cooldown to wait out.
+            SetPlayer(PlayerCell);
+            for (float t = 1.25f; t <= 2f; t += 0.25f)
+                brain.Tick(At(new Vector2Int(12, 10), t));
+            Assert.AreEqual(SaboteurActionKind.CloseDoor, brain.CurrentAction.Kind);
+        }
+        [Test]
         public void DoorThatStaysOpenIsGivenUpOnAndNotRetriedAtOnce()
         {
+            _grid.SetDoor(Door2Cell, 2, true);   // one way out, so the cooldown is all that keeps it from closing
             DetourCache cache = Cache();
             SaboteurBrain brain = Brain(SaboteurLetter.A, cache, new Vector2Int(2, 2));
             Vector2Int at = new Vector2Int(19, 10);
@@ -719,7 +826,7 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void SecondSaboteurDoesNotTakeTheDoorTheFirstHasClaimed()
+        public void SecondSaboteurTakesTheOtherWayOutNotTheDoorTheFirstHasClaimed()
         {
             DetourCache cache = Cache();
             SaboteurBrain a = Brain(SaboteurLetter.A, cache, new Vector2Int(2, 2));
@@ -730,8 +837,9 @@ namespace ToyFactory.Tests.EditMode
             b.Tick(At(new Vector2Int(12, 11), SquadCoordinator.StaggerStep));
 
             Assert.AreEqual(new ActionKey(SaboteurActionKind.CloseDoor, 1), a.CurrentAction);
-            Assert.AreEqual(SaboteurActionKind.Idle, b.CurrentAction.Kind);
+            Assert.AreEqual(new ActionKey(SaboteurActionKind.CloseDoor, 2), b.CurrentAction, "B shuts the other way out.");
             Assert.AreEqual(1, _claims.ClaimedBy(1));
+            Assert.AreEqual(2, _claims.ClaimedBy(2));
         }
 
         [Test]

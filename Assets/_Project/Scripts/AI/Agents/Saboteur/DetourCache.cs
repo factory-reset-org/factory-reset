@@ -58,8 +58,11 @@ namespace ToyFactory.AI.Agents.Saboteur
     /// <para><b>Never changes the grid.</b> A closed door is only a price (<see cref="DoorClosureCostModel"/>),
     /// so the live graph, its version and every other agent's routes are untouched.</para>
     /// <para><b>Lockouts.</b> A door that would leave no route at all has an infinite
-    /// <see cref="DoorDetour.ClosedCost"/>. It is reported, not hidden, and the CloseDoor source
-    /// rejects it: the design never traps the player.</para>
+    /// <see cref="DoorDetour.ClosedCost"/>. It is reported, not hidden. The player can open every door
+    /// a Saboteur closes, so the CloseDoor source treats it as the most a door can cost them, not as a
+    /// soft lock.</para>
+    /// <para><b>Room exits.</b> Each refresh also lists the open doors out of the player's room
+    /// (<see cref="PlayerRoomExits"/>), the doors that shut the player in.</para>
     /// </remarks>
     public sealed class DetourCache
     {
@@ -95,6 +98,9 @@ namespace ToyFactory.AI.Agents.Saboteur
         readonly HashSet<Vector2Int> _routeNeighbourhood = new HashSet<Vector2Int>();
         readonly List<Vector2Int> _route = new List<Vector2Int>();
         readonly List<Vector2Int> _stagingRoute = new List<Vector2Int>();
+        readonly List<int> _roomExits = new List<int>();
+        readonly HashSet<Vector2Int> _playerRoom = new HashSet<Vector2Int>();
+        readonly Queue<Vector2Int> _floodQueue = new Queue<Vector2Int>();
 
         // A refresh in progress. Its results are built here and published together when the last search
         // is done, so a reader never sees half a refresh.
@@ -152,6 +158,38 @@ namespace ToyFactory.AI.Agents.Saboteur
         public Vector2Int ObjectiveCell { get; private set; }
 
         /// <summary>
+        /// The open doors out of the room the player stands in, from the latest refresh: closing one shuts
+        /// the player in until they open it again. Worked out with or without an objective, so the squad can
+        /// shut a player in wherever they are. The room is the floor reached from the player's cell without
+        /// passing a door, within <see cref="RoomPatrolPlanner.MaxRadiusCells"/>; empty with no live player.
+        /// </summary>
+        public IReadOnlyList<int> PlayerRoomExits => _roomExits;
+
+        /// <summary>True when door <paramref name="doorId"/> was an open way out of the player's room at the latest refresh.</summary>
+        public bool IsPlayerRoomExit(int doorId) => _roomExits.Contains(doorId);
+
+        /// <summary>
+        /// True when <paramref name="cell"/> was in the player's room at the latest refresh: on its floor, or next to
+        /// it (a body standing in a doorway, or on a cell the grid counts as blocked, such as the edge of a prop).
+        /// False with no live player.
+        /// </summary>
+        public bool IsInPlayerRoom(Vector2Int cell)
+        {
+            if (_playerRoom.Count == 0)
+                return false;
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    if (_playerRoom.Contains(new Vector2Int(cell.x + dx, cell.y + dy)))
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// How many A* searches one <see cref="Refresh"/> call may start. A refresh needs one search for the
         /// route plus one per door on it; with a limit of 1 it is spread over that many calls, so no single
         /// Saboteur tick pays for all of them, and the new results are published together after the last.
@@ -166,8 +204,8 @@ namespace ToyFactory.AI.Agents.Saboteur
         public int Searches { get; private set; }
 
         /// <summary>
-        /// Fresh searches made by <see cref="WouldLockPlayerOut"/> so far: one per door plan that reached its
-        /// door. They are not refresh searches, so they are counted apart from <see cref="Searches"/>.
+        /// Fresh searches made by <see cref="WouldLockPlayerOut"/> so far, one per call. They are not refresh
+        /// searches, so they are counted apart from <see cref="Searches"/>.
         /// </summary>
         public int LockoutChecks { get; private set; }
 
@@ -239,11 +277,11 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// <summary>
         /// True when closing door <paramref name="doorId"/> right now would leave the player no route to
         /// the objective. Unlike <see cref="TryGet"/> this searches fresh against the grid as it is at
-        /// this moment, so a door another Saboteur has just shut is already counted. The brain asks it
-        /// once, just before it sends the close request: two doors that are each safe alone can be
-        /// together a lockout (the two entrances of one room), and the cache's results can be half a
-        /// second old. A door with no known cells, or no player, objective or route to compare, is not
-        /// a lockout. The grid is never changed.
+        /// this moment, so a door another Saboteur has just shut is already counted: two doors that are
+        /// each no lockout alone can be one together (the two entrances of one room), and the cache's
+        /// results can be half a second old. The brain no longer refuses such a door, since the player can
+        /// open it again; this stays a query for diagnostics. A door with no known cells, or no player,
+        /// objective or route to compare, is not a lockout. The grid is never changed.
         /// </summary>
         public bool WouldLockPlayerOut(WorldBlackboard world, int doorId)
         {
@@ -287,7 +325,8 @@ namespace ToyFactory.AI.Agents.Saboteur
 
         /// <summary>
         /// The consideration input for a gain: clamped to [0, 1], so a route that grows by 100% or
-        /// more saturates. A lockout scores 0, because it is rejected, never rewarded.
+        /// more saturates. A lockout (infinite gain) scores 0 here; the CloseDoor source values it
+        /// itself, as a door the player must stop and open.
         /// </summary>
         public static float GainScore(float gain)
         {
@@ -300,6 +339,7 @@ namespace ToyFactory.AI.Agents.Saboteur
         {
             _staging.Clear();
             ScanDoors();
+            FindRoomExits(world.Player);
 
             if (!TryGetRoute(world, out _sliceStart, out _sliceGoal, out List<Vector2Int> route, out _sliceOpenCost))
             {
@@ -403,6 +443,48 @@ namespace ToyFactory.AI.Agents.Saboteur
             _entries.RemoveRange(used, _entries.Count - used);
         }
 
+        // The open doors touching the player's room. One flood per refresh for the whole squad, over the same
+        // floor the room patrol uses (walls and props bound it, a doorway ends it), reusing its set and queue.
+        void FindRoomExits(in PlayerSnapshot player)
+        {
+            _roomExits.Clear();
+            _playerRoom.Clear();
+            _floodQueue.Clear();
+            if (!player.IsKnown || !player.IsAlive || !Snap(player.Cell, out Vector2Int start))
+                return;
+
+            _playerRoom.Add(start);
+            _floodQueue.Enqueue(start);
+            while (_floodQueue.Count > 0)
+            {
+                Vector2Int cell = _floodQueue.Dequeue();
+                for (int i = 0; i < 4; i++)
+                {
+                    Vector2Int next = cell + FloodSteps[i];
+                    if (_playerRoom.Contains(next) || !_grid.Contains(next))
+                        continue;
+                    if (Math.Abs(next.x - start.x) > RoomPatrolPlanner.MaxRadiusCells
+                        || Math.Abs(next.y - start.y) > RoomPatrolPlanner.MaxRadiusCells)
+                        continue;
+                    GridNode node = _grid.GetNode(next);
+                    if (node.DoorId.HasValue || !node.IsSoundTraversable)
+                        continue;
+
+                    _playerRoom.Add(next);
+                    _floodQueue.Enqueue(next);
+                }
+            }
+
+            for (int e = 0; e < _entries.Count; e++)
+            {
+                DoorEntry door = _entries[e];
+                if (!door.Closed && TouchesCells(door, _playerRoom))
+                    _roomExits.Add(door.Id);
+            }
+        }
+
+        static readonly Vector2Int[] FloodSteps = { Vector2Int.right, Vector2Int.left, Vector2Int.up, Vector2Int.down };
+
         // Entries are kept in a prefix of _entries so the lists are reused from scan to scan.
         DoorEntry FindEntry(int doorId, int used, out bool isNew)
         {
@@ -500,7 +582,9 @@ namespace ToyFactory.AI.Agents.Saboteur
                 _routeNeighbourhood.Add(route[i]);
         }
 
-        bool TouchesRoute(DoorEntry door)
+        bool TouchesRoute(DoorEntry door) => TouchesCells(door, _routeNeighbourhood);
+
+        static bool TouchesCells(DoorEntry door, HashSet<Vector2Int> cells)
         {
             for (int i = 0; i < door.Cells.Count; i++)
             {
@@ -509,7 +593,7 @@ namespace ToyFactory.AI.Agents.Saboteur
                 {
                     for (int dy = -1; dy <= 1; dy++)
                     {
-                        if (_routeNeighbourhood.Contains(new Vector2Int(cell.x + dx, cell.y + dy)))
+                        if (cells.Contains(new Vector2Int(cell.x + dx, cell.y + dy)))
                             return true;
                     }
                 }

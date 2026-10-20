@@ -240,14 +240,15 @@ namespace ToyFactory.Tests.EditMode
                 Tick(c, time);
             }
 
-            // Two others attack, so C's attack is worth 0.8 x 0.45 = 0.36 and the door wins.
+            // Two others attack, so C's attack is worth 0.8 x 0.45 = 0.36, held back to a quarter of that while the
+            // door is on offer; the door wins.
             Assert.AreEqual(Attack, a.CurrentAction);
             Assert.AreEqual(Attack, b.CurrentAction);
             Assert.AreEqual(Door1, c.CurrentAction);
             CandidateTrace attack = c.LastDecision.GetCandidate(1);
             Assert.AreEqual(Attack, attack.Key);
             Assert.AreEqual(0.8f, attack.RawScore);
-            Assert.AreEqual(0.8f * SquadCoordinator.SaturatedAttackMultiplier, attack.BaseScore, 1e-6f);
+            Assert.AreEqual(0.8f * SquadCoordinator.SaturatedAttackMultiplier * SaboteurBrain.AttackDeferFactor, attack.BaseScore, 1e-6f);
         }
 
         [Test]

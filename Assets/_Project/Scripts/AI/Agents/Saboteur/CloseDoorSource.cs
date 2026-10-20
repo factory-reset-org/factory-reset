@@ -9,15 +9,20 @@ using ToyFactory.AI.Core.Search;
 namespace ToyFactory.AI.Agents.Saboteur
 {
     /// <summary>
-    /// Offers CloseDoor(d) for every open door whose closing makes the player's route to the
-    /// objective longer. Two considerations: the detour gain (a route that grows by 100% or more
-    /// saturates) and how near the Saboteur is to the door. The squad layer then vetoes a door
-    /// another Saboteur has claimed.
+    /// Offers CloseDoor(d) for the open ways out of the room the Saboteur and the player are both in, so it
+    /// shuts the player in with itself. Two considerations: the door's value (<see cref="DoorValue"/>: 1 for
+    /// the way out the player's route takes, less for another) and how near the Saboteur is to the door. The
+    /// squad layer then vetoes a door another Saboteur has claimed.
     /// </summary>
     /// <remarks>
-    /// <para>A door is not offered when it is already closed, when closing it would lock the player out
-    /// (no route at all), when it does not lengthen the route, or when the player stands in or next
-    /// to it.</para>
+    /// <para><b>Same room only.</b> Nothing is offered unless the Saboteur stands in the player's room
+    /// (<see cref="DetourCache.IsInPlayerRoom"/>), and only that room's own exits
+    /// (<see cref="DetourCache.PlayerRoomExits"/>) are offered. A Saboteur therefore closes a door from the
+    /// player's side and never shuts itself out in another room, and a squad mate elsewhere never closes a
+    /// door it would have to cross the map for. The player can open any door a Saboteur closes, so shutting
+    /// them in costs them a stop, not a soft lock. It counts with or without a known objective.</para>
+    /// <para>A door is not offered when it is already closed, when it is not a way out of the shared room, or
+    /// when the player stands in or next to it.</para>
     /// <para><b>Awareness.</b> Once a brain has bound its <see cref="SaboteurAwareness"/>, a door is only
     /// offered while the Saboteur knows the player is about (sees them, saw them in the last few seconds or
     /// heard them), so it does not shut doors in the path of a player it cannot know is coming.</para>
@@ -48,7 +53,7 @@ namespace ToyFactory.AI.Agents.Saboteur
         {
             _detours = detours ?? throw new ArgumentNullException(nameof(detours));
             _action = new UtilityAction(SaboteurActionKind.CloseDoor,
-                Consideration.Direct("DetourGain"),
+                Consideration.Direct("DoorValue"),
                 new Consideration("DoorDistance", ResponseCurve.Inverse));
         }
 
@@ -75,41 +80,72 @@ namespace ToyFactory.AI.Agents.Saboteur
             }
 
             _detours.Refresh(ctx.World, ctx.Time);
-            if (!_detours.HasObjective)
+
+            // Only a Saboteur in the player's own room shuts its doors: from inside, so it never shuts itself out.
+            if (!_detours.IsInPlayerRoom(ctx.Cell))
                 return;
 
-            IReadOnlyList<DoorDetour> doors = _detours.Doors;
             int searches = 0;
-            for (int i = 0; i < doors.Count; i++)
+            IReadOnlyList<int> exits = _detours.PlayerRoomExits;
+            for (int i = 0; i < exits.Count; i++)
             {
-                DoorDetour door = doors[i];
-                if (door.IsLockout)
+                if (!_detours.TryGetCells(exits[i], out IReadOnlyList<Vector2Int> cells) || cells.Count == 0)
                     continue;
-
-                float gain = DetourCache.GainScore(door.Gain);
-                if (gain <= 0f || IsInDoorway(player.Cell, door.Cells))
-                    continue;
-
-                float travel = NearestDistanceMetres(ctx.Cell, door.Cells);
-                if (travel > MaxTravelMetres)
-                    continue;
-
-                if (_pathfinder != null)
-                {
-                    if (searches >= MaxSearchesPerDecision)
-                        continue;
-                    searches++;
-                    if (!SaboteurPaths.TryWalkMetres(_detours.Grid, _pathfinder, ctx.Cell, NearestCell(ctx.Cell, door.Cells), out travel)
-                        || travel > MaxTravelMetres)
-                        continue;   // no way to the door, or too far round
-                }
-
-                _inputs[0] = gain;
-                _inputs[1] = travel / MaxTravelMetres;
-                ActionScore score = _action.Evaluate(_inputs);
-                if (!score.Vetoed)
-                    candidates.Add(new ActionCandidate(new ActionKey(SaboteurActionKind.CloseDoor, door.DoorId), score.BaseScore));
+                float value = _detours.HasObjective && _detours.TryGet(exits[i], out DoorDetour door)
+                    ? DoorValue(door, roomExit: true)
+                    : RoomExitValue;
+                Offer(ctx, player, exits[i], cells, value, ref searches, candidates);
             }
+        }
+
+        /// <summary>The value of a way out of the player's room that their route does not take.</summary>
+        public const float RoomExitValue = 0.6f;
+
+        /// <summary>
+        /// What closing a door on the player's route is worth: 1 for their only route (they must stop and
+        /// open it), else the detour gain clamped to [0, 1]; 0 for a door off the route.
+        /// </summary>
+        public static float RouteValue(in DoorDetour door) =>
+            door.IsLockout ? 1f : DetourCache.GainScore(door.Gain);
+
+        /// <summary>
+        /// What closing a door is worth: a way out of the player's room that their route takes is worth 1 (it
+        /// stops them where they are), another way out <see cref="RoomExitValue"/>. A door that is not a way out
+        /// of their room is worth its <see cref="RouteValue"/>; the source offers only ways out.
+        /// </summary>
+        public static float DoorValue(in DoorDetour door, bool roomExit)
+        {
+            float route = RouteValue(door);
+            if (!roomExit)
+                return route;
+            return route > 0f ? 1f : RoomExitValue;
+        }
+
+        void Offer(in AgentContext ctx, in PlayerSnapshot player, int doorId, IReadOnlyList<Vector2Int> cells, float value,
+            ref int searches, List<ActionCandidate> candidates)
+        {
+            if (value <= 0f || IsInDoorway(player.Cell, cells))
+                return;
+
+            float travel = NearestDistanceMetres(ctx.Cell, cells);
+            if (travel > MaxTravelMetres)
+                return;
+
+            if (_pathfinder != null)
+            {
+                if (searches >= MaxSearchesPerDecision)
+                    return;
+                searches++;
+                if (!SaboteurPaths.TryWalkMetres(_detours.Grid, _pathfinder, ctx.Cell, NearestCell(ctx.Cell, cells), out travel)
+                    || travel > MaxTravelMetres)
+                    return;   // no way to the door, or too far round
+            }
+
+            _inputs[0] = value;
+            _inputs[1] = travel / MaxTravelMetres;
+            ActionScore score = _action.Evaluate(_inputs);
+            if (!score.Vetoed)
+                candidates.Add(new ActionCandidate(new ActionKey(SaboteurActionKind.CloseDoor, doorId), score.BaseScore));
         }
 
         /// <summary>True when <paramref name="cell"/> is on or within <see cref="DoorwayClearance"/> cells of the door.</summary>

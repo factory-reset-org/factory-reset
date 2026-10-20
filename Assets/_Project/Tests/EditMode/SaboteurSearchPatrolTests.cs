@@ -336,6 +336,49 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
+        public void ASaboteurShutOutOfItsRoomPatrolsTheRoomItIsInThenGoesHomeWhenTheDoorOpens()
+        {
+            _grid = TwoRooms(out int doorId);
+            var door = new Vector2Int(20, 10);
+            SaboteurBrain brain = Brain(SaboteurLetter.C, SaboteurOptions.Default, new Vector2Int(5, 5));
+            var world = new WorldBlackboard();
+            HashSet<Vector2Int> home = RoomPatrolPlanner.FloodRoom(_grid, new Vector2Int(5, 5));
+
+            // It is in the other room (it chased the player there) and the door behind it is shut: agents cannot open doors.
+            _grid.SetDoor(door, doorId, true);
+            AgentIntent stranded = brain.Tick(At(new Vector2Int(30, 10), world, Frame));
+
+            Assert.IsTrue(brain.IsStranded);
+            Assert.AreEqual("Patrol", stranded.DebugState, "It patrols rather than standing still.");
+            Assert.IsNotNull(stranded.Path);
+            HashSet<Vector2Int> here = RoomPatrolPlanner.FloodRoom(_grid, new Vector2Int(30, 10));
+            foreach (Vector2Int p in brain.PatrolCells)
+                Assert.IsTrue(here.Contains(p), $"{p} is in the room it stands in.");
+
+            // The player opens the door: back to its own loop.
+            _grid.SetDoor(door, doorId, false);
+            brain.OnGraphChanged(new[] { door });
+            AgentIntent back = brain.Tick(At(new Vector2Int(30, 10), world, 2 * Frame));
+
+            Assert.IsFalse(brain.IsStranded);
+            Assert.IsNotNull(back.Path);
+            Assert.IsTrue(home.Contains(_grid.WorldToCell(back.Path[back.Path.Count - 1])), "Headed back to its own room.");
+        }
+
+        [Test]
+        public void WithTheGivenWaypointsOnlyAShutOutSaboteurStillHolds()
+        {
+            _grid = TwoRooms(out int doorId);
+            _grid.SetDoor(new Vector2Int(20, 10), doorId, true);
+            SaboteurBrain brain = Brain(SaboteurLetter.C, SaboteurOptions.WaypointsOnly, new Vector2Int(5, 5), new Vector2Int(8, 5));
+
+            AgentIntent intent = brain.Tick(At(new Vector2Int(30, 10), new WorldBlackboard(), 0f));
+
+            Assert.AreEqual("Hold", intent.DebugState);
+            Assert.IsFalse(brain.IsStranded);
+        }
+
+        [Test]
         public void WaypointsOnlyKeepsTheGivenPoints()
         {
             SaboteurBrain brain = Brain(SaboteurLetter.C, SaboteurOptions.WaypointsOnly, new Vector2Int(5, 5), new Vector2Int(8, 5));

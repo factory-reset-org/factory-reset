@@ -144,6 +144,12 @@ namespace ToyFactory.Tests
             Vector3 at = grid.CellToWorld(start);
             Teleport(saboteur, new Vector3(at.x, saboteur.transform.position.y, at.z));
 
+            // Doors come before batteries, so the open doors are shut first: the battery is A's only sabotage.
+            foreach (MonoBehaviour door in UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None)
+                .Where(m => m.GetType().Name == "Door"))
+                door.GetType().GetMethod("Close").Invoke(door, null);
+            yield return null;
+
             // The player in the open a few metres off, shooting: the Saboteur turns to the noise and sees them.
             Assert.IsTrue(SaboteurScenePlacement.TryPlayerCell(grid, start, batteryCell, out Vector2Int playerCell), "Open floor for the player.");
             Vector3 stand = grid.CellToWorld(playerCell);

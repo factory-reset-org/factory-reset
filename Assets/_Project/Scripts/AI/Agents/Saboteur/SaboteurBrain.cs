@@ -37,7 +37,7 @@ namespace ToyFactory.AI.Agents.Saboteur
     /// seed of a loop that covers the Saboteur's room (<see cref="RoomPatrolPlanner"/>), shared out between
     /// squad mates who start in the same room.</para>
     /// </remarks>
-    public sealed class SaboteurBrain : IAgentBrain, IDropsItems, IActionFeedback, IHealthAware
+    public sealed class SaboteurBrain : IAgentBrain, IDropsItems, IActionFeedback, IHealthAware, ICrowdAware
     {
         /// <summary>Ground distance, in metres, from a door within which the Saboteur can close it.</summary>
         public const float DoorReachMetres = 1.5f;
@@ -148,6 +148,48 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// <summary>The attack multiplier during <see cref="FleeRecoverSeconds"/>.</summary>
         public const float FleeRecoverAttackFactor = 0.5f;
 
+        /// <summary>
+        /// Lowest score of a door that shuts the player in or holds them up. Sabotage is scored in bands above
+        /// what a held-back attack can reach (doors, then traps, then batteries), and the top of the door band
+        /// plus the selector's momentum stays under its emergency threshold, so a badly hurt Saboteur can
+        /// still break off to flee.
+        /// </summary>
+        public const float DoorPriorityFloor = 0.66f;
+
+        /// <summary>Lowest score of a trap worth arming; see <see cref="DoorPriorityFloor"/>.</summary>
+        public const float TrapPriorityFloor = 0.58f;
+
+        /// <summary>Lowest score of a battery worth stealing; see <see cref="DoorPriorityFloor"/>.</summary>
+        public const float BatteryPriorityFloor = 0.5f;
+
+        /// <summary>
+        /// Lowest source score at which a sabotage counts as worth doing: it is then scored in its band and holds the
+        /// attack back. Below it (a door that barely lengthens the route, a battery at the edge of reach) it keeps
+        /// its own score and competes as before.
+        /// </summary>
+        public const float SabotageMinScore = 0.15f;
+
+        /// <summary>Width of each sabotage band: the source's score, 0 to 1, is spread over it.</summary>
+        public const float PriorityBandWidth = 0.08f;
+
+        /// <summary>
+        /// The attack multiplier while this Saboteur has sabotage on offer: the best attack (0.88 at melee range)
+        /// with momentum stays under the battery band, so it attacks only when no sabotage is worth doing.
+        /// </summary>
+        public const float AttackDeferFactor = 0.25f;
+
+        /// <summary>Cells (3 m) of a route ahead of the body watched for a standing body in the way.</summary>
+        public const int BodyLookAheadCells = 6;
+
+        /// <summary>The most often (s) a standing body on the route ahead makes the Saboteur route again.</summary>
+        public const float BodyReplanSeconds = 1f;
+
+        /// <summary>Within this (m) of the end of a leg round a body, the next leg is sent.</summary>
+        public const float LegArrivalMetres = 0.5f;
+
+        /// <summary>Cells (1.5 m) of the route ahead priced as blocked when a walk gets nowhere.</summary>
+        public const int BlockAheadCells = 3;
+
         /// <summary>Seconds a door, trap or battery that one Saboteur failed at is left alone by the whole squad.</summary>
         public const float SquadFailureSeconds = 10f;
 
@@ -222,8 +264,27 @@ namespace ToyFactory.AI.Agents.Saboteur
         readonly ActionSelector _selector;
         readonly SaboteurOptions _options;
         readonly SaboteurAwareness _awareness;
+
+        // Every route is priced round bodies in the way and spots where a walk got nowhere (see SaboteurRouteCost).
+        readonly SaboteurRouteCost _routeCost;
+        float _roundedAt = float.NegativeInfinity;
+
+        // Set by TryRoute when the only route went through a body; the patrol then waits and looks again
+        // (bodies are not grid changes, so the usual wait for one would never end).
+        bool _routeBlockedByBody;
+        float _bodyRetryAt = float.NegativeInfinity;
+
+        // Near a standing body a route is sent a leg at a time (see Steer): where the leg sent last ends, if one was.
+        bool _hasLeg;
+        Vector3 _legEnd;
+        Vector3 _position;
         Vector2Int[] _patrolCells;
         bool _patrolPlanned;
+
+        // Shut out of its own room (a door it or a squad mate closed, which agents cannot open): it patrols the
+        // room it is in, and goes back to its own loop at the next change to the grid, such as the door opening.
+        bool _stranded;
+        Vector2Int[] _homeCells;
         TravelWatch _patrolTravel;
         int _patrolRouteIndex;
         bool _patrolResending;
@@ -358,6 +419,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             _identity = identity;
             _grid = grid ?? throw new ArgumentNullException(nameof(grid));
             _pathfinder = pathfinder ?? throw new ArgumentNullException(nameof(pathfinder));
+            _routeCost = new SaboteurRouteCost(grid);
             if (claims == null)
                 throw new ArgumentNullException(nameof(claims));
 
@@ -425,8 +487,20 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// <summary>What this Saboteur knows about the player, for the debug panel and tests.</summary>
         public SaboteurAwareness Awareness => _awareness;
 
-        /// <summary>The patrol points in use: the planned room loop once it has been planned, else the given points.</summary>
+        /// <summary>
+        /// The patrol points in use: the planned room loop once it has been planned, else the given points. While the
+        /// Saboteur is shut out of its own room (<see cref="IsStranded"/>), a loop over the room it stands in.
+        /// </summary>
         public IReadOnlyList<Vector2Int> PatrolCells => _patrolCells;
+
+        /// <summary>How this Saboteur prices its routes: bodies in the way and spots where it got nowhere.</summary>
+        public SaboteurRouteCost RouteCost => _routeCost;
+
+        /// <inheritdoc />
+        public void OnCrowd(IReadOnlyList<CrowdMember> others) => _routeCost.SetCrowd(others);
+
+        /// <summary>True while no point of its own patrol loop can be reached and it patrols the room it stands in.</summary>
+        public bool IsStranded => _stranded;
 
         /// <summary>Where the current search is headed, for the debug panel and tests; meaningful while searching.</summary>
         public Vector3 SearchGoal => _searchGoal;
@@ -440,6 +514,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             _lastCell = ctx.Cell;
             _hasLastCell = true;
             _lastTime = ctx.Time;
+            _position = ctx.Position;
             _awareness.Update(ctx);
 
             if (!_scheduleStarted)
@@ -461,12 +536,12 @@ namespace ToyFactory.AI.Agents.Saboteur
 
             if (_detours != null && _selector.HasCurrent && _selector.Current.Kind == SaboteurActionKind.CloseDoor
                 && TryCloseDoor(ctx, out AgentIntent closeDoor))
-                return closeDoor;
+                return OnAnErrand(closeDoor);
 
             if (ctx.World != null && _selector.HasCurrent
                 && (_selector.Current.Kind == SaboteurActionKind.ArmTrap || _selector.Current.Kind == SaboteurActionKind.StealBattery)
                 && TryFactAction(ctx, out AgentIntent factAction))
-                return factAction;
+                return OnAnErrand(factAction);
 
             if (ctx.World != null && _selector.HasCurrent && _selector.Current.Kind == SaboteurActionKind.Flee
                 && TryFlee(ctx, out AgentIntent flee))
@@ -512,6 +587,17 @@ namespace ToyFactory.AI.Agents.Saboteur
 
             // A door opening or closing may have cut the route to the player; search again (still rationed).
             _chasing = false;
+
+            // Stranded outside its own room: any change may have opened the way back, so try its own loop again.
+            if (_stranded)
+            {
+                _stranded = false;
+                _patrolCells = _homeCells;
+                _patrolIndex = 0;
+                _routeCells = null;
+                _needsRoute = true;
+                _routeRetryWaiting = false;
+            }
 
             if (_doorRoute != null)
             {
@@ -713,6 +799,12 @@ namespace ToyFactory.AI.Agents.Saboteur
             {
                 _source.AddCandidates(ctx, _identity, _candidates);
 
+                // Sabotage comes before combat: while this Saboteur has a door, trap or battery it may go
+                // for, the attack is held back (AttackDeferFactor) and the sabotage is scored in its band.
+                bool sabotageOnOffer = false;
+                for (int i = 1; i < _candidates.Count && !sabotageOnOffer; i++)
+                    sabotageOnOffer = IsSabotage(_candidates[i].Key.Kind) && SquadScore(_candidates[i], now) >= SabotageMinScore;
+
                 // The squad layer: other instances' claims and attacks change this instance's
                 // scores. The trace keeps the source's score as the raw score and the adjusted
                 // one as the base score, so a veto shows up as a base score of 0.
@@ -720,11 +812,10 @@ namespace ToyFactory.AI.Agents.Saboteur
                 {
                     ActionCandidate candidate = _candidates[i];
                     float raw = candidate.BaseScore;
-                    float adjusted = raw * _squad.NotClaimedFactor(id, candidate.Key);
+                    float adjusted = SquadScore(candidate, now);
 
-                    // A target a squad mate has just failed at is left alone by everyone for a while.
-                    if (_squad.IsFailing(candidate.Key, now))
-                        adjusted = 0f;
+                    if (IsSabotage(candidate.Key.Kind) && adjusted >= SabotageMinScore)
+                        adjusted = PriorityScore(candidate.Key.Kind, adjusted);
 
                     if (candidate.Key.Kind == SaboteurActionKind.AttackPlayer)
                     {
@@ -732,6 +823,8 @@ namespace ToyFactory.AI.Agents.Saboteur
                         // Just after a flight, turning straight back to fight is less attractive.
                         if (now - _lastFleeingAt < FleeRecoverSeconds && now >= _lastFleeingAt)
                             adjusted *= FleeRecoverAttackFactor;
+                        if (sabotageOnOffer)
+                            adjusted *= AttackDeferFactor;
                     }
 
                     _candidates[i] = new ActionCandidate(candidate.Key, adjusted);
@@ -755,6 +848,45 @@ namespace ToyFactory.AI.Agents.Saboteur
                 _selector.CancelCurrent();
         }
 
+        // The source's score after the squad's vetoes: a target another Saboteur has claimed, or one a squad
+        // mate has just failed at, which everyone leaves alone for a while.
+        float SquadScore(in ActionCandidate candidate, float now) =>
+            _squad.IsFailing(candidate.Key, now) ? 0f : candidate.BaseScore * _squad.NotClaimedFactor(_identity.AgentId, candidate.Key);
+
+        /// <summary>True for the sabotage actions: CloseDoor, ArmTrap and StealBattery.</summary>
+        public static bool IsSabotage(SaboteurActionKind kind) =>
+            kind == SaboteurActionKind.CloseDoor || kind == SaboteurActionKind.ArmTrap || kind == SaboteurActionKind.StealBattery;
+
+        /// <summary>
+        /// Maps a sabotage score in (0, 1] into its kind's priority band: doors from <see cref="DoorPriorityFloor"/>,
+        /// traps from <see cref="TrapPriorityFloor"/>, batteries from <see cref="BatteryPriorityFloor"/>, each
+        /// <see cref="PriorityBandWidth"/> wide, so the source's score still orders targets of one kind. Other
+        /// kinds, and a score of 0 or less, are returned as they are.
+        /// </summary>
+        public static float PriorityScore(SaboteurActionKind kind, float score)
+        {
+            if (score <= 0f)
+                return score;
+
+            float floor;
+            switch (kind)
+            {
+                case SaboteurActionKind.CloseDoor:
+                    floor = DoorPriorityFloor;
+                    break;
+                case SaboteurActionKind.ArmTrap:
+                    floor = TrapPriorityFloor;
+                    break;
+                case SaboteurActionKind.StealBattery:
+                    floor = BatteryPriorityFloor;
+                    break;
+                default:
+                    return score;
+            }
+
+            return floor + PriorityBandWidth * Mathf.Clamp01(score);
+        }
+
         void ResetAttackPlan()
         {
             _attacking = false;
@@ -770,7 +902,7 @@ namespace ToyFactory.AI.Agents.Saboteur
         List<Vector3> ChaseRoute(in AgentContext ctx)
         {
             Vector2Int target = ctx.World.Player.Cell;
-            if (_chasing && target == _chaseCell)
+            if (_chasing && target == _chaseCell && !LegReached(ctx.Position))
                 return null;
             if (ctx.Time < _nextChaseTime)
                 return null;
@@ -789,10 +921,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             _chasing = true;
             _chaseCell = target;
             _attackStopped = false;
-            var path = new List<Vector3>(cells.Count);
-            for (int i = 0; i < cells.Count; i++)
-                path.Add(_grid.CellToWorld(cells[i]));
-            return path;
+            return Steer(cells);
         }
 
         // The Saboteur's attack is a claw swipe that only lands within about 2.2 m, so it closes in
@@ -944,6 +1073,15 @@ namespace ToyFactory.AI.Agents.Saboteur
                 return false;
             }
 
+            // The player has left the room, or the Saboteur has (it was pushed through the doorway): the door would
+            // now shut it out of the player's room, or shut nobody in. End the plan with no cooldown; it is offered
+            // again once they share a room.
+            if (!_detours.IsInPlayerRoom(ctx.Cell) || !_detours.IsPlayerRoomExit(key.TargetId))
+            {
+                EndDoorPlan(key, ctx.Time, false, false);
+                return false;
+            }
+
             _doorActive = true;
             _doorKey = key;
             Vector3 nearest = _grid.CellToWorld(cells[0]);
@@ -963,15 +1101,8 @@ namespace ToyFactory.AI.Agents.Saboteur
 
             if (nearestSqr <= DoorReachMetres * DoorReachMetres)
             {
-                // The last look before the door shuts. The score came from a cache up to half a second old and
-                // judged this door alone; another Saboteur may have shut the room's other entrance since.
-                // A door that would now leave the player no route is given up (with the failure cooldown).
-                if (!_doorInReach && ctx.World != null && _detours.WouldLockPlayerOut(ctx.World, key.TargetId))
-                {
-                    EndDoorPlan(key, ctx.Time, false, true);
-                    return false;
-                }
-
+                // No lockout check here: the player can open any door a Saboteur shuts, so shutting them in
+                // is the point. The doorway check above still keeps a door from coming down on them.
                 List<Vector3> stop = null;
                 if (!_doorInReach)
                 {
@@ -1009,7 +1140,7 @@ namespace ToyFactory.AI.Agents.Saboteur
                     return false;
                 }
 
-                TravelCheck progress = _doorTravel.Check(SaboteurPaths.RemainingMetres(_grid, _doorRoute, ctx.Position, ref _doorRouteIndex), ctx.Time);
+                TravelCheck progress = Progress(ref _doorTravel, _doorRoute, ref _doorRouteIndex, ctx.Position, ctx.Time);
                 if (progress == TravelCheck.GiveUp)
                 {
                     EndDoorPlan(key, ctx.Time, false, true);
@@ -1131,7 +1262,7 @@ namespace ToyFactory.AI.Agents.Saboteur
                     return false;
                 }
 
-                TravelCheck progress = _factTravel.Check(SaboteurPaths.RemainingMetres(_grid, _factRoute, ctx.Position, ref _factRouteIndex), ctx.Time);
+                TravelCheck progress = Progress(ref _factTravel, _factRoute, ref _factRouteIndex, ctx.Position, ctx.Time);
                 if (progress == TravelCheck.GiveUp)
                 {
                     EndFactPlan(key, ctx.Time, true);
@@ -1368,7 +1499,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             bool goalMoved = _searchRouteSent && (_searchGoal - _searchRouteGoal).sqrMagnitude > 2.25f && now >= _searchReplanAt;
             if (_searchRouteSent && !goalMoved)
             {
-                TravelCheck progress = _searchTravel.Check(SaboteurPaths.RemainingMetres(_grid, _searchRoute, ctx.Position, ref _searchRouteIndex), now);
+                TravelCheck progress = Progress(ref _searchTravel, _searchRoute, ref _searchRouteIndex, ctx.Position, now);
                 if (progress == TravelCheck.GiveUp)
                 {
                     EndSearch(now);
@@ -1449,7 +1580,7 @@ namespace ToyFactory.AI.Agents.Saboteur
             // here, and if that does not help either, go on to the next patrol point.
             if (!_needsRoute && _routeCells != null)
             {
-                TravelCheck progress = _patrolTravel.Check(SaboteurPaths.RemainingMetres(_grid, _routeCells, position, ref _patrolRouteIndex), _lastTime);
+                TravelCheck progress = Progress(ref _patrolTravel, _routeCells, ref _patrolRouteIndex, position, _lastTime);
                 if (progress == TravelCheck.SendAgain)
                 {
                     _needsRoute = true;
@@ -1464,14 +1595,17 @@ namespace ToyFactory.AI.Agents.Saboteur
 
             if (!_needsRoute)
                 return Keep("Patrol");
-            if (_routeRetryWaiting)
+            if (_routeRetryWaiting || _lastTime < _bodyRetryAt)
                 return Hold();
 
             // Try each patrol point once, starting with the current one; skip unreachable ones.
+            bool bodyInTheWay = false;
             for (int attempt = 0; attempt < _patrolCells.Length; attempt++)
             {
                 int index = (_patrolIndex + attempt) % _patrolCells.Length;
-                if (TryRoute(currentCell, _patrolCells[index], out List<Vector2Int> cells))
+                bool routed = TryRoute(currentCell, _patrolCells[index], out List<Vector2Int> cells);
+                bodyInTheWay |= _routeBlockedByBody;
+                if (routed)
                 {
                     // A new walk starts a new watch; only the one re-send after no progress keeps it.
                     if (!_patrolResending)
@@ -1486,9 +1620,44 @@ namespace ToyFactory.AI.Agents.Saboteur
                 }
             }
 
+            // Every way on goes through a body lying in an aisle: wait where it is and look again shortly, since the
+            // body will get up or sink away. Not a stranding: the grid has not changed.
+            if (bodyInTheWay)
+            {
+                _routeCells = null;
+                _bodyRetryAt = _lastTime + BodyReplanSeconds;
+                return Hold();
+            }
+
+            // No point of its own loop can be reached: patrol the room it stands in rather than stand still.
+            if (TryStrand(currentCell))
+                return Patrol(currentCell, position);
+
             _routeCells = null;
             _routeRetryWaiting = true;
             return Hold();
+        }
+
+        // Swaps in a loop over the room the Saboteur stands in, keeping its own loop to go back to. Only with the
+        // room patrol on, once (a stranded Saboteur that cannot move either holds), and only for a room with a loop.
+        bool TryStrand(Vector2Int currentCell)
+        {
+            if (!_options.RoomPatrol || _stranded)
+                return false;
+            if (!_grid.IsTraversable(currentCell) && !_grid.TryFindNearestTraversable(currentCell, StartSnapRadius, out currentCell))
+                return false;
+
+            Vector2Int[] local = RoomPatrolPlanner.Plan(_grid, new[] { currentCell }, _squad.OtherHomes(_identity.AgentId));
+            if (local.Length < 2)
+                return false;
+
+            _homeCells = _patrolCells;
+            _patrolCells = local;
+            _stranded = true;
+            _patrolIndex = 0;
+            _routeCells = null;
+            _needsRoute = true;
+            return true;
         }
 
         bool HasArrived(Vector3 position)
@@ -1499,9 +1668,12 @@ namespace ToyFactory.AI.Agents.Saboteur
             return dx * dx + dz * dz <= ArrivalRadius * ArrivalRadius;
         }
 
+        // A route through a standing body (no way round it) counts as no route, with _routeBlockedByBody set: the
+        // body would only be pushed into. Every plan treats it as it treats a closed door.
         bool TryRoute(Vector2Int from, Vector2Int target, out List<Vector2Int> cells)
         {
             cells = null;
+            _routeBlockedByBody = false;
             if (!_grid.IsTraversable(target) &&
                 !_grid.TryFindNearestTraversable(target, PatrolSnapRadius, out target))
                 return false;
@@ -1513,21 +1685,113 @@ namespace ToyFactory.AI.Agents.Saboteur
             if (target == from)
                 return false;
 
-            PathResult result = _pathfinder.FindPath(from, target, BaseCostModel.Instance);
+            _routeCost.SetTime(_lastTime);
+            PathResult result = _pathfinder.FindPath(from, target, _routeCost);
             if (!result.Found || result.Cells == null || result.Cells.Count == 0)
                 return false;
+            if (_routeCost.GoesThroughBody(result.Cells, _grid.CellToWorld(from)))
+            {
+                _routeBlockedByBody = true;
+                return false;
+            }
 
             cells = result.Cells;
             return true;
         }
 
-        AgentIntent Move(List<Vector2Int> cells, string state)
+        // The progress check every walk uses. No progress for a while: the next cells of the route are priced as
+        // blocked, so the route sent again goes round whatever is there (a scrapped body the runtime no longer
+        // lists, a crate the grid does not know). A standing body on the route ahead (an agent knocked down
+        // there, a squad mate standing still) asks for a new route at once, at most every BodyReplanSeconds,
+        // without spending the watch's one re-send.
+        TravelCheck Progress(ref TravelWatch watch, List<Vector2Int> route, ref int index, Vector3 position, float now)
         {
+            TravelCheck check = watch.Check(SaboteurPaths.RemainingMetres(_grid, route, position, ref index), now);
+            if (check == TravelCheck.SendAgain)
+            {
+                BlockAhead(route, index, now);
+            }
+            else if (check == TravelCheck.Fine && LegReached(position))
+            {
+                return TravelCheck.SendAgain;   // the next leg round a body
+            }
+            else if (check == TravelCheck.Fine && now - _roundedAt >= BodyReplanSeconds
+                && _routeCost.BodyOnRoute(route, index, BodyLookAheadCells))
+            {
+                _roundedAt = now;
+                return TravelCheck.SendAgain;
+            }
+
+            return check;
+        }
+
+        // Prices the next cells of the route as blocked for a while, never its last cell (the target itself).
+        void BlockAhead(List<Vector2Int> route, int index, float now)
+        {
+            int last = Math.Min(route.Count - 2, index + BlockAheadCells);
+            for (int i = index + 1; i <= last; i++)
+                _routeCost.Block(route[i], now + SaboteurRouteCost.BlockedSeconds);
+        }
+
+        // A door, trap or battery takes the Saboteur where it is going even with the player beside it: the body does not
+        // hold facing the player (the runtime's stand-off) or swing at them on the way. Without this, a Saboteur that
+        // came into the player's room could not walk back past them to the door it means to shut.
+        static AgentIntent OnAnErrand(AgentIntent intent)
+        {
+            intent.IgnorePlayer = true;
+            return intent;
+        }
+
+        AgentIntent Move(List<Vector2Int> cells, string state) =>
+            new AgentIntent { Path = Steer(cells), DesiredSpeed = MoveSpeed, Action = AgentAction.None, DebugState = state };
+
+        // The path the body is sent for a route. The runtime string-pulls a path of more than two waypoints over the
+        // grid, which does not know about bodies, so a route that goes round a standing body would be pulled straight
+        // back through it. A route that passes near one is therefore sent a leg at a time: two waypoints, which are
+        // walked as they are, from here to the furthest cell of the route the body can walk to in a straight line
+        // clear of walls and bodies. Reaching the end of the leg sends the next (Progress, ChaseRoute).
+        List<Vector3> Steer(List<Vector2Int> cells)
+        {
+            _hasLeg = false;
             var path = new List<Vector3>(cells.Count);
+            if (cells.Count > 2 && _routeCost.PassesNearBody(cells))
+            {
+                int furthest = 1;
+                for (int i = cells.Count - 1; i > 1; i--)
+                {
+                    if (_routeCost.ClearLine(_position, _grid.CellToWorld(cells[i])))
+                    {
+                        furthest = i;
+                        break;
+                    }
+                }
+
+                if (furthest < cells.Count - 1)
+                {
+                    _hasLeg = true;
+                    _legEnd = _grid.CellToWorld(cells[furthest]);
+                    path.Add(_grid.CellToWorld(cells[0]));
+                    path.Add(_legEnd);
+                    return path;
+                }
+            }
+
             for (int i = 0; i < cells.Count; i++)
                 path.Add(_grid.CellToWorld(cells[i]));
+            return path;
+        }
 
-            return new AgentIntent { Path = path, DesiredSpeed = MoveSpeed, Action = AgentAction.None, DebugState = state };
+        // True once the body has reached the end of the leg it was sent (and clears it): time for the next leg.
+        bool LegReached(Vector3 position)
+        {
+            if (!_hasLeg)
+                return false;
+            float dx = position.x - _legEnd.x;
+            float dz = position.z - _legEnd.z;
+            if (dx * dx + dz * dz > LegArrivalMetres * LegArrivalMetres)
+                return false;
+            _hasLeg = false;
+            return true;
         }
 
         AgentIntent Hold()

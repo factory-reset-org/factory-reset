@@ -18,9 +18,10 @@ namespace ToyFactory.Tests
 {
     /// <summary>
     /// CloseDoor on the real map, with no wall cut and no door forced. Doors 3 and 4 (the Control Room's
-    /// two entrances) are locked until the Chapter 3 cutscene, so before Chapter 4 every door is the only
-    /// link between its rooms and a closure would be a lockout. In Chapter 4 the four rooms form a ring,
-    /// so a closed door only makes the player walk the long way round, and the Saboteur may close it.
+    /// two entrances) are locked until the Chapter 3 cutscene; in Chapter 4 the four rooms form a ring, so
+    /// a closed door first makes the player walk the long way round. The player can open any door a
+    /// Saboteur shuts, so the squad then goes on to shut the last way too: shut in, never locked out. Only a Saboteur
+    /// in the player's room shuts a door, and only that room's ways out.
     /// The rooms: Assembly south-west, Painting south-east, Storage north-east, Control north-west.
     /// Door 1 joins Assembly and Painting, door 2 Painting and Storage, door 3 Storage and Control, door 4
     /// Control and Assembly. Only the Saboteur under test (and one more in the second test) stays alive, so
@@ -151,11 +152,16 @@ namespace ToyFactory.Tests
 
             bool sawCloseDoor = false;
             float until = Time.realtimeSinceStartup + 40f;
-            while (!grid.GetNode(door4).IsDoorClosed && Time.realtimeSinceStartup < until)
+            while (true)
             {
+                // Read before the door check: a Saboteur already within reach asks on its first CloseDoor frame, and the
+                // door counts as shut on the grid from that same frame.
+                sawCloseDoor |= closer.DebugState == "CloseDoor";
+                if (grid.GetNode(door4).IsDoorClosed || Time.realtimeSinceStartup >= until)
+                    break;
+
                 // The player keeps shooting, so the squad knows they are about (a Saboteur acts only on a player it saw or heard).
                 PlayerShotNoise.Every(1f);
-                sawCloseDoor |= closer.DebugState == "CloseDoor";
                 yield return null;
             }
 
@@ -173,15 +179,24 @@ namespace ToyFactory.Tests
             PathResult route = pathfinder.FindPath(Walkable(grid, from), Walkable(grid, ControlGoal), BaseCostModel.Instance);
             Assert.IsTrue(route.Found, "There is still a way to the Control Room.");
 
-            // And the squad does not go on to shut the long way round: with door 4 closed, doors 1 to 3 are the
-            // only way, so each would be a lockout.
-            yield return new WaitForSeconds(6f);
-            foreach (int id in new[] { 1, 2, 3 })
-                Assert.IsFalse(grid.GetNode(DoorCell(grid, id)).IsDoorClosed, $"Door {id} stays open.");
+            // With door 4 closed, door 1 is the other way out of Assembly and the player's only way on, so the squad
+            // goes on to shut them in.
+            float shutUntil = Time.realtimeSinceStartup + 40f;
+            while (!grid.GetNode(DoorCell(grid, 1)).IsDoorClosed && Time.realtimeSinceStartup < shutUntil)
+            {
+                PlayerShotNoise.Every(1f);
+                yield return null;
+            }
+            Assert.IsTrue(grid.GetNode(DoorCell(grid, 1)).IsDoorClosed, "Door 1, Assembly's other way out, was closed too.");
+
+            // Shut in, not locked out: the player opens door 1 and has a way to the Control Room again.
+            yield return PlayerOpens(grid, 1);
+            Assert.IsTrue(pathfinder.FindPath(Walkable(grid, grid.WorldToCell(player.transform.position)), Walkable(grid, ControlGoal),
+                BaseCostModel.Instance).Found, "Once the player opens a door they can go on.");
         }
 
         [UnityTest]
-        public IEnumerator TwoSaboteursNeverSealTheControlRoomsTwoEntrances()
+        public IEnumerator OnlyTheSaboteurInThePlayersRoomShutsItsWaysOut()
         {
             yield return LoadChapterFour('A', 'B');
             GridGraph grid = GridManager.Current;
@@ -208,20 +223,32 @@ namespace ToyFactory.Tests
             }
             Assert.IsTrue(grid.GetNode(door3).IsDoorClosed, "Door 3, the player's short way, was closed.");
 
-            // Door 4 is now the only way into the Control Room, so closing it would lock the player out.
+            // B stands beside door 4 but in Assembly, not in the player's room: it never shuts a door from there, which
+            // would only shut itself out of the fight.
             float watchUntil = Time.realtimeSinceStartup + 12f;
             while (Time.realtimeSinceStartup < watchUntil)
             {
-                // Still shooting: the squad knows exactly where the player is, and still leaves the last way in open.
                 PlayerShotNoise.Every(1f);
-                Assert.IsFalse(grid.GetNode(door4).IsDoorClosed, "Door 4 must stay open: both entrances shut would seal the room.");
+                Assert.IsFalse(grid.GetNode(door4).IsDoorClosed, "Door 4 is not a way out of the player's room.");
                 yield return null;
             }
 
+            // The player opens door 3 again and can reach the Control Room.
+            yield return PlayerOpens(grid, 3);
             var pathfinder = new AStarSearch(grid);
             Vector2Int from = Walkable(grid, grid.WorldToCell(player.transform.position));
             Assert.IsTrue(pathfinder.FindPath(from, Walkable(grid, ControlGoal), BaseCostModel.Instance).Found,
-                "The player can still reach the Control Room.");
+                "Once the player opens a door they can reach the Control Room.");
+        }
+
+        // The player uses a door (S2's Door.Interact, found by its doorway id) and the test waits until it is open on the grid.
+        static IEnumerator PlayerOpens(GridGraph grid, int doorId)
+        {
+            MonoBehaviour door = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None)
+                .First(m => m.GetType().Name == "Door"
+                    && (int)m.GetType().GetField("doorId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(m) == doorId);
+            door.GetType().GetMethod("Interact").Invoke(door, null);
+            yield return Until(() => !grid.GetNode(DoorCell(grid, doorId)).IsDoorClosed, 15f, $"door {doorId} to open");
         }
     }
 }
