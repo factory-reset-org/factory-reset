@@ -9,18 +9,19 @@ using ToyFactory.AI.Core.Search;
 namespace ToyFactory.AI.Agents.Saboteur
 {
     /// <summary>
-    /// Offers StealBattery(b) for a battery the Saboteur can grab before a player it has spotted. Two
-    /// considerations: how short of ammunition the player is (the less they have loaded, the more taking a
-    /// spare cell hurts) and how near the Saboteur is to the battery.
+    /// Offers StealBattery(b) for a battery nearer the Saboteur than the player, once it has noticed them.
+    /// Two considerations: how much the player needs it (<see cref="NeedScore"/>: half for a full blaster,
+    /// rising to 1 for an empty one, since a battery also gives a spare cell and repairs) and how near the
+    /// Saboteur is to the battery.
     /// </summary>
     /// <remarks>
-    /// <para><b>Eligibility.</b> The Saboteur sees the player (its <see cref="SaboteurAwareness"/>), so a
-    /// battery is never taken from a player it has not noticed. The battery's fact is on the blackboard and
-    /// available (still there); its walkable cell is within <see cref="InteractionRangeMetres"/> of the
-    /// Saboteur by the walk it would really take (the squad's pathfinder), and that walk is shorter than the
-    /// player's straight line to the battery and quicker than the player at their top speed: the battery
-    /// is closer to the Saboteur than to the player. A player with a full battery makes the ammunition
-    /// consideration 0, which vetoes the theft: it would not hurt them.</para>
+    /// <para><b>Eligibility.</b> The Saboteur is alerted to the player (its <see cref="SaboteurAwareness"/>:
+    /// it sees them, saw them in the last few seconds or heard them), so a battery is never taken from a
+    /// player it has not noticed. The battery's fact is on the blackboard and available (still there); its
+    /// walkable cell is within <see cref="InteractionRangeMetres"/> of the Saboteur by the walk it would really
+    /// take (the squad's pathfinder), and that walk is shorter than the player's straight line to the
+    /// battery: the battery is closer to the Saboteur than to the player. A full blaster no longer rules a
+    /// theft out: the player would still lose the spare cell and the repair.</para>
     /// <para><b>Cost.</b> The straight distances rule most batteries out first; at most
     /// <see cref="MaxSearchesPerDecision"/> walks are measured per decision. The battery's cell is moved to
     /// the nearest walkable cell (batteries can stand on shelves and inside props) and a cell outside the
@@ -51,9 +52,12 @@ namespace ToyFactory.AI.Agents.Saboteur
         {
             _grid = grid ?? throw new ArgumentNullException(nameof(grid));
             _action = new UtilityAction(SaboteurActionKind.StealBattery,
-                new Consideration("PlayerAmmo", ResponseCurve.Inverse),
+                new Consideration("PlayerNeed", NeedScore),
                 new Consideration("BatteryDistance", ResponseCurve.Inverse));
         }
+
+        /// <summary>The player's need for a battery from their loaded ammunition fraction: 0.5 when full, 1 when empty.</summary>
+        public static float NeedScore(float ammoFraction) => ResponseCurve.Linear(ammoFraction, -0.5f, 1f);
 
         /// <inheritdoc />
         public void Bind(SaboteurAwareness awareness, IPathfinder pathfinder)
@@ -69,13 +73,13 @@ namespace ToyFactory.AI.Agents.Saboteur
                 return;
 
             PlayerSnapshot player = ctx.World.Player;
-            if (!player.IsKnown || !player.IsAlive || player.AmmoFraction >= 1f)
+            if (!player.IsKnown || !player.IsAlive)
                 return;
 
             if (_awareness != null)
             {
                 _awareness.Update(ctx);
-                if (!_awareness.Sees)
+                if (!_awareness.IsAlerted(ctx.Time))
                     return;
             }
 
@@ -106,10 +110,6 @@ namespace ToyFactory.AI.Agents.Saboteur
                     if (travel > InteractionRangeMetres || travel >= playerStraight)
                         continue;
                 }
-
-                // The player's straight walk is the least time they need, so beating it is a fair race.
-                if (player.SprintSpeed > 0f && travel / SaboteurBrain.MoveSpeed >= playerStraight / player.SprintSpeed)
-                    continue;
 
                 _inputs[0] = Mathf.Clamp01(player.AmmoFraction);
                 _inputs[1] = travel / InteractionRangeMetres;

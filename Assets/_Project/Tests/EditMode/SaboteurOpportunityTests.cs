@@ -121,10 +121,39 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void APlayerWithAFullBatteryIsNeverRobbed()
+        public void APlayerWithAFullBlasterIsStillRobbedButLessEagerly()
         {
+            // A battery also gives a spare cell and repairs, so a full blaster does not make it worthless.
             SetPlayer(new Vector2Int(30, 30), ammo: 1f);
-            Assert.IsEmpty(Batteries(Bound(new StealBatterySource(_grid)), new Vector2Int(40, 30), Vector3.left, Battery(21, 44, 30)));
+            List<ActionCandidate> full = Batteries(Bound(new StealBatterySource(_grid)), new Vector2Int(40, 30), Vector3.left, Battery(21, 44, 30));
+            SetPlayer(new Vector2Int(30, 30), ammo: 0.2f);
+            List<ActionCandidate> low = Batteries(Bound(new StealBatterySource(_grid)), new Vector2Int(40, 30), Vector3.left, Battery(21, 44, 30));
+
+            Assert.AreEqual(1, full.Count);
+            Assert.AreEqual(1, low.Count);
+            Assert.Greater(low[0].BaseScore, full[0].BaseScore);
+            Assert.AreEqual(0.5f, StealBatterySource.NeedScore(1f), 1e-5f);
+            Assert.AreEqual(1f, StealBatterySource.NeedScore(0f), 1e-5f);
+        }
+
+        [Test]
+        public void ABatteryIsTakenFromAPlayerTheSaboteurHeardButCannotSee()
+        {
+            SetPlayer(new Vector2Int(30, 30));
+            _world.SetSabotageFacts(new[] { Battery(21, 44, 30) });
+            var list = new List<ActionCandidate>();
+            Bound(new StealBatterySource(_grid)).AddCandidates(Ctx(new Vector2Int(40, 30), Vector3.right, 0f, PlayerNoise(0f)), A, list);
+
+            Assert.AreEqual(1, list.Count, "Alerted by the noise, it goes for the battery between them.");
+        }
+
+        [Test]
+        public void TheSaboteurDoesNotHaveToOutrunThePlayerToTheBattery()
+        {
+            // 3 m for the Saboteur (0.7 s at 4.3 m/s) and 4 m for the player (0.57 s at 7 m/s): nearer, though slower.
+            _world.SetPlayer(new PlayerSnapshot(true, new Vector2Int(36, 30), _grid.CellToWorld(new Vector2Int(36, 30)), Vector3.zero,
+                Vector3.right, 7f, true, 1f, 0.5f, false, 0f, 0f));
+            Assert.AreEqual(1, Batteries(Bound(new StealBatterySource(_grid)), new Vector2Int(50, 30), Vector3.left, Battery(21, 44, 30)).Count);
         }
 
         [Test]
@@ -158,11 +187,41 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void ATrapThePlayerWouldReachFirstOrUnderTheirFeetIsNotArmed()
+        public void ATrapUnderThePlayersFeetIsNotArmed()
         {
             var cache = new DetourCache(_grid, _pathfinder);
-            SetPlayer(new Vector2Int(33, 30), ammo: 1f);   // 3.5 m from the trap
+            SetPlayer(new Vector2Int(37, 30), ammo: 1f);   // 1.5 m from the trap
             Assert.IsEmpty(Traps(Bound(new ArmTrapSource(_grid, cache)), new Vector2Int(40, 26), Vector3.left, PlayerNoise(0f)));
+        }
+
+        [Test]
+        public void ATrapNearThePlayerIsArmedWhoeverGetsThereFirst()
+        {
+            var cache = new DetourCache(_grid, _pathfinder);
+            SetPlayer(new Vector2Int(33, 30), ammo: 1f);   // 3.5 m from the trap, on their way to the objective
+            List<ActionCandidate> list = Traps(Bound(new ArmTrapSource(_grid, cache)), new Vector2Int(40, 6), Vector3.left, PlayerNoise(0f));
+
+            Assert.AreEqual(1, list.Count, "12 m away it cannot beat them there, but a trap near them is worth arming.");
+        }
+
+        [Test]
+        public void ATrapOnlyOnTheRouteIsNotArmedIfThePlayerGetsThereFirst()
+        {
+            var cache = new DetourCache(_grid, _pathfinder);
+            SetPlayer(new Vector2Int(18, 30), ammo: 1f);   // 11 m along their route from the trap: not near it
+            Assert.IsEmpty(Traps(Bound(new ArmTrapSource(_grid, cache)), new Vector2Int(40, 0), Vector3.left, PlayerNoise(0f)),
+                "15 m off, the Saboteur would arrive after them.");
+            Assert.AreEqual(1, Traps(Bound(new ArmTrapSource(_grid, cache)), new Vector2Int(40, 26), Vector3.left, PlayerNoise(0f)).Count,
+                "2 m off, it is there first.");
+        }
+
+        [Test]
+        public void ANearerPlayerMakesATrapMoreUrgent()
+        {
+            Assert.Greater(ArmTrapSource.Urgency(3f, float.PositiveInfinity), ArmTrapSource.Urgency(9f, float.PositiveInfinity));
+            Assert.AreEqual(0.5f, ArmTrapSource.Urgency(ArmTrapSource.NearTrapMetres, float.PositiveInfinity), 1e-5f);
+            Assert.AreEqual(0f, ArmTrapSource.Urgency(float.PositiveInfinity, float.PositiveInfinity));
+            Assert.AreEqual(0.8f, ArmTrapSource.Urgency(float.PositiveInfinity, 2f), 1e-5f, "On the route, 2 s away.");
         }
 
         // ---- Doors
@@ -202,8 +261,9 @@ namespace ToyFactory.Tests.EditMode
             aware.Bind(new SaboteurAwareness(_sight), pathfinder);
             var noise = new SensorSnapshot(world.Player.Position, 40f, SaboteurAwareness.PlayerNoiseSourceId, 0f);
             aware.AddCandidates(new AgentContext(sabo, grid.CellToWorld(sabo), Vector3.forward, 0f, world, noise), A, list);
-            Assert.AreEqual(1, list.Count, "Heard the player: door 1 lengthens their route.");
-            Assert.AreEqual(new ActionKey(SaboteurActionKind.CloseDoor, 1), list[0].Key);
+            ActionCandidate route = list.Find(c => c.Key.TargetId == 1);
+            Assert.AreEqual(new ActionKey(SaboteurActionKind.CloseDoor, 1), route.Key, "Heard the player: door 1 is the way out they are taking.");
+            Assert.IsTrue(list.TrueForAll(c => c.BaseScore <= route.BaseScore), "It is the door most worth shutting.");
         }
     }
 }
