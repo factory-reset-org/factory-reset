@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Unity.Profiling;
 using UnityEngine;
 using ToyFactory.AI.Core.Grid;
 using ToyFactory.AI.Core.Search;
@@ -15,6 +16,9 @@ namespace ToyFactory.AI.Agents.Saboteur
     {
         /// <summary>How far, in cells, a blocked start or goal may be moved to a walkable cell.</summary>
         public const int SnapRadius = 4;
+
+        // The A* runs that decide whether a door, trap or battery can be reached; one per candidate per decision.
+        static readonly ProfilerMarker WalkMarker = new ProfilerMarker("AI.Saboteur.WalkReach");
 
         /// <summary>
         /// The walking distance in metres from <paramref name="from"/> to <paramref name="to"/>, or false
@@ -33,12 +37,15 @@ namespace ToyFactory.AI.Agents.Saboteur
             if (from == to)
                 return true;
 
-            PathResult result = pathfinder.FindPath(from, to, BaseCostModel.Instance);
-            if (!result.Found || result.Cells == null || result.Cells.Count == 0)
-                return false;
+            using (WalkMarker.Auto())
+            {
+                PathResult result = pathfinder.FindPath(from, to, BaseCostModel.Instance);
+                if (!result.Found || result.Cells == null || result.Cells.Count == 0)
+                    return false;
 
-            metres = Length(result.Cells, from);
-            return true;
+                metres = Length(result.Cells, from);
+                return true;
+            }
         }
 
         /// <summary>The length of a route in metres, starting from <paramref name="start"/> (which may not be the first cell).</summary>
