@@ -44,6 +44,16 @@ namespace ToyFactory.Journey.Chapters
         /// <summary>The journey's rules and state; null if the chapter data is invalid.</summary>
         public ChapterFlow Flow { get; private set; }
 
+        /// <summary>The seed this run's in-order tasks (the relay order) were picked with.</summary>
+        public int SequenceSeed { get; private set; }
+
+        /// <summary>
+        /// A seed for the next manager to wake, used once and then forgotten. A restart from a
+        /// checkpoint reloads the scenes and passes the run's seed on, so the relay order stays
+        /// what it was when the chapter began instead of being picked again.
+        /// </summary>
+        public static int? NextRunSeed { get; set; }
+
         /// <summary>The objective list as last published.</summary>
         public IReadOnlyList<ObjectiveTargetInfo> Objectives => _objectives;
 
@@ -77,7 +87,11 @@ namespace ToyFactory.Journey.Chapters
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void ResetStatics() => Current = null;   // domain reload is off
+        static void ResetStatics()   // domain reload is off
+        {
+            Current = null;
+            NextRunSeed = null;
+        }
 
         void Awake()
         {
@@ -88,7 +102,9 @@ namespace ToyFactory.Journey.Chapters
 
             try
             {
-                Flow = new ChapterFlow(chapters, sequenceSeed != 0 ? sequenceSeed : Environment.TickCount);
+                SequenceSeed = NextRunSeed ?? (sequenceSeed != 0 ? sequenceSeed : Environment.TickCount);
+                NextRunSeed = null;
+                Flow = new ChapterFlow(chapters, SequenceSeed);
             }
             catch (ArgumentException e)
             {

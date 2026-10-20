@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
@@ -197,6 +198,75 @@ namespace ToyFactory.Tests
             // A hit straight after the restart does nothing: the player gets a moment.
             PlayerState.Current.TakeDamage(30f, -1);
             Assert.AreEqual(1f, PlayerState.Current.HealthFraction, 1e-4f, "Safe for a moment after the restart.");
+        }
+
+        static MonoBehaviour Prop(string typeName, Func<MonoBehaviour, bool> where = null) =>
+            UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Exclude)
+                .FirstOrDefault(m => m.GetType().Name == typeName && (where == null || where(m)));
+
+        static MonoBehaviour Relay(int number) => Prop("Relay", m => (int)m.GetType().GetProperty("Number").GetValue(m) == number);
+
+        static bool IsOn(MonoBehaviour relay) => (bool)relay.GetType().GetProperty("IsOn").GetValue(relay);
+
+        static void Press(MonoBehaviour relay) => relay.GetType().GetMethod("Interact").Invoke(relay, null);
+
+        static int[] RelayOrder()
+        {
+            Assert.IsTrue(ChapterManager.Current.Flow.TryGetSequenceOrder("ch3.relays", out IReadOnlyList<int> order));
+            return order.ToArray();
+        }
+
+        [UnityTest]
+        public IEnumerator TheRelayTheRingMarksWorksWithoutGoingToTheBoard()
+        {
+            yield return LoadGame();
+            yield return JumpTo(3);
+            int[] order = RelayOrder();
+
+            // The player is at the Storage Area's entrance, far from the board in the back corner,
+            // as when following the objective ring straight to the first relay.
+            MonoBehaviour board = Prop("RelayBoard");
+            Assert.Greater(DistanceFlat(PlayerState.Current.Position, board.transform.position), 8f);
+            Assert.IsFalse((bool)board.GetType().GetProperty("IsRead").GetValue(board), "The board has not been read.");
+
+            Press(Relay(order[0]));
+            Assert.IsTrue(IsOn(Relay(order[0])), "The first relay turns on without a visit to the board.");
+            Press(Relay(order[1]));
+            Assert.IsTrue(IsOn(Relay(order[1])), "And so does the second, in order.");
+            Press(Relay(order[2]));
+            Assert.IsTrue(ChapterManager.Current.Flow.IsTaskComplete("ch3.relays"), "All three in order finish the task.");
+        }
+
+        [UnityTest]
+        public IEnumerator TheRelayOrderIsTheSameAfterGoingBack()
+        {
+            yield return LoadGame();
+            yield return JumpTo(3);
+            int[] before = RelayOrder();
+
+            yield return new WaitForSeconds(0.1f);
+            IRunControl run = RunControl.Current;
+            Recall();
+            Assert.IsTrue(run.RestartFromCheckpoint());
+            yield return WaitForRestore(run);
+
+            CollectionAssert.AreEqual(before, RelayOrder(), "The order the board showed before the restart.");
+            Assert.IsNull(ChapterManager.NextRunSeed, "The handed-over seed is used once.");
+        }
+
+        [UnityTest]
+        public IEnumerator AWrongRelaySetsOffTheAlarmAndSwitchesThemAllOff()
+        {
+            yield return LoadGame();
+            yield return JumpTo(3);
+            int[] order = RelayOrder();
+
+            Press(Relay(order[0]));
+            Assert.IsTrue(IsOn(Relay(order[0])));
+            Press(Relay(order[2]));   // the third before the second
+            Assert.IsFalse(IsOn(Relay(order[0])), "A wrong relay switches them all off.");
+            Assert.IsFalse(IsOn(Relay(order[2])));
+            Assert.IsFalse(ChapterManager.Current.Flow.IsTaskComplete("ch3.relays"));
         }
 
         [UnityTest]
