@@ -262,6 +262,46 @@ With the scheduler off (the comparison run in the same session): Saboteurs avg 0
 - **Compared with 2026-10-09** the whole-AI p99 fell from 5.191 to 0.110 to 0.141 ms and the average from 0.179 to 0.042 to 0.050 ms. That is mostly the Guard and Captain fixes in this log, not the Saboteur change (the Saboteurs went from a placeholder to the real brain and cost slightly more).
 - **Limits:** two runs on one machine; Editor timings with Mono and no rendering, so frame times are not what a player sees (the Windows build measurements belong to the final playthroughs); the GC figure is everything in the frame, about 2.2 KB every frame, and is not attributed to the Saboteurs (their own allocation is not measured separately); the player is walked on a loop at 4 m/s and kept alive, so a hurt player, a fight and an actual door closing are not exercised here.
 
+### Re-run with the Saboteur brain of 20 October (S3, 2026-10-20)
+
+The 16 October run above was taken before the Saboteurs got their own senses and memory, search, room patrol, body-aware routes and sabotage before combat (#302 to #304, 19 and 20 October). This is the same test, `Test_FourAgentsStress`, on `develop` at `ce900ab` plus the changes of the two S3 branches (none of them changes what the Saboteur decides; the Saboteur code only gained profiler markers) to the Saboteur brain (`AI.Saboteur.WalkReach`, `.Route`, `.Decide`, `.PatrolPlan`; `.Detour` already existed), so the cost can be split by cause. Same machine and method as the 16 October run (AMD Ryzen 7 5800H, Unity 6000.6.2f1, Mono, batch mode with `-nographics`, 30 s after a 3 s warm-up, Chapter 4, every door open), two runs, with nothing else running on the machine.
+
+| Run | Frames | Avg FPS | Frame ms (avg / p99 / worst) | AI ms / frame (avg / p99 / worst) | Frames over 2 ms (AI total) | GC in frame, everything (avg / p99) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-20, run A (scheduler on) | 14,742 | 491.4 | 2.04 / 3.30 / 13.42 | 0.059 / 0.440 / 10.147 | 20 | 2.20 KB / 2.87 KB |
+| 2026-10-20, run B (scheduler on) | 14,905 | 496.8 | 2.01 / 3.13 / 12.62 | 0.055 / 0.388 / 10.122 | 17 | 2.19 KB / 2.47 KB |
+
+**By brain** (scheduler on, run A / run B; the 16 October figures in brackets):
+
+| Brain | Avg ms / frame | p99 | Worst | Frames over 1 ms |
+| --- | --- | --- | --- | --- |
+| Tracker (S1) | 0.0093 / 0.0085 | 0.016 / 0.016 | 5.730 / 0.342 | 3 / 0 |
+| Guard (S2) | 0.0062 / 0.0064 | 0.011 / 0.011 | 0.166 / 0.073 | 0 / 0 |
+| **Saboteur x4 (S3)** | **0.0282 / 0.0255** (0.013 / 0.011) | **0.177 / 0.149** (0.054 / 0.046) | **9.305 / 9.489** (2.766 / 3.712) | **29 / 23** (16 / 15) |
+| Captain (S4) | 0.0153 / 0.0145 | 0.031 / 0.026 | 10.115 / 10.087 | 12 / 11 |
+
+**Where the Saboteur time goes** (markers, scheduler on, run A / run B):
+
+| Marker | Avg ms / frame | Worst | Frames over 1 ms |
+| --- | --- | --- | --- |
+| `AI.Saboteur.Decide` (the 4 Hz decision, includes the detour refresh) | 0.0070 / 0.0065 | 4.551 / 4.599 | 17 / 12 |
+| `AI.Saboteur.Detour` (the shared detour cache refresh, one search per call) | 0.0040 / 0.0039 | 4.409 / 4.525 | 13 / 12 |
+| `AI.Saboteur.Route` (the body-aware A* for patrol, search, attack and flee walks) | 0.0032 / 0.0024 | 6.831 / 7.044 | 6 / 9 |
+| `AI.Saboteur.WalkReach` (reachability of a door, trap or battery) | 0.0025 / 0.0020 | 1.323 / 0.690 | 1 / 0 |
+| `AI.Saboteur.PatrolPlan` (room patrol planning) | 0.0005 / 0.0005 | 2.658 / 2.424 | 3 / 3 |
+| `AI.AStarSearch.FindPath` (all searches, every brain) | 0.0082 / 0.0069 | 6.828 / 7.041 | 22 / 22 |
+
+With the scheduler off (same session): Saboteurs avg 0.0311 / 0.0309, p99 0.181 / 0.180, worst 18.143 / 8.881 ms, frames over 1 ms 62 / 61; `WalkReach` then goes over 1 ms in 24 and 33 frames, and with it on the scheduler deferred 41 and 48 decisions to a later frame.
+
+**What it shows:**
+- **The squad cost about twice as much on average as on 16 October** (0.026 to 0.028 ms against 0.011 to 0.013) **and three times as much at p99** (0.15 to 0.18 ms against 0.05), as expected from the new senses, search, patrol, body avoidance and sabotage. It is still about 0.17% of a 16.7 ms frame on average, and the whole AI averages 0.055 to 0.059 ms.
+- **Slow frames are a little more common and the worst frame is longer**: 23 and 29 Saboteur frames over 1 ms of about 14,800 (0.16% to 0.20%, against 0.1%), worst 9.3 and 9.5 ms (against 2.8 and 3.7). Over the whole AI, 17 and 20 frames went over the 2 ms budget (0.12% to 0.14%).
+- **The spikes are searches, and mostly not the ones that were feared.** The reachability searches added for sabotage (`WalkReach`) are cheap (avg 0.002 ms, at most one frame over 1 ms with the scheduler on). The slow Saboteur frames come from the detour cache refresh (a closed-door search of 4.4 to 4.5 ms, 12 to 13 frames, the known limit from 15 October) and from the body-aware route search (`Route`, up to 7 ms, 6 to 9 frames), where the 21-step cost around a standing body probably makes A* expand much more of the grid (not checked by counting expanded cells).
+- **The worst whole-AI frame (10.1 ms) is the Captain's** (10.087 and 10.115 ms), not the Saboteurs' (9.3 and 9.5).
+- **Not changed:** no Saboteur code was made faster in this round; only the markers were added. Ways to cut the `Route` spike, if it is wanted, are a cached route per start and goal cell for about a second, or a bounded search (S2's `AStarSearch` has neither), neither done.
+- **An earlier pair of runs was worse and is not quoted** (scheduler on: Saboteurs avg 0.052, p99 0.443, worst 18.9 ms, 82 frames over 1 ms; whole AI over 2 ms in 45 frames). They were taken the same afternoon on the same code before the markers were added, while other work was going on in the machine; the later pair were taken with nothing else running. I did not find what made the difference, so the quiet pair is the one to quote and the earlier pair says what a busy machine does to these numbers.
+- **Limits:** two runs on one machine; Editor timings in Mono with no rendering, so these are not frame times a player sees; the Windows build has not been measured (checklist H1 asks for the fps table); the player walks a loop at 4 m/s and is kept alive, so a hurt player and a fight are not in the run.
+
 ## Captain prediction and intercept in the real level (S4, 2026-10-10)
 
 From `CaptainAccuracyEvidenceTests` (EditMode, category Evidence, about 5 s). The level is a snapshot of the game's grid and objective targets taken in Play mode from Bootstrap (`Tests/EditMode/Data/CaptainLevelSnapshot.txt`: 83 x 83 cells, Chapter 3 and Chapter 4 goal sets), so every run is deterministic. Seeded scripted players walk from random walkable cells (at least 12 m from their goal) straight to it, by a detour through a cell near the middle of the route (35-70% longer), or with a feint (half way towards another goal, then turning). The Captain's `GoalInference` is fed exactly as the brain feeds it: the player's cell at 2 Hz and the cell 5 s ago. Two simpler predictors are measured on the same samples: the goal nearest the player (shortest path), and the highest prior. Accuracy is the share of samples whose most likely goal is the true one. "Confidently" means P >= 0.5, the commit threshold.

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Unity.Profiling;
 using UnityEngine;
 using ToyFactory.AI.Core;
 using ToyFactory.AI.Core.Blackboard;
@@ -530,7 +531,8 @@ namespace ToyFactory.AI.Agents.Saboteur
 
             if (ctx.Time >= _nextDecisionTime)
             {
-                Decide(ctx);
+                using (DecideMarker.Auto())
+                    Decide(ctx);
                 _nextDecisionTime = NextSlotAfter(ctx.Time);
             }
 
@@ -1670,6 +1672,9 @@ namespace ToyFactory.AI.Agents.Saboteur
 
         // A route through a standing body (no way round it) counts as no route, with _routeBlockedByBody set: the
         // body would only be pushed into. Every plan treats it as it treats a closed door.
+        static readonly ProfilerMarker RouteMarker = new ProfilerMarker("AI.Saboteur.Route");
+        static readonly ProfilerMarker DecideMarker = new ProfilerMarker("AI.Saboteur.Decide");
+
         bool TryRoute(Vector2Int from, Vector2Int target, out List<Vector2Int> cells)
         {
             cells = null;
@@ -1686,7 +1691,9 @@ namespace ToyFactory.AI.Agents.Saboteur
                 return false;
 
             _routeCost.SetTime(_lastTime);
-            PathResult result = _pathfinder.FindPath(from, target, _routeCost);
+            PathResult result;
+            using (RouteMarker.Auto())
+                result = _pathfinder.FindPath(from, target, _routeCost);
             if (!result.Found || result.Cells == null || result.Cells.Count == 0)
                 return false;
             if (_routeCost.GoesThroughBody(result.Cells, _grid.CellToWorld(from)))

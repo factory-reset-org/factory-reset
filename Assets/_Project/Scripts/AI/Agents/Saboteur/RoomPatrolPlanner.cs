@@ -44,6 +44,14 @@ namespace ToyFactory.AI.Agents.Saboteur
         /// </summary>
         public static Vector2Int[] Plan(GridGraph grid, IReadOnlyList<Vector2Int> ownPoints, IReadOnlyList<Vector2Int> otherHomes)
         {
+            using (PlanMarker.Auto())
+                return PlanInner(grid, ownPoints, otherHomes);
+        }
+
+        static readonly Unity.Profiling.ProfilerMarker PlanMarker = new Unity.Profiling.ProfilerMarker("AI.Saboteur.PatrolPlan");
+
+        static Vector2Int[] PlanInner(GridGraph grid, IReadOnlyList<Vector2Int> ownPoints, IReadOnlyList<Vector2Int> otherHomes)
+        {
             if (grid == null)
                 throw new ArgumentNullException(nameof(grid));
             if (ownPoints == null || ownPoints.Count == 0)
