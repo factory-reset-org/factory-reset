@@ -47,7 +47,7 @@ namespace ToyFactory.Tests
         const float CaptainBudgetMs = 1f;   // the Captain's share: half the budget at p99
 
         static readonly string[] Brains = { "Tracker", "Guard", "Saboteur", "Captain" };
-        static readonly string[] Searches = { "AI.Tracker.GBFS", "AI.AStarSearch.FindPath", "AI.DijkstraField.Compute", "AI.DijkstraField.Repair", "AI.OneToOneCost.Compute", "AI.NoisePropagation.Propagate" };
+        static readonly string[] Searches = { "AI.Tracker.GBFS", "AI.AStarSearch.FindPath", "AI.DijkstraField.Compute", "AI.DijkstraField.Repair", "AI.OneToOneCost.Compute", "AI.NoisePropagation.Propagate", "AI.Saboteur.WalkReach", "AI.Saboteur.Route", "AI.Saboteur.Decide", "AI.Saboteur.PatrolPlan", "AI.Saboteur.Detour" };
 
         // A loop through the Control Room and out through door 3 into Storage and back.
         static readonly Vector3[] Loop =
