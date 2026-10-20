@@ -34,8 +34,10 @@ namespace ToyFactory.Managers
     /// props keep their own state (a relay switched on, a crate on its plate, a fuse picked up),
     /// so the scenes are reloaded, and behind a cover the journey is taken forward to the
     /// checkpoint's chapter the way the game finishes a chapter (<see cref="ChapterJump"/>).
-    /// Then the kept numbers are put back: the score, the Saboteurs scrapped before the
-    /// checkpoint, the restarts left, and the run time, which carries on. The player starts at
+    /// The run's seed is handed to the reloaded chapter manager (<see cref="ChapterManager.NextRunSeed"/>),
+    /// so the relay order is the one the board showed before. Then the kept numbers are put back:
+    /// the score, the Saboteurs scrapped before the checkpoint, the restarts left, and the run
+    /// time, which carries on. The player starts at
     /// the room's entrance with full integrity and a moment safe from hits. The rooms already
     /// done are finished in the chapter flow but their props are fresh, as with the debug
     /// chapter keys; only the room being played matters.</para>
@@ -268,6 +270,9 @@ namespace ToyFactory.Managers
                 RestartsLeft = _restartsLeft,
                 RunSeconds = ScoreManager.Current != null ? ScoreManager.Current.RunSeconds : 0f
             };
+            // The same seed picks the same relay order, so the order the board showed before the
+            // restart, and the objective ring follows, is still the order after it.
+            ChapterManager.NextRunSeed = ChapterManager.Current != null ? ChapterManager.Current.SequenceSeed : (int?)null;
             ShowCover(CheckpointName);
             Reload();
             return true;
@@ -278,6 +283,7 @@ namespace ToyFactory.Managers
         {
             IsRecalled = false;
             s_pending = null;
+            ChapterManager.NextRunSeed = null;   // a new game picks a new order
             Reload();
         }
 
