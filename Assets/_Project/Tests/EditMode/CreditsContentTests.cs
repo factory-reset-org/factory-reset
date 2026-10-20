@@ -96,11 +96,12 @@ namespace ToyFactory.Tests.EditMode
         }
 
         [Test]
-        public void SOneIsShownByTheGitHubHandleTheCodeOwnersFileUses()
+        public void SOneAndSFourAreCreditedByTheirFullNames()
         {
-            // S1 is known in the repository only by this handle; S2 to S4 are commit authors.
-            string owners = ProjectFile(".github", "CODEOWNERS");
-            StringAssert.Contains("@" + CreditsContent.Members[0].Name, owners);
+            // The credits show full names; the CODEOWNERS file keeps S1's GitHub handle, which is not a credit.
+            Assert.AreEqual("Onel De Silva", CreditsContent.Members[0].Name);
+            Assert.AreEqual("Omira Kularatne", CreditsContent.Members[3].Name);
+            StringAssert.Contains("@OnelDJ", ProjectFile(".github", "CODEOWNERS"));
         }
 
         [Test]
